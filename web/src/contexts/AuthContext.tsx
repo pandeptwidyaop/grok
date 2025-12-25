@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
 interface AuthContextType {
@@ -12,18 +12,13 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<string | null>(null);
-
-  // Load token from localStorage on mount
-  useEffect(() => {
-    const storedToken = localStorage.getItem('auth_token');
-    const storedUser = localStorage.getItem('auth_user');
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(storedUser);
-    }
-  }, []);
+  // Lazy initialization - read from localStorage immediately
+  const [token, setToken] = useState<string | null>(() => {
+    return localStorage.getItem('auth_token');
+  });
+  const [user, setUser] = useState<string | null>(() => {
+    return localStorage.getItem('auth_user');
+  });
 
   const login = async (username: string, password: string) => {
     const response = await fetch('/api/auth/login', {
