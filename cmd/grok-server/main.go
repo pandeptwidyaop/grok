@@ -13,6 +13,7 @@ import (
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db"
+	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/auth"
 	"github.com/pandeptwidyaop/grok/internal/server/config"
 	grpcserver "github.com/pandeptwidyaop/grok/internal/server/grpc"
@@ -23,8 +24,10 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/server/web"
 	"github.com/pandeptwidyaop/grok/internal/server/web/api"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
+	"github.com/pandeptwidyaop/grok/pkg/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"gorm.io/gorm"
 )
 
 var (
@@ -37,6 +40,61 @@ var (
 	configPath  = flag.String("config", "configs/server.yaml", "path to config file")
 	showVersion = flag.Bool("version", false, "show version information")
 )
+
+// initAdminUser creates or updates the admin user from config
+func initAdminUser(database *gorm.DB, cfg *config.Config) error {
+	var adminUser models.User
+
+	// Check if admin user exists
+	err := database.Where("email = ?", cfg.Auth.AdminUsername).First(&adminUser).Error
+	if err == gorm.ErrRecordNotFound {
+		// Create new admin user
+		hashedPassword, err := utils.HashPassword(cfg.Auth.AdminPassword)
+		if err != nil {
+			return fmt.Errorf("failed to hash password: %w", err)
+		}
+
+		adminUser = models.User{
+			Email:    cfg.Auth.AdminUsername,
+			Password: hashedPassword,
+			Name:     "Administrator",
+			IsActive: true,
+		}
+
+		if err := database.Create(&adminUser).Error; err != nil {
+			return fmt.Errorf("failed to create admin user: %w", err)
+		}
+
+		logger.InfoEvent().
+			Str("email", adminUser.Email).
+			Msg("Created admin user from config")
+	} else if err != nil {
+		return fmt.Errorf("failed to check admin user: %w", err)
+	} else {
+		// Admin user exists, update password if changed
+		hashedPassword, err := utils.HashPassword(cfg.Auth.AdminPassword)
+		if err != nil {
+			return fmt.Errorf("failed to hash password: %w", err)
+		}
+
+		// Only update if password actually changed
+		if !utils.ComparePassword(adminUser.Password, cfg.Auth.AdminPassword) {
+			adminUser.Password = hashedPassword
+			if err := database.Save(&adminUser).Error; err != nil {
+				return fmt.Errorf("failed to update admin password: %w", err)
+			}
+			logger.InfoEvent().
+				Str("email", adminUser.Email).
+				Msg("Updated admin password from config")
+		} else {
+			logger.InfoEvent().
+				Str("email", adminUser.Email).
+				Msg("Admin user exists, password unchanged")
+		}
+	}
+
+	return nil
+}
 
 func main() {
 	flag.Parse()
@@ -102,6 +160,11 @@ func main() {
 	}
 
 	logger.InfoEvent().Msg("Database migrations completed")
+
+	// Initialize admin user from config
+	if err := initAdminUser(database, cfg); err != nil {
+		logger.Fatal(fmt.Sprintf("Failed to initialize admin user: %v", err))
+	}
 
 	// Setup TLS if enabled
 	var tlsMgr *tlsmanager.Manager
@@ -192,7 +255,7 @@ func main() {
 	apiMux := http.NewServeMux()
 
 	// Register API handlers
-	apiHandler := api.NewHandler(database, tokenService, tunnelManager)
+	apiHandler := api.NewHandler(database, tokenService, tunnelManager, cfg)
 	apiHandler.RegisterRoutes(apiMux)
 
 	// Serve embedded dashboard

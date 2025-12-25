@@ -47,7 +47,9 @@ type TLSConfig struct {
 
 // AuthConfig holds authentication settings
 type AuthConfig struct {
-	JWTSecret string `mapstructure:"jwt_secret"`
+	JWTSecret     string `mapstructure:"jwt_secret"`
+	AdminUsername string `mapstructure:"admin_username"`
+	AdminPassword string `mapstructure:"admin_password"`
 }
 
 // TunnelsConfig holds tunnel settings
@@ -106,6 +108,10 @@ func setDefaults() {
 	// TLS defaults
 	viper.SetDefault("tls.auto_cert", true)
 	viper.SetDefault("tls.cert_dir", "/var/lib/grok/certs")
+
+	// Auth defaults
+	viper.SetDefault("auth.admin_username", "admin")
+	viper.SetDefault("auth.admin_password", "admin123") // Change in production!
 
 	// Tunnel defaults
 	viper.SetDefault("tunnels.max_per_user", 5)

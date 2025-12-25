@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, Globe, Download, Upload } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Activity, Globe, Download, Upload, LogOut, User } from 'lucide-react';
 import TunnelList from './TunnelList';
 import TokenManager from './TokenManager';
 
 function Dashboard() {
   const [activeTab, setActiveTab] = useState<'tunnels' | 'tokens'>('tunnels');
+  const { user, logout } = useAuth();
 
   const { data: stats } = useQuery({
     queryKey: ['stats'],
@@ -30,11 +33,23 @@ function Dashboard() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Grok Dashboard</h1>
-          <p className="text-muted-foreground">
-            Manage your tunnels and authentication tokens
-          </p>
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-4xl font-bold mb-2">Grok Dashboard</h1>
+            <p className="text-muted-foreground">
+              Manage your tunnels and authentication tokens
+            </p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <User className="h-4 w-4" />
+              <span>{user}</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={logout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </Button>
+          </div>
         </div>
 
         {/* Stats Cards */}
@@ -65,7 +80,7 @@ function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {stats?.total_requests?.toLocaleString() || 0}
+                {(stats?.total_requests ?? 0).toLocaleString()}
               </div>
               <p className="text-xs text-muted-foreground">All time</p>
             </CardContent>

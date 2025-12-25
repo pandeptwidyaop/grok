@@ -23,13 +23,22 @@ func (c *Client) startProxyStream(ctx context.Context) error {
 
 	logger.InfoEvent().Msg("Proxy stream established")
 
-	// Send registration control message with subdomain and auth token
-	// We use the TunnelId field to pass subdomain (since there's no dedicated field)
+	// Send registration control message with tunnel details
+	// Format: subdomain|token|localaddr|publicurl
+	c.mu.RLock()
+	regData := fmt.Sprintf("%s|%s|%s|%s",
+		c.getSubdomain(),
+		c.cfg.AuthToken,
+		c.cfg.LocalAddr,
+		c.publicURL,
+	)
+	c.mu.RUnlock()
+
 	regMsg := &tunnelv1.ProxyMessage{
 		Message: &tunnelv1.ProxyMessage_Control{
 			Control: &tunnelv1.ControlMessage{
 				Type:     tunnelv1.ControlMessage_UNKNOWN, // Use UNKNOWN for registration
-				TunnelId: c.getSubdomain() + "|" + c.cfg.AuthToken, // Pass subdomain|token
+				TunnelId: regData,
 			},
 		},
 	}

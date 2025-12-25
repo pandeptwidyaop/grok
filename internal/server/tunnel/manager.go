@@ -110,6 +110,7 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 		Subdomain:  tunnel.Subdomain,
 		LocalAddr:  tunnel.LocalAddr,
 		PublicURL:  tunnel.PublicURL,
+		ClientID:   tunnel.ID.String(), // Use tunnel ID as unique client ID
 		Status:     "active",
 	}
 
@@ -157,6 +158,16 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 
 	if err != nil {
 		return pkgerrors.Wrap(err, "failed to update tunnel status")
+	}
+
+	// Delete domain reservation to allow reuse
+	if err := m.db.WithContext(ctx).
+		Where("subdomain = ?", tunnel.Subdomain).
+		Delete(&models.Domain{}).Error; err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("subdomain", tunnel.Subdomain).
+			Msg("Failed to delete domain reservation")
 	}
 
 	logger.InfoEvent().

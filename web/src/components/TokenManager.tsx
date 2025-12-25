@@ -171,11 +171,15 @@ function TokenManager() {
                     <TableCell className="font-medium">{token.name}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
-                        {token.scopes.map((scope) => (
-                          <Badge key={scope} variant="secondary" className="text-xs">
-                            {scope}
-                          </Badge>
-                        ))}
+                        {token.scopes && token.scopes.length > 0 ? (
+                          token.scopes.map((scope) => (
+                            <Badge key={scope} variant="secondary" className="text-xs">
+                              {scope}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-sm text-muted-foreground">No scopes</span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">

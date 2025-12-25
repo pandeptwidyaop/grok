@@ -32,7 +32,14 @@ Example usage:
   grok config set-token <token>     # Configure auth token`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip config loading for config and version commands
-		if cmd.Name() == "config" || cmd.Name() == "version" {
+		// Check both the command name and its parent
+		cmdName := cmd.Name()
+		parentName := ""
+		if cmd.Parent() != nil {
+			parentName = cmd.Parent().Name()
+		}
+
+		if cmdName == "config" || cmdName == "version" || parentName == "config" {
 			return nil
 		}
 

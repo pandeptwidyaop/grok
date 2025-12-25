@@ -7,8 +7,11 @@ import (
 
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/auth"
+	"github.com/pandeptwidyaop/grok/internal/server/config"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
+	"github.com/pandeptwidyaop/grok/internal/server/web/middleware"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
+	"github.com/pandeptwidyaop/grok/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -17,32 +20,37 @@ type Handler struct {
 	db            *gorm.DB
 	tokenService  *auth.TokenService
 	tunnelManager *tunnel.Manager
+	config        *config.Config
+	authMW        *middleware.AuthMiddleware
 }
 
 // NewHandler creates a new dashboard API handler
-func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tunnel.Manager) *Handler {
+func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tunnel.Manager, cfg *config.Config) *Handler {
 	return &Handler{
 		db:            db,
 		tokenService:  tokenService,
 		tunnelManager: tunnelManager,
+		config:        cfg,
+		authMW:        middleware.NewAuthMiddleware(cfg.Auth.JWTSecret),
 	}
 }
 
 // RegisterRoutes registers all API routes
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	// Tokens
-	mux.HandleFunc("GET /api/tokens", h.listTokens)
-	mux.HandleFunc("POST /api/tokens", h.createToken)
-	mux.HandleFunc("DELETE /api/tokens/{id}", h.deleteToken)
-	mux.HandleFunc("PATCH /api/tokens/{id}/toggle", h.toggleToken)
+	// Public routes
+	mux.HandleFunc("POST /api/auth/login", h.login)
 
-	// Tunnels
-	mux.HandleFunc("GET /api/tunnels", h.listTunnels)
-	mux.HandleFunc("GET /api/tunnels/{id}", h.getTunnel)
-	mux.HandleFunc("GET /api/tunnels/{id}/logs", h.getTunnelLogs)
+	// Protected routes (require JWT)
+	mux.Handle("GET /api/tokens", h.authMW.Protect(http.HandlerFunc(h.listTokens)))
+	mux.Handle("POST /api/tokens", h.authMW.Protect(http.HandlerFunc(h.createToken)))
+	mux.Handle("DELETE /api/tokens/{id}", h.authMW.Protect(http.HandlerFunc(h.deleteToken)))
+	mux.Handle("PATCH /api/tokens/{id}/toggle", h.authMW.Protect(http.HandlerFunc(h.toggleToken)))
 
-	// Stats
-	mux.HandleFunc("GET /api/stats", h.getStats)
+	mux.Handle("GET /api/tunnels", h.authMW.Protect(http.HandlerFunc(h.listTunnels)))
+	mux.Handle("GET /api/tunnels/{id}", h.authMW.Protect(http.HandlerFunc(h.getTunnel)))
+	mux.Handle("GET /api/tunnels/{id}/logs", h.authMW.Protect(http.HandlerFunc(h.getTunnelLogs)))
+
+	mux.Handle("GET /api/stats", h.authMW.Protect(http.HandlerFunc(h.getStats)))
 }
 
 // Response helpers
@@ -248,4 +256,62 @@ func (h *Handler) getStats(w http.ResponseWriter, r *http.Request) {
 		Scan(&stats.TotalBytesOut)
 
 	respondJSON(w, http.StatusOK, stats)
+}
+
+// Auth handlers
+
+type loginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type loginResponse struct {
+	Token string `json:"token"`
+	User  string `json:"user"`
+}
+
+func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate credentials
+	if req.Username == "" || req.Password == "" {
+		respondError(w, http.StatusBadRequest, "Username and password are required")
+		return
+	}
+
+	// Check against admin credentials from database
+	var user models.User
+	if err := h.db.Where("email = ?", req.Username).First(&user).Error; err != nil {
+		respondError(w, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
+
+	// Verify password
+	if !utils.ComparePassword(user.Password, req.Password) {
+		respondError(w, http.StatusUnauthorized, "Invalid credentials")
+		return
+	}
+
+	// Check if user is active
+	if !user.IsActive {
+		respondError(w, http.StatusUnauthorized, "User account is disabled")
+		return
+	}
+
+	// Generate JWT token
+	token, err := h.authMW.GenerateToken(user.Email)
+	if err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to generate token")
+		respondError(w, http.StatusInternalServerError, "Failed to generate token")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, loginResponse{
+		Token: token,
+		User:  user.Email,
+	})
 }

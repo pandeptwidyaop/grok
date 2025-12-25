@@ -34,7 +34,7 @@ var (
 		"smtp":      true,
 		"ftp":       true,
 		"localhost": true,
-		"test":      true,
+		// "test":      true,  // Removed - allow "test" subdomain
 		"dev":       true,
 		"staging":   true,
 		"prod":      true,

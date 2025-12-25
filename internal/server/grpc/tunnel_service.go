@@ -140,7 +140,7 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 		case *tunnelv1.ProxyMessage_Control:
 			// First control message should contain tunnel registration
 			if currentTunnel == nil && payload.Control.Type == tunnelv1.ControlMessage_UNKNOWN {
-				// Parse subdomain|token from TunnelId field
+				// Parse subdomain|token|localaddr|publicurl from TunnelId field
 				parts := []string{}
 				data := payload.Control.TunnelId
 				lastIdx := 0
@@ -152,13 +152,17 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 				}
 				parts = append(parts, data[lastIdx:])
 
-				if len(parts) != 2 {
-					logger.WarnEvent().Msg("Invalid registration message format")
+				if len(parts) != 4 {
+					logger.WarnEvent().
+						Int("parts_count", len(parts)).
+						Msg("Invalid registration message format")
 					return status.Error(codes.InvalidArgument, "invalid registration format")
 				}
 
 				subdomain := parts[0]
 				authToken := parts[1]
+				localAddr := parts[2]
+				publicURL := parts[3]
 
 				// Validate token
 				token, err := s.tokenService.ValidateToken(ctx, authToken)
@@ -167,14 +171,24 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 					return status.Error(codes.Unauthenticated, "invalid authentication token")
 				}
 
+				// Determine protocol from public URL
+				protocol := tunnelv1.TunnelProtocol_HTTP
+				if len(publicURL) > 0 {
+					if publicURL[:8] == "https://" {
+						protocol = tunnelv1.TunnelProtocol_HTTPS
+					} else if publicURL[:6] == "tcp://" {
+						protocol = tunnelv1.TunnelProtocol_TCP
+					}
+				}
+
 				// Create tunnel using constructor
 				tun := tunnel.NewTunnel(
 					token.UserID,
 					token.ID,
 					subdomain,
-					tunnelv1.TunnelProtocol_HTTP, // Default to HTTP for now
-					"",                            // LocalAddr not available on server
-					"",                            // PublicURL not needed here
+					protocol,
+					localAddr,
+					publicURL,
 					stream,
 				)
 

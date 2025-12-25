@@ -31,10 +31,14 @@ function TunnelList() {
   };
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleString();
+    if (!date) return 'N/A';
+    const d = new Date(date);
+    return isNaN(d.getTime()) ? 'N/A' : d.toLocaleString();
   };
 
   const getStatusBadge = (status: string) => {
+    if (!status) return <Badge variant="outline">Unknown</Badge>;
+
     switch (status.toLowerCase()) {
       case 'active':
         return <Badge variant="default">Active</Badge>;
@@ -46,6 +50,8 @@ function TunnelList() {
   };
 
   const getTypeBadge = (type: string) => {
+    if (!type) return <Badge>Unknown</Badge>;
+
     const colors: Record<string, string> = {
       http: 'bg-blue-500',
       https: 'bg-green-500',
@@ -135,14 +141,14 @@ function TunnelList() {
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-2">
                     <Activity className="h-4 w-4 text-muted-foreground" />
-                    {tunnel.requests_count.toLocaleString()}
+                    {(tunnel.requests_count ?? 0).toLocaleString()}
                   </div>
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex flex-col items-end text-sm">
                     <div className="flex items-center gap-1">
                       <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
-                      {formatBytes(tunnel.bytes_in)} / {formatBytes(tunnel.bytes_out)}
+                      {formatBytes(tunnel.bytes_in ?? 0)} / {formatBytes(tunnel.bytes_out ?? 0)}
                     </div>
                   </div>
                 </TableCell>
