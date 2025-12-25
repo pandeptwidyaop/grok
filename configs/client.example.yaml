@@ -1,0 +1,17 @@
+server:
+  addr: "localhost:4443"
+  tls: false
+
+auth:
+  token: ""  # Set using: grok config set-token <your-token>
+
+logging:
+  level: "info"
+  format: "text"
+
+reconnect:
+  enabled: true
+  initial_delay: 1      # seconds
+  max_delay: 30         # seconds
+  backoff_factor: 2     # multiplier
+  max_attempts: 0       # 0 = infinite retries

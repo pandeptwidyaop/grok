@@ -1,0 +1,33 @@
+server:
+  grpc_port: 4443
+  http_port: 80
+  https_port: 443
+  api_port: 4040
+  domain: "grok.io"
+
+database:
+  driver: "postgres"
+  host: "localhost"
+  port: 5432
+  database: "grok"
+  username: "grok"
+  password: "your-password-here"
+  ssl_mode: "disable"
+
+tls:
+  auto_cert: true
+  cert_dir: "/var/lib/grok/certs"
+  email: "admin@grok.io"
+
+auth:
+  jwt_secret: "change-this-to-a-secure-random-string"
+
+tunnels:
+  max_per_user: 5
+  idle_timeout: "10m"
+  heartbeat_interval: "30s"
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"

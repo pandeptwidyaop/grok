@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package grok.tunnel.v1;
+
+option go_package = "github.com/pandeptwidyaop/grok/gen/go/tunnel/v1;tunnelv1";
+
+// TunnelService handles tunnel lifecycle and proxying
+service TunnelService {
+  // CreateTunnel establishes a new tunnel and returns configuration
+  rpc CreateTunnel(CreateTunnelRequest) returns (CreateTunnelResponse);
+
+  // ProxyStream is a bidirectional stream for tunneling requests/responses
+  // Server sends ProxyRequest when public request arrives
+  // Client sends ProxyResponse with data from local service
+  rpc ProxyStream(stream ProxyMessage) returns (stream ProxyMessage);
+
+  // Heartbeat maintains connection health
+  rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+}
+
+// Tunnel creation request
+message CreateTunnelRequest {
+  string auth_token = 1;
+  TunnelProtocol protocol = 2;
+  string local_address = 3;
+
+  // Optional: custom subdomain (requires validation)
+  string subdomain = 4;
+
+  // Optional: TLS configuration
+  TLSConfig tls_config = 5;
+
+  // Metadata
+  map<string, string> labels = 6;
+}
+
+message CreateTunnelResponse {
+  string tunnel_id = 1;
+  string public_url = 2;
+  string subdomain = 3;
+  TunnelStatus status = 4;
+  int64 expires_at = 5; // unix timestamp
+}
+
+// Bidirectional proxy messages
+message ProxyMessage {
+  oneof message {
+    ProxyRequest request = 1;
+    ProxyResponse response = 2;
+    ProxyError error = 3;
+    ControlMessage control = 4;
+  }
+}
+
+// Server → Client: incoming public request
+message ProxyRequest {
+  string request_id = 1;
+  string tunnel_id = 2;
+
+  // Protocol-specific data
+  oneof payload {
+    HTTPRequest http = 3;
+    TCPData tcp = 4;
+  }
+}
+
+// Client → Server: response from local service
+message ProxyResponse {
+  string request_id = 1;
+  string tunnel_id = 2;
+
+  oneof payload {
+    HTTPResponse http = 3;
+    TCPData tcp = 4;
+  }
+
+  bool end_of_stream = 5;
+}
+
+message ProxyError {
+  string request_id = 1;
+  string tunnel_id = 2;
+  ErrorCode code = 3;
+  string message = 4;
+}
+
+// Control messages for tunnel management
+message ControlMessage {
+  enum Type {
+    UNKNOWN = 0;
+    TUNNEL_CLOSED = 1;
+    RATE_LIMIT = 2;
+    RECONNECT = 3;
+  }
+
+  Type type = 1;
+  string tunnel_id = 2;
+  map<string, string> metadata = 3;
+}
+
+// HTTP-specific messages
+message HTTPRequest {
+  string method = 1;
+  string path = 2;
+  map<string, HeaderValues> headers = 3;
+  bytes body = 4;
+  string query_string = 5;
+  string remote_addr = 6;
+}
+
+message HTTPResponse {
+  int32 status_code = 1;
+  map<string, HeaderValues> headers = 2;
+  bytes body = 3;
+}
+
+message HeaderValues {
+  repeated string values = 1;
+}
+
+// TCP-specific messages
+message TCPData {
+  bytes data = 1;
+  int64 sequence = 2;
+}
+
+// TLS configuration
+message TLSConfig {
+  bool enabled = 1;
+  string cert_pem = 2;
+  string key_pem = 3;
+}
+
+// Supporting enums
+enum TunnelProtocol {
+  TUNNEL_PROTOCOL_UNSPECIFIED = 0;
+  HTTP = 1;
+  HTTPS = 2;
+  TCP = 3;
+}
+
+enum TunnelStatus {
+  TUNNEL_STATUS_UNSPECIFIED = 0;
+  ACTIVE = 1;
+  INACTIVE = 2;
+  ERROR = 3;
+}
+
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  UNAUTHORIZED = 1;
+  RATE_LIMITED = 2;
+  TUNNEL_NOT_FOUND = 3;
+  LOCAL_SERVICE_UNREACHABLE = 4;
+  SUBDOMAIN_TAKEN = 5;
+}
+
+// Heartbeat messages
+message HeartbeatRequest {
+  string tunnel_id = 1;
+  int64 timestamp = 2;
+}
+
+message HeartbeatResponse {
+  string tunnel_id = 1;
+  int64 timestamp = 2;
+  bool healthy = 3;
+}

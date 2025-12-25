@@ -1,0 +1,44 @@
+server:
+  grpc_port: 4443
+  http_port: 80
+  https_port: 443
+  api_port: 4040
+  domain: "grok.io"
+
+database:
+  # Driver: "sqlite" or "postgres"
+  driver: "sqlite"
+
+  # SQLite configuration (when driver is "sqlite")
+  database: "grok.db"  # File path, use ":memory:" for in-memory database
+
+  # PostgreSQL configuration (when driver is "postgres")
+  # driver: "postgres"
+  # host: "localhost"
+  # port: 5432
+  # database: "grok"
+  # username: "grok"
+  # password: "your-password-here"
+  # ssl_mode: "disable"
+
+tls:
+  auto_cert: true
+  cert_dir: "/var/lib/grok/certs"
+  email: "admin@grok.io"
+  # For manual cert management:
+  # cert_file: "/path/to/cert.pem"
+  # key_file: "/path/to/key.pem"
+
+auth:
+  jwt_secret: "change-this-to-a-secure-random-string"
+
+tunnels:
+  max_per_user: 5
+  idle_timeout: "10m"
+  heartbeat_interval: "30s"
+
+logging:
+  level: "info"      # debug, info, warn, error
+  format: "json"     # json, text
+  output: "stdout"   # stdout, file
+  # file: "/var/log/grok/server.log"

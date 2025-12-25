@@ -1,0 +1,184 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # Job 1: Determine next version using semantic-release (dry-run)
+  version:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Semantic Release (Dry Run)
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          dry_run: true
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+            conventional-changelog-conventionalcommits
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output Version Info
+        run: |
+          echo "New release published: ${{ steps.semantic.outputs.new_release_published }}"
+          echo "New release version: ${{ steps.semantic.outputs.new_release_version }}"
+
+  # Job 2: Build binaries with version
+  build:
+    name: Build Binaries
+    needs: version
+    if: needs.version.outputs.new_release_published == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Server binaries
+          - target: server
+            goos: linux
+            goarch: amd64
+            output: grok-server-linux-amd64
+          - target: server
+            goos: linux
+            goarch: arm64
+            output: grok-server-linux-arm64
+          - target: server
+            goos: darwin
+            goarch: amd64
+            output: grok-server-darwin-amd64
+          - target: server
+            goos: darwin
+            goarch: arm64
+            output: grok-server-darwin-arm64
+          # Client binaries
+          - target: client
+            goos: linux
+            goarch: amd64
+            output: grok-linux-amd64
+          - target: client
+            goos: linux
+            goarch: arm64
+            output: grok-linux-arm64
+          - target: client
+            goos: darwin
+            goarch: amd64
+            output: grok-darwin-amd64
+          - target: client
+            goos: darwin
+            goarch: arm64
+            output: grok-darwin-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Go tools
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate gRPC code
+        run: make proto
+
+      - name: Build ${{ matrix.target }} for ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+          VERSION: ${{ needs.version.outputs.new_release_version }}
+        run: |
+          mkdir -p dist
+          if [ "${{ matrix.target }}" = "server" ]; then
+            go build -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=$(git rev-parse --short HEAD)" \
+              -o dist/${{ matrix.output }} ./cmd/grok-server
+          else
+            go build -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=$(git rev-parse --short HEAD)" \
+              -o dist/${{ matrix.output }} ./cmd/grok
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output }}
+          path: dist/${{ matrix.output }}
+          retention-days: 1
+
+  # Job 3: Create checksums and release
+  release:
+    name: Create Release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p dist
+          find artifacts -type f -exec cp {} dist/ \;
+          ls -lah dist/
+
+      - name: Make binaries executable
+        run: chmod +x dist/*
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Semantic Release
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/changelog
+            @semantic-release/git
+            conventional-changelog-conventionalcommits
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

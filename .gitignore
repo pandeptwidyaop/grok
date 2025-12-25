@@ -1,0 +1,63 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Generated files
+gen/
+
+# Configuration files (keep examples)
+configs/server.yaml
+configs/client.yaml
+.grok/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# Node
+node_modules/
+web/dist/
+internal/server/web/dist/
+
+# Build artifacts
+tmp/
+dist/
+
+# Environment
+.env
+.env.local
+
+# TLS certificates
+*.pem
+*.key
+*.crt
+certs/

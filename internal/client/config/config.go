@@ -1,0 +1,140 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/spf13/viper"
+)
+
+// Config represents the client configuration
+type Config struct {
+	Server    ServerConfig    `mapstructure:"server"`
+	Auth      AuthConfig      `mapstructure:"auth"`
+	Logging   LoggingConfig   `mapstructure:"logging"`
+	Reconnect ReconnectConfig `mapstructure:"reconnect"`
+}
+
+// ServerConfig holds server connection settings
+type ServerConfig struct {
+	Addr string `mapstructure:"addr"`
+	TLS  bool   `mapstructure:"tls"`
+}
+
+// AuthConfig holds authentication settings
+type AuthConfig struct {
+	Token string `mapstructure:"token"`
+}
+
+// LoggingConfig holds logging settings
+type LoggingConfig struct {
+	Level  string `mapstructure:"level"`
+	Format string `mapstructure:"format"`
+}
+
+// ReconnectConfig holds reconnection settings
+type ReconnectConfig struct {
+	Enabled       bool `mapstructure:"enabled"`
+	InitialDelay  int  `mapstructure:"initial_delay"`  // seconds
+	MaxDelay      int  `mapstructure:"max_delay"`      // seconds
+	BackoffFactor int  `mapstructure:"backoff_factor"` // multiplier
+	MaxAttempts   int  `mapstructure:"max_attempts"`   // 0 = infinite
+}
+
+// Load loads configuration from file
+func Load(configPath string) (*Config, error) {
+	v := viper.New()
+
+	// Set defaults first
+	setDefaults(v)
+
+	// If config path is provided, use it
+	if configPath != "" {
+		v.SetConfigFile(configPath)
+	} else {
+		// Look for config in default locations
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user home dir: %w", err)
+		}
+
+		configDir := filepath.Join(home, ".grok")
+		v.AddConfigPath(configDir)
+		v.AddConfigPath(".")
+		v.SetConfigName("config")
+		v.SetConfigType("yaml")
+	}
+
+	// Read config file (optional)
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+		// Config file not found, use defaults
+	}
+
+	// Read from environment variables
+	v.SetEnvPrefix("GROK")
+	v.AutomaticEnv()
+
+	// Unmarshal config
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+func setDefaults(v *viper.Viper) {
+	// Server defaults
+	v.SetDefault("server.addr", "localhost:4443")
+	v.SetDefault("server.tls", false)
+
+	// Logging defaults
+	v.SetDefault("logging.level", "info")
+	v.SetDefault("logging.format", "text")
+
+	// Reconnect defaults
+	v.SetDefault("reconnect.enabled", true)
+	v.SetDefault("reconnect.initial_delay", 1)
+	v.SetDefault("reconnect.max_delay", 30)
+	v.SetDefault("reconnect.backoff_factor", 2)
+	v.SetDefault("reconnect.max_attempts", 0) // infinite
+}
+
+// SaveToken saves auth token to config file
+func SaveToken(token string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home dir: %w", err)
+	}
+
+	configDir := filepath.Join(home, ".grok")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// Create config directory if not exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+
+	// Try to read existing config
+	_ = v.ReadInConfig()
+
+	// Set token
+	v.Set("auth.token", token)
+
+	// Write config
+	if err := v.WriteConfig(); err != nil {
+		// If file doesn't exist, create it
+		if err := v.SafeWriteConfig(); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+	}
+
+	return nil
+}

@@ -1,0 +1,34 @@
+server:
+  grpc_port: 4443
+  http_port: 80
+  https_port: 443
+  api_port: 4040
+  domain: "tunnel.yourdomain.com"
+
+database:
+  driver: "postgres"
+  host: "localhost"
+  port: 5432
+  database: "grok"
+  username: "grok"
+  password: "your_password"
+  ssl_mode: "disable"
+
+tls:
+  auto_cert: false                           # Disable autocert
+  cert_dir: "./certs"                        # Not used for manual certs
+  cert_file: "/etc/grok/certs/server.crt"    # Path to certificate
+  key_file: "/etc/grok/certs/server.key"     # Path to private key
+
+auth:
+  jwt_secret: "your-production-secret-min-32-chars"
+
+tunnels:
+  max_per_user: 10
+  idle_timeout: "10m"
+  heartbeat_interval: "30s"
+
+logging:
+  level: "info"
+  format: "json"
+  output: "stdout"
