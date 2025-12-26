@@ -88,8 +88,129 @@ func hasPort(addr string) bool {
 	return false
 }
 
+// setTLSCertCmd represents the set-tls-cert command
+var setTLSCertCmd = &cobra.Command{
+	Use:   "set-tls-cert [path]",
+	Short: "Set TLS certificate file and enable TLS",
+	Long: `Set the TLS certificate file for server verification and enable TLS.
+
+Use this for self-signed certificates or custom CA certificates.
+For Let's Encrypt or other trusted CAs, use 'enable-tls' instead.
+
+Examples:
+  grok config set-tls-cert certs/server.crt
+  grok config set-tls-cert /path/to/ca-bundle.crt`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		certPath := args[0]
+
+		if err := config.SetTLSCert(certPath); err != nil {
+			return fmt.Errorf("failed to set TLS certificate: %w", err)
+		}
+
+		fmt.Printf("✓ TLS enabled with certificate: %s\n", certPath)
+		fmt.Printf("Certificate will be used to verify server identity\n")
+
+		return nil
+	},
+}
+
+// setTLSInsecureCmd represents the set-tls-insecure command
+var setTLSInsecureCmd = &cobra.Command{
+	Use:   "set-tls-insecure [true|false]",
+	Short: "Enable/disable TLS insecure mode (skip verification)",
+	Long: `Enable or disable TLS insecure mode (skip certificate verification).
+
+⚠️  WARNING: Insecure mode disables certificate verification!
+This should ONLY be used for development/testing, NEVER in production.
+
+When enabled:
+  - TLS encryption is still active
+  - Certificate verification is disabled
+  - Vulnerable to man-in-the-middle attacks
+
+Examples:
+  grok config set-tls-insecure true   # Enable insecure mode (dev only)
+  grok config set-tls-insecure false  # Disable insecure mode`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		insecureStr := args[0]
+		insecure := insecureStr == "true"
+
+		if err := config.SetTLSInsecure(insecure); err != nil {
+			return fmt.Errorf("failed to set TLS insecure mode: %w", err)
+		}
+
+		if insecure {
+			fmt.Printf("⚠️  TLS insecure mode enabled (certificate verification disabled)\n")
+			fmt.Printf("⚠️  This should ONLY be used for development/testing!\n")
+		} else {
+			fmt.Printf("✓ TLS insecure mode disabled (certificate verification enabled)\n")
+		}
+
+		return nil
+	},
+}
+
+// enableTLSCmd represents the enable-tls command
+var enableTLSCmd = &cobra.Command{
+	Use:   "enable-tls",
+	Short: "Enable TLS with system CA pool",
+	Long: `Enable TLS using the system's certificate authority (CA) pool.
+
+Use this for servers with certificates from trusted CAs like:
+  - Let's Encrypt
+  - DigiCert
+  - Cloudflare
+  - Any CA trusted by your operating system
+
+No custom certificate file is needed - the system's built-in CA certificates
+will be used to verify the server.
+
+Example:
+  grok config enable-tls`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := config.EnableTLS(); err != nil {
+			return fmt.Errorf("failed to enable TLS: %w", err)
+		}
+
+		fmt.Printf("✓ TLS enabled with system CA pool\n")
+		fmt.Printf("Server certificate will be verified using system certificates\n")
+		fmt.Printf("Works with Let's Encrypt, DigiCert, and other trusted CAs\n")
+
+		return nil
+	},
+}
+
+// disableTLSCmd represents the disable-tls command
+var disableTLSCmd = &cobra.Command{
+	Use:   "disable-tls",
+	Short: "Disable TLS (insecure connection)",
+	Long: `Disable TLS and use an insecure connection to the server.
+
+⚠️  WARNING: This sends all data in plaintext!
+Only use this for local development when connecting to localhost.
+
+Example:
+  grok config disable-tls`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := config.DisableTLS(); err != nil {
+			return fmt.Errorf("failed to disable TLS: %w", err)
+		}
+
+		fmt.Printf("⚠️  TLS disabled - connection will be insecure\n")
+		fmt.Printf("All data will be sent in plaintext\n")
+
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(setTokenCmd)
 	configCmd.AddCommand(setServerCmd)
+	configCmd.AddCommand(setTLSCertCmd)
+	configCmd.AddCommand(setTLSInsecureCmd)
+	configCmd.AddCommand(enableTLSCmd)
+	configCmd.AddCommand(disableTLSCmd)
 }
