@@ -1,3 +1,13 @@
+## [1.0.0-alpha.8](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.7...v1.0.0-alpha.8) (2025-12-26)
+
+### Features
+
+* **security:** implement httpOnly cookies and CSRF protection for frontend ([7be3c7c](https://github.com/pandeptwidyaop/grok/commit/7be3c7c2737e90166cb7f0c3220c3138fe889102))
+
+### Code Refactoring
+
+* reduce cyclomatic complexity across codebase ([eee1502](https://github.com/pandeptwidyaop/grok/commit/eee150213763213aaaa00db3b28d5f9ace8bc32b))
+
 ## [1.0.0-alpha.7](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.6...v1.0.0-alpha.7) (2025-12-26)
 
 ### Bug Fixes
