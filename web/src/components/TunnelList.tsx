@@ -171,7 +171,7 @@ function TunnelList() {
                             {tunnel.saved_name || tunnel.subdomain}
                           </Typography>
                         </Box>
-                        {tunnel.saved_name && (
+                        {tunnel.saved_name && tunnel.tunnel_type?.toLowerCase() !== 'tcp' && tunnel.subdomain !== 'pending-allocation' && (
                           <Typography variant="caption" color="text.secondary" sx={{ ml: 3 }}>
                             {tunnel.subdomain}
                           </Typography>
