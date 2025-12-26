@@ -1,3 +1,9 @@
+## [1.0.0-alpha.4](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.3...v1.0.0-alpha.4) (2025-12-26)
+
+### Bug Fixes
+
+* **ci:** remove unnecessary copy step in test workflow ([b70deb8](https://github.com/pandeptwidyaop/grok/commit/b70deb865c08fc0b9e754fa3b7e1172d03288a9c))
+
 ## [1.0.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.2...v1.0.0-alpha.3) (2025-12-26)
 
 ### Bug Fixes
