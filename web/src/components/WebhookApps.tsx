@@ -196,6 +196,8 @@ export function WebhookApps({}: WebhookAppsProps) {
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Organization</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>User</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Routes</TableCell>
                     <TableCell sx={{ fontWeight: 600 }}>Created</TableCell>
@@ -223,6 +225,21 @@ export function WebhookApps({}: WebhookAppsProps) {
                           <Webhook size={16} style={{ color: '#667eea' }} />
                           <Typography variant="body2" sx={{ fontWeight: 500 }}>
                             {app.name}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {app.organization_name || '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {app.owner_name || '—'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {app.owner_email || ''}
                           </Typography>
                         </Box>
                       </TableCell>

@@ -151,6 +151,9 @@ export interface WebhookApp {
   updated_at: string;
   webhook_url?: string;
   routes?: WebhookRoute[];
+  owner_name?: string;
+  owner_email?: string;
+  organization_name?: string;
 }
 
 export interface WebhookRoute {

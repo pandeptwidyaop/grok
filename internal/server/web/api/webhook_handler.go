@@ -146,11 +146,12 @@ func (wh *WebhookHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query webhook apps with organization
+	// Query webhook apps with organization and user
 	var apps []models.WebhookApp
 	if err := wh.db.Where("organization_id = ?", orgID).
 		Preload("Routes").
 		Preload("Organization").
+		Preload("User").
 		Order("created_at DESC").
 		Find(&apps).Error; err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to list webhook apps")
@@ -158,17 +159,23 @@ func (wh *WebhookHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build response with webhook URLs
+	// Build response with webhook URLs and owner info
 	type AppResponse struct {
 		models.WebhookApp
-		WebhookURL string `json:"webhook_url"`
+		WebhookURL       string `json:"webhook_url"`
+		OwnerName        string `json:"owner_name,omitempty"`
+		OwnerEmail       string `json:"owner_email,omitempty"`
+		OrganizationName string `json:"organization_name,omitempty"`
 	}
 
 	response := make([]AppResponse, len(apps))
 	for i, app := range apps {
 		response[i] = AppResponse{
-			WebhookApp: app,
-			WebhookURL: wh.buildWebhookURL(&app),
+			WebhookApp:       app,
+			WebhookURL:       wh.buildWebhookURL(&app),
+			OwnerName:        app.User.Name,
+			OwnerEmail:       app.User.Email,
+			OrganizationName: app.Organization.Name,
 		}
 	}
 
