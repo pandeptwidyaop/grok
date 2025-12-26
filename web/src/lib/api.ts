@@ -8,13 +8,23 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Include cookies in requests
 });
 
-// Add request interceptor to include auth token
+// Get CSRF token from sessionStorage (set by AuthContext after login)
+function getCSRFToken(): string | null {
+  // This will be set by the AuthContext after login
+  return window._csrfToken || null;
+}
+
+// Add request interceptor to include CSRF token for state-changing requests
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // Add CSRF token for state-changing methods
+  if (['post', 'put', 'patch', 'delete'].includes(config.method?.toLowerCase() || '')) {
+    const csrfToken = getCSRFToken();
+    if (csrfToken) {
+      config.headers['X-CSRF-Token'] = csrfToken;
+    }
   }
   return config;
 });
@@ -24,14 +34,20 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear auth and redirect to login
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('auth_user');
+      // Clear session and redirect to login
+      sessionStorage.clear();
       window.location.href = '/login';
     }
     return Promise.reject(error);
   }
 );
+
+// Declare global CSRF token variable
+declare global {
+  interface Window {
+    _csrfToken?: string | null;
+  }
+}
 
 // Types
 export interface AuthToken {

@@ -13,13 +13,13 @@ interface LoginResponse {
 }
 
 interface AuthContextType {
-  token: string | null;
   user: string | null;
   role: UserRole;
   organizationId: string | null;
   organizationName: string | null;
+  csrfToken: string | null;
   login: (username: string, password: string, otpCode?: string) => Promise<LoginResponse>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
   isLoading: boolean;
   isSuperAdmin: boolean;
@@ -31,25 +31,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
+  const [csrfToken, setCSRFToken] = useState<string | null>(null);
 
-  // Lazy initialization - read from localStorage immediately
-  const [token, setToken] = useState<string | null>(() => {
-    const storedToken = localStorage.getItem('auth_token');
-    // Set loading to false after initial load
-    setTimeout(() => setIsLoading(false), 0);
-    return storedToken;
-  });
+  // Use sessionStorage for user info (not sensitive, XSS safe enough)
   const [user, setUser] = useState<string | null>(() => {
-    return localStorage.getItem('auth_user');
+    setTimeout(() => setIsLoading(false), 0);
+    return sessionStorage.getItem('auth_user');
   });
   const [role, setRole] = useState<UserRole>(() => {
-    return (localStorage.getItem('auth_role') as UserRole) || null;
+    return (sessionStorage.getItem('auth_role') as UserRole) || null;
   });
   const [organizationId, setOrganizationId] = useState<string | null>(() => {
-    return localStorage.getItem('auth_org_id');
+    return sessionStorage.getItem('auth_org_id');
   });
   const [organizationName, setOrganizationName] = useState<string | null>(() => {
-    return localStorage.getItem('auth_org_name');
+    return sessionStorage.getItem('auth_org_name');
   });
 
   const login = async (username: string, password: string, otpCode?: string): Promise<LoginResponse> => {
@@ -58,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // Important: include cookies
       body: JSON.stringify({ username, password, otp_code: otpCode }),
     });
 
@@ -73,40 +70,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return data;
     }
 
-    // Set auth state only if we have a token (successful login)
-    if (data.token) {
-      setToken(data.token);
-      setUser(data.user);
-      setRole(data.role as UserRole);
-      setOrganizationId(data.organization_id || null);
-      setOrganizationName(data.organization_name || null);
+    // After successful login, fetch CSRF token
+    const csrfResponse = await fetch('/api/auth/csrf', {
+      credentials: 'include',
+    });
+    if (csrfResponse.ok) {
+      const csrfData = await csrfResponse.json();
+      setCSRFToken(csrfData.csrf_token);
+      // Set global CSRF token for API client
+      window._csrfToken = csrfData.csrf_token;
+    }
 
-      localStorage.setItem('auth_token', data.token);
-      localStorage.setItem('auth_user', data.user);
-      localStorage.setItem('auth_role', data.role || '');
-      if (data.organization_id) {
-        localStorage.setItem('auth_org_id', data.organization_id);
-      }
-      if (data.organization_name) {
-        localStorage.setItem('auth_org_name', data.organization_name);
-      }
+    // Set auth state (cookie is set automatically by server)
+    setUser(data.user);
+    setRole(data.role as UserRole);
+    setOrganizationId(data.organization_id || null);
+    setOrganizationName(data.organization_name || null);
+
+    // Store non-sensitive data in sessionStorage
+    sessionStorage.setItem('auth_user', data.user);
+    sessionStorage.setItem('auth_role', data.role || '');
+    if (data.organization_id) {
+      sessionStorage.setItem('auth_org_id', data.organization_id);
+    }
+    if (data.organization_name) {
+      sessionStorage.setItem('auth_org_name', data.organization_name);
     }
 
     return data;
   };
 
-  const logout = () => {
-    setToken(null);
+  const logout = async () => {
+    // Call logout endpoint to clear cookie
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+    });
+
+    // Clear state
     setUser(null);
     setRole(null);
     setOrganizationId(null);
     setOrganizationName(null);
+    setCSRFToken(null);
+    window._csrfToken = null;
 
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('auth_user');
-    localStorage.removeItem('auth_role');
-    localStorage.removeItem('auth_org_id');
-    localStorage.removeItem('auth_org_name');
+    sessionStorage.removeItem('auth_user');
+    sessionStorage.removeItem('auth_role');
+    sessionStorage.removeItem('auth_org_id');
+    sessionStorage.removeItem('auth_org_name');
   };
 
   // Derived properties
@@ -117,14 +130,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
-        token,
         user,
         role,
         organizationId,
         organizationName,
+        csrfToken,
         login,
         logout,
-        isAuthenticated: !!token,
+        isAuthenticated: !!user, // User presence indicates authentication
         isLoading,
         isSuperAdmin,
         isOrgAdmin,

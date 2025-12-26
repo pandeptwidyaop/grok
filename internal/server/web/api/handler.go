@@ -159,21 +159,25 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Public routes
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /api/health", h.health)
+	// CSRF token endpoint (public, no auth required)
+	mux.HandleFunc("GET /api/auth/csrf", h.getCSRFToken)
 	// Login endpoint with rate limiting to prevent brute force attacks
 	mux.Handle("POST /api/auth/login", h.rateLimiter.Limit(http.HandlerFunc(h.login)))
+	// Logout endpoint (requires auth)
+	mux.Handle("POST /api/auth/logout", h.authMW.Protect(http.HandlerFunc(h.logout)))
 	mux.HandleFunc("GET /api/version", versionHandler.GetVersion)
 	mux.HandleFunc("GET /api/version/check-updates", versionHandler.CheckUpdates)
 
-	// Protected routes (require JWT)
+	// Protected routes (require JWT + CSRF for state-changing operations)
 	mux.Handle("GET /api/tokens", h.authMW.Protect(http.HandlerFunc(h.listTokens)))
-	mux.Handle("POST /api/tokens", h.authMW.Protect(http.HandlerFunc(h.createToken)))
-	mux.Handle("DELETE /api/tokens/{id}", h.authMW.Protect(http.HandlerFunc(h.deleteToken)))
-	mux.Handle("PATCH /api/tokens/{id}/toggle", h.authMW.Protect(http.HandlerFunc(h.toggleToken)))
+	mux.Handle("POST /api/tokens", h.csrf.Protect(h.authMW.Protect(http.HandlerFunc(h.createToken))))
+	mux.Handle("DELETE /api/tokens/{id}", h.csrf.Protect(h.authMW.Protect(http.HandlerFunc(h.deleteToken))))
+	mux.Handle("PATCH /api/tokens/{id}/toggle", h.csrf.Protect(h.authMW.Protect(http.HandlerFunc(h.toggleToken))))
 
 	mux.Handle("GET /api/tunnels", h.authMW.Protect(http.HandlerFunc(h.listTunnels)))
 	mux.Handle("GET /api/tunnels/{id}", h.authMW.Protect(http.HandlerFunc(h.getTunnel)))
 	mux.Handle("GET /api/tunnels/{id}/logs", h.authMW.Protect(http.HandlerFunc(h.getTunnelLogs)))
-	mux.Handle("DELETE /api/tunnels/{id}", h.authMW.Protect(http.HandlerFunc(h.deleteTunnel)))
+	mux.Handle("DELETE /api/tunnels/{id}", h.csrf.Protect(h.authMW.Protect(http.HandlerFunc(h.deleteTunnel))))
 
 	mux.Handle("GET /api/stats", h.authMW.Protect(http.HandlerFunc(h.getStats)))
 	mux.Handle("GET /api/config", h.authMW.Protect(http.HandlerFunc(h.getConfig)))
@@ -728,8 +732,39 @@ type loginResponse struct {
 // health returns a simple health check response
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"status": "healthy",
+		"status":  "healthy",
 		"service": "grok-server",
+	})
+}
+
+// getCSRFToken generates and returns a CSRF token
+func (h *Handler) getCSRFToken(w http.ResponseWriter, r *http.Request) {
+	token, err := h.csrf.GenerateToken()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to generate CSRF token")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"csrf_token": token,
+	})
+}
+
+// logout clears the authentication cookie
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+	// Clear auth cookie by setting MaxAge to -1
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   r.TLS != nil,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1, // Delete cookie
+	})
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"message": "Logged out successfully",
 	})
 }
 

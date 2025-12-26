@@ -12,21 +12,21 @@ export function useSSE(url: string, onMessage?: SSEEventHandler) {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const { token } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
-    if (!token) {
+    if (!isAuthenticated) {
       setIsConnected(false);
       return;
     }
 
-    // Build full URL with token
+    // Build full URL
     // In development, use relative path for Vite proxy
     // In production, VITE_API_URL will be the actual API URL
     const baseURL = import.meta.env.VITE_API_URL || '';
-    const fullURL = `${baseURL}${url}?token=${encodeURIComponent(token)}`;
+    const fullURL = `${baseURL}${url}`;
 
-    // Create EventSource with auth token
+    // Create EventSource with credentials (cookies will be sent automatically)
     const eventSource = new EventSource(fullURL, {
       withCredentials: true,
     });
@@ -57,7 +57,7 @@ export function useSSE(url: string, onMessage?: SSEEventHandler) {
       eventSource.close();
       eventSourceRef.current = null;
     };
-  }, [url, token, onMessage]);
+  }, [url, isAuthenticated, onMessage]);
 
   return { isConnected, error };
 }
