@@ -1,5 +1,20 @@
 {
-  "branches": ["main", "master"],
+  "branches": [
+    "main",
+    "master",
+    {
+      "name": "beta",
+      "prerelease": true
+    },
+    {
+      "name": "develop",
+      "prerelease": "beta"
+    },
+    {
+      "name": "alpha",
+      "prerelease": true
+    }
+  ],
   "plugins": [
     ["@semantic-release/commit-analyzer", {
       "preset": "conventionalcommits",
@@ -43,12 +58,15 @@
       "assets": [
         {"path": "dist/grok-server-linux-amd64", "label": "Server Binary (Linux AMD64)"},
         {"path": "dist/grok-server-linux-arm64", "label": "Server Binary (Linux ARM64)"},
-        {"path": "dist/grok-server-darwin-amd64", "label": "Server Binary (macOS AMD64)"},
-        {"path": "dist/grok-server-darwin-arm64", "label": "Server Binary (macOS ARM64)"},
         {"path": "dist/grok-linux-amd64", "label": "Client Binary (Linux AMD64)"},
         {"path": "dist/grok-linux-arm64", "label": "Client Binary (Linux ARM64)"},
+        {"path": "dist/grok-linux-386", "label": "Client Binary (Linux 386)"},
+        {"path": "dist/grok-linux-arm", "label": "Client Binary (Linux ARM)"},
         {"path": "dist/grok-darwin-amd64", "label": "Client Binary (macOS AMD64)"},
         {"path": "dist/grok-darwin-arm64", "label": "Client Binary (macOS ARM64)"},
+        {"path": "dist/grok-windows-amd64.exe", "label": "Client Binary (Windows AMD64)"},
+        {"path": "dist/grok-windows-arm64.exe", "label": "Client Binary (Windows ARM64)"},
+        {"path": "dist/grok-windows-386.exe", "label": "Client Binary (Windows 386)"},
         {"path": "dist/checksums.txt", "label": "Checksums"}
       ]
     }],
