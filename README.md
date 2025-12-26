@@ -50,6 +50,7 @@
 ### Developer Experience
 - 🛠️ **Hot Reload** - Fast development with Air (backend) and Vite (frontend)
 - 📦 **Semantic Versioning** - Automated releases with GitHub Actions
+- 🔄 **Self-Update** - Built-in update command (`grok update`)
 - 🧪 **Comprehensive Testing** - Unit, integration, and E2E tests
 - 📝 **Type-Safe** - Protocol Buffers for API contracts
 - 🐳 **Docker Ready** - Easy deployment with containers
@@ -273,6 +274,25 @@ logging:
 
 # Check version
 ./bin/grok version
+
+# Update to latest version
+./bin/grok update           # Interactive update
+./bin/grok update --yes     # Skip confirmation
+./bin/grok update --force   # Force re-download even if up-to-date
+```
+
+### Server Update
+
+```bash
+# Update server to latest version
+./bin/grok-server update           # Interactive update
+./bin/grok-server update --yes     # Skip confirmation
+./bin/grok-server update --force   # Force re-download
+
+# Note: Stop the server before updating
+sudo systemctl stop grok-server
+./bin/grok-server update --yes
+sudo systemctl start grok-server
 ```
 
 ## 🎯 Use Cases
