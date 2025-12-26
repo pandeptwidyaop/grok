@@ -1,0 +1,171 @@
+# golangci-lint configuration for Grok
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - gen
+    - web
+    - bin
+  skip-files:
+    - ".*\\.pb\\.go$"
+    - ".*_mock\\.go$"
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  sort-results: true
+
+linters:
+  enable:
+    # Default linters
+    - errcheck       # Check for unchecked errors
+    - gosimple       # Simplify code
+    - govet          # Reports suspicious constructs
+    - ineffassign    # Detect ineffectual assignments
+    - staticcheck    # Go static analysis
+    - unused         # Check for unused constants, variables, functions and types
+
+    # Additional recommended linters
+    - gofmt          # Check code is gofmt-ed
+    - goimports      # Check imports are formatted
+    - misspell       # Find commonly misspelled words
+    - revive         # Fast, configurable, extensible, flexible, and beautiful linter for Go
+    - unconvert      # Remove unnecessary type conversions
+    - unparam        # Report unused function parameters
+    - gocyclo        # Detect cyclomatic complexity
+    - goconst        # Find repeated strings that could be constants
+    - gosec          # Security-focused linter
+    - bodyclose      # Check HTTP response body is closed
+    - noctx          # Detect sending http request without context.Context
+    - sqlclosecheck  # Check sql.Rows and sql.Stmt are closed
+    - rowserrcheck   # Check whether Err of rows is checked
+    - exportloopref  # Check for pointers to enclosing loop variables
+    - gci            # Control Go import order
+    - godot          # Check comments end in period
+    - whitespace     # Detect leading/trailing whitespace
+    - prealloc       # Find slice declarations that could be preallocated
+
+  disable:
+    - typecheck      # Disabled because it can conflict with build tags
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: false
+    exclude-functions:
+      - (*database/sql.Rows).Close
+      - (*database/sql.DB).Close
+
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+      - fieldalignment
+
+  gofmt:
+    simplify: true
+
+  goimports:
+    local-prefixes: github.com/pandeptwidyaop/grok
+
+  revive:
+    severity: warning
+    rules:
+      - name: blank-imports
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: dot-imports
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: exported
+      - name: if-return
+      - name: increment-decrement
+      - name: var-naming
+      - name: var-declaration
+      - name: package-comments
+      - name: range
+      - name: receiver-naming
+      - name: time-naming
+      - name: unexported-return
+      - name: indent-error-flow
+      - name: errorf
+      - name: empty-block
+      - name: superfluous-else
+      - name: unused-parameter
+      - name: unreachable-code
+      - name: redefines-builtin-id
+
+  gocyclo:
+    min-complexity: 15
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+    ignore-tests: true
+
+  gosec:
+    excludes:
+      - G104  # Audit errors not checked (covered by errcheck)
+      - G114  # Use of net/http serve function with non-default Server
+    config:
+      G306: "0644"  # Allow 0644 file permissions
+
+  misspell:
+    locale: US
+    ignore-words:
+      - grok
+
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/pandeptwidyaop/grok)
+    skip-generated: true
+
+  godot:
+    scope: declarations
+    capital: false
+
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gocyclo
+        - errcheck
+        - gosec
+        - goconst
+        - unparam
+        - prealloc
+
+    # Exclude generated files
+    - path: \.pb\.go$
+      linters:
+        - all
+
+    # Exclude mock files
+    - path: _mock\.go$
+      linters:
+        - all
+
+    # Exclude main files from some linters
+    - path: cmd/
+      linters:
+        - gochecknoinits
+
+    # Allow long lines in migration files
+    - path: internal/db/migrations/
+      linters:
+        - lll
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+  fix: false
