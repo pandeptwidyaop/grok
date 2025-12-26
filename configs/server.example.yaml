@@ -70,11 +70,14 @@ auth:
   # REQUIRED: Must be at least 32 characters long
   # RECOMMENDED: Use environment variable instead of hardcoding
   #
-  # Generate a secure secret with: openssl rand -base64 32
+  # Generate a secure secret with: openssl rand -base64 48
   # Set via environment variable: export GROK_AUTH_JWT_SECRET="your-secret-here"
   # Environment variables override this config file value
   #
-  # For development only (NOT for production):
+  # For production: Use environment variable (see above)
+  # For development: Generate new secret or use the example below
+  #
+  # Example generated secret (DO NOT use this in production!):
   jwt_secret: "change-this-to-a-secure-random-string-min-32-chars-long"
 
 tunnels:
