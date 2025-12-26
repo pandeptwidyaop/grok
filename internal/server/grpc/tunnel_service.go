@@ -173,7 +173,9 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 		case <-ctx.Done():
 			logger.InfoEvent().Msg("ProxyStream context done")
 			if currentTunnel != nil {
-				s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID)
+				if err := s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID); err != nil {
+					logger.WarnEvent().Err(err).Msg("Failed to unregister tunnel on context done")
+				}
 			}
 			return nil
 		default:
@@ -183,7 +185,9 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 		if err == io.EOF {
 			logger.InfoEvent().Msg("Client closed stream")
 			if currentTunnel != nil {
-				s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID)
+				if err := s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID); err != nil {
+					logger.WarnEvent().Err(err).Msg("Failed to unregister tunnel on stream close")
+				}
 			}
 			return nil
 		}
@@ -192,7 +196,9 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 				Err(err).
 				Msg("Error receiving message from client")
 			if currentTunnel != nil {
-				s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID)
+				if err := s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID); err != nil {
+					logger.WarnEvent().Err(err).Msg("Failed to unregister tunnel on stream error")
+				}
 			}
 			return status.Error(codes.Internal, "stream error")
 		}
@@ -370,7 +376,13 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 
 			// Route response back to waiting HTTP request
 			if ch, ok := currentTunnel.ResponseMap.Load(response.RequestId); ok {
-				respChan := ch.(chan *tunnelv1.ProxyResponse)
+				respChan, ok := ch.(chan *tunnelv1.ProxyResponse)
+				if !ok {
+					logger.ErrorEvent().
+						Str("request_id", response.RequestId).
+						Msg("Invalid response channel type")
+					continue
+				}
 				select {
 				case respChan <- response:
 					// Response delivered
