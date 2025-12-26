@@ -60,17 +60,13 @@ jobs:
     strategy:
       matrix:
         include:
-          # Server binaries (Linux only)
+          # Server binaries (Linux AMD64 only - CGO for SQLite)
           - target: server
             goos: linux
             goarch: amd64
             output: grok-server-linux-amd64
-          - target: server
-            goos: linux
-            goarch: arm64
-            output: grok-server-linux-arm64
 
-          # Client binaries (All platforms)
+          # Client binaries (x86/x64 only - no ARM)
           # Linux
           - target: client
             goos: linux
@@ -78,36 +74,20 @@ jobs:
             output: grok-linux-amd64
           - target: client
             goos: linux
-            goarch: arm64
-            output: grok-linux-arm64
-          - target: client
-            goos: linux
             goarch: 386
             output: grok-linux-386
-          - target: client
-            goos: linux
-            goarch: arm
-            output: grok-linux-arm
 
           # macOS
           - target: client
             goos: darwin
             goarch: amd64
             output: grok-darwin-amd64
-          - target: client
-            goos: darwin
-            goarch: arm64
-            output: grok-darwin-arm64
 
           # Windows
           - target: client
             goos: windows
             goarch: amd64
             output: grok-windows-amd64.exe
-          - target: client
-            goos: windows
-            goarch: arm64
-            output: grok-windows-arm64.exe
           - target: client
             goos: windows
             goarch: 386
