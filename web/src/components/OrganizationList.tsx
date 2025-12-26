@@ -18,10 +18,18 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
 } from '@mui/material';
-import { Building2, Plus, Edit, Trash2, Power, Users, UserPlus, Key } from 'lucide-react';
+import { Building2, Plus, Edit, Trash2, Power, UserPlus, Key } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, type Organization } from '@/lib/api';
+import { formatRelativeTime } from '@/lib/utils';
 
 export default function OrganizationList() {
   const queryClient = useQueryClient();
@@ -237,118 +245,124 @@ export default function OrganizationList() {
         </Button>
       </Box>
 
-      {/* Organizations Grid */}
-      {isLoading ? (
-        <Box sx={{ textAlign: 'center', py: 12 }}>
-          <CircularProgress />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Loading organizations...
-          </Typography>
-        </Box>
-      ) : organizations.length === 0 ? (
-        <Card>
-          <CardContent sx={{ py: 12, textAlign: 'center' }}>
-            <Building2 size={48} style={{ color: '#9e9e9e', opacity: 0.5, margin: '0 auto 16px' }} />
-            <Typography variant="body2" color="text.secondary">
-              No organizations yet. Create your first one!
+      {/* Organizations Table */}
+      <Card>
+        <CardContent sx={{ py: 4 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              All Organizations
             </Typography>
-          </CardContent>
-        </Card>
-      ) : (
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: {
-              xs: '1fr',
-              md: 'repeat(2, 1fr)',
-              lg: 'repeat(3, 1fr)',
-            },
-            gap: 3,
-          }}
-        >
-          {organizations.map((org) => (
-            <Card
-              key={org.id}
-              sx={{
-                transition: 'box-shadow 0.3s',
-                '&:hover': { boxShadow: 6 },
-              }}
-            >
-              <CardContent>
-                <Box sx={{ mb: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    <Building2 size={20} style={{ color: '#667eea' }} />
-                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                      {org.name}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                    <Chip
-                      label={org.full_domain}
-                      size="small"
-                      sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}
-                    />
-                    <Chip
-                      label={org.is_active ? 'Active' : 'Inactive'}
-                      color={org.is_active ? 'success' : 'default'}
-                      size="small"
-                    />
-                  </Box>
-                </Box>
+            <Typography variant="body2" color="text.secondary">
+              {organizations.length} organization{organizations.length !== 1 ? 's' : ''} registered
+            </Typography>
+          </Box>
 
-                {org.description && (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    {org.description}
-                  </Typography>
-                )}
-
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                  <Users size={12} />
-                  <Typography variant="caption" color="text.secondary">
-                    Created {new Date(org.created_at).toLocaleDateString()}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => setManagingUsersOrg(org)}
-                    sx={{ flex: 1 }}
-                    startIcon={<UserPlus size={12} />}
-                  >
-                    Users
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleEdit(org)}
-                    sx={{ flex: 1 }}
-                    startIcon={<Edit size={12} />}
-                  >
-                    Edit
-                  </Button>
-                  <IconButton
-                    size="small"
-                    onClick={() => toggleMutation.mutate(org.id)}
-                    sx={{ border: 1, borderColor: 'divider' }}
-                  >
-                    <Power size={12} />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() => handleDelete(org.id, org.name)}
-                    sx={{ border: 1, borderColor: 'divider' }}
-                  >
-                    <Trash2 size={12} />
-                  </IconButton>
-                </Box>
-              </CardContent>
-            </Card>
-          ))}
-        </Box>
-      )}
+          {isLoading ? (
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <CircularProgress />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Loading organizations...
+              </Typography>
+            </Box>
+          ) : organizations.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <Building2 size={48} style={{ color: '#9e9e9e', opacity: 0.5, margin: '0 auto 16px' }} />
+              <Typography variant="body2" color="text.secondary">
+                No organizations yet. Create your first one!
+              </Typography>
+            </Box>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Domain</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Created</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {organizations.map((org) => (
+                    <TableRow key={org.id} hover>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Building2 size={16} style={{ color: '#667eea' }} />
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {org.name}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={org.full_domain}
+                          color="secondary"
+                          variant="outlined"
+                          size="small"
+                          sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 500 }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
+                          {org.description || '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatRelativeTime(org.created_at)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={org.is_active ? 'Active' : 'Inactive'}
+                          color={org.is_active ? 'success' : 'default'}
+                          variant="outlined"
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => setManagingUsersOrg(org)}
+                            title="Manage Users"
+                          >
+                            <UserPlus size={18} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleEdit(org)}
+                            title="Edit Organization"
+                          >
+                            <Edit size={18} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => toggleMutation.mutate(org.id)}
+                            title={org.is_active ? 'Deactivate' : 'Activate'}
+                          >
+                            <Power size={18} />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDelete(org.id, org.name)}
+                            title="Delete Organization"
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Create/Edit Organization Dialog */}
       <Dialog
