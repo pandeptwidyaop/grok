@@ -1,18 +1,27 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type AuthToken } from '@/lib/api';
 import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
-  TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+  Chip,
+  IconButton,
+  Alert,
+  AlertTitle,
+  Paper,
+  CircularProgress,
+} from '@mui/material';
 import { Key, Trash2, Copy, Check } from 'lucide-react';
+import { api, type AuthToken } from '@/lib/api';
 
 function TokenManager() {
   const [newTokenName, setNewTokenName] = useState('');
@@ -63,159 +72,223 @@ function TokenManager() {
   if (isLoading) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Authentication Tokens</CardTitle>
-          <CardDescription>Loading tokens...</CardDescription>
-        </CardHeader>
+        <CardContent sx={{ py: 8 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <CircularProgress />
+            <Typography variant="body2" color="text.secondary">
+              Loading tokens...
+            </Typography>
+          </Box>
+        </CardContent>
       </Card>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {/* Create New Token Card */}
       <Card>
-        <CardHeader>
-          <CardTitle>Create New Token</CardTitle>
-          <CardDescription>
-            Generate a new authentication token for the Grok client
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
-            <input
-              type="text"
+        <CardContent sx={{ py: 4 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Create New Token
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Generate a new authentication token for the Grok client
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <TextField
+              fullWidth
               placeholder="Token name (e.g., laptop, server)"
               value={newTokenName}
               onChange={(e) => setNewTokenName(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleCreate()}
-              className="flex-1 px-3 py-2 border border-input rounded-md bg-background"
+              size="small"
             />
-            <Button onClick={handleCreate} disabled={!newTokenName.trim()}>
+            <Button
+              variant="contained"
+              onClick={handleCreate}
+              disabled={!newTokenName.trim()}
+              sx={{ whiteSpace: 'nowrap' }}
+            >
               Create Token
             </Button>
-          </div>
+          </Box>
         </CardContent>
       </Card>
 
+      {/* Success Alert when token is created */}
       {createdToken && createdToken.token && (
-        <Card className="border-green-500 bg-green-50 dark:bg-green-950">
-          <CardHeader>
-            <CardTitle className="text-green-700 dark:text-green-300">
-              Token Created Successfully!
-            </CardTitle>
-            <CardDescription className="text-green-600 dark:text-green-400">
-              Make sure to copy your token now. You won't be able to see it again!
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4 p-4 bg-white dark:bg-gray-900 rounded-lg border">
-              <code className="flex-1 font-mono text-sm break-all">
-                {createdToken.token}
-              </code>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleCopy(createdToken.token!, createdToken.id)}
-              >
-                {copiedId === createdToken.id ? (
-                  <>
-                    <Check className="h-4 w-4 mr-2" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy
-                  </>
-                )}
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground mt-4">
-              Use this token with: <code className="bg-muted px-2 py-1 rounded">grok config set-token {createdToken.token}</code>
-            </p>
-          </CardContent>
-        </Card>
+        <Alert
+          severity="success"
+          sx={{
+            '& .MuiAlert-message': { width: '100%' },
+          }}
+        >
+          <AlertTitle sx={{ fontWeight: 600 }}>Token Created Successfully!</AlertTitle>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Make sure to copy your token now. You won't be able to see it again!
+          </Typography>
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 2,
+              bgcolor: 'background.paper',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            <Box
+              component="code"
+              sx={{
+                flex: 1,
+                fontFamily: 'monospace',
+                fontSize: '0.875rem',
+                wordBreak: 'break-all',
+              }}
+            >
+              {createdToken.token}
+            </Box>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => handleCopy(createdToken.token!, createdToken.id)}
+              startIcon={copiedId === createdToken.id ? <Check size={16} /> : <Copy size={16} />}
+            >
+              {copiedId === createdToken.id ? 'Copied' : 'Copy'}
+            </Button>
+          </Paper>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+            Use this token with:{' '}
+            <Box
+              component="code"
+              sx={{
+                bgcolor: 'action.hover',
+                px: 1,
+                py: 0.5,
+                borderRadius: 1,
+                fontFamily: 'monospace',
+              }}
+            >
+              grok config set-token {createdToken.token}
+            </Box>
+          </Typography>
+        </Alert>
       )}
 
+      {/* Token List Card */}
       <Card>
-        <CardHeader>
-          <CardTitle>Authentication Tokens</CardTitle>
-          <CardDescription>
-            {tokens?.length || 0} token{tokens?.length !== 1 ? 's' : ''} configured
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent sx={{ py: 4 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Authentication Tokens
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {tokens?.length || 0} token{tokens?.length !== 1 ? 's' : ''} configured
+            </Typography>
+          </Box>
+
           {!tokens || tokens.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Key className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg mb-2">No tokens created</p>
-              <p className="text-sm">
+            <Box
+              sx={{
+                textAlign: 'center',
+                py: 8,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
+              }}
+            >
+              <Key size={64} style={{ opacity: 0.3 }} />
+              <Typography variant="h6" color="text.secondary">
+                No tokens created
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
                 Create a token above to start using the Grok client
-              </p>
-            </div>
+              </Typography>
+            </Box>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Scopes</TableHead>
-                  <TableHead>Last Used</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tokens.map((token: AuthToken) => (
-                  <TableRow key={token.id}>
-                    <TableCell className="font-medium">{token.name}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        {token.scopes && token.scopes.length > 0 ? (
-                          token.scopes.map((scope) => (
-                            <Badge key={scope} variant="secondary" className="text-xs">
-                              {scope}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-sm text-muted-foreground">No scopes</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {token.last_used_at ? formatDate(token.last_used_at) : 'Never'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(token.created_at)}
-                    </TableCell>
-                    <TableCell>
-                      {token.is_active ? (
-                        <Badge variant="default">Active</Badge>
-                      ) : (
-                        <Badge variant="secondary">Inactive</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => {
-                          if (confirm('Are you sure you want to delete this token?')) {
-                            deleteMutation.mutate(token.id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Scopes</TableCell>
+                    <TableCell>Last Used</TableCell>
+                    <TableCell>Created</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Actions</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {tokens.map((token: AuthToken) => (
+                    <TableRow
+                      key={token.id}
+                      sx={{
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        },
+                      }}
+                    >
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={500}>
+                          {token.name}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                          {token.scopes && token.scopes.length > 0 ? (
+                            token.scopes.map((scope) => (
+                              <Chip key={scope} label={scope} size="small" color="default" />
+                            ))
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">
+                              No scopes
+                            </Typography>
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {token.last_used_at ? formatDate(token.last_used_at) : 'Never'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatDate(token.created_at)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {token.is_active ? (
+                          <Chip label="Active" color="success" size="small" />
+                        ) : (
+                          <Chip label="Inactive" color="default" size="small" />
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          color="error"
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this token?')) {
+                              deleteMutation.mutate(token.id);
+                            }
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
         </CardContent>
       </Card>
-    </div>
+    </Box>
   );
 }
 

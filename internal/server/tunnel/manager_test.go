@@ -25,28 +25,31 @@ func setupTestDB(t *testing.T) *gorm.DB {
 
 func TestAllocateSubdomain(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "localhost", 10)
+	manager := NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
 	ctx := context.Background()
 	userID := uuid.New()
 
 	t.Run("allocate custom subdomain", func(t *testing.T) {
-		subdomain, err := manager.AllocateSubdomain(ctx, userID, "myapp")
+		subdomain, customPart, err := manager.AllocateSubdomain(ctx, userID, nil, "myapp")
 		require.NoError(t, err)
 		assert.Equal(t, "myapp", subdomain)
+		assert.Equal(t, "myapp", customPart)
 	})
 
 	t.Run("reject duplicate subdomain", func(t *testing.T) {
-		_, err := manager.AllocateSubdomain(ctx, userID, "myapp")
+		_, _, err := manager.AllocateSubdomain(ctx, userID, nil, "myapp")
+		// With persistent tunnels, domains stay reserved even after disconnect
+		// So this should error because "myapp" is already allocated
 		assert.Error(t, err)
 	})
 
 	t.Run("reject reserved subdomain", func(t *testing.T) {
-		_, err := manager.AllocateSubdomain(ctx, userID, "api")
+		_, _, err := manager.AllocateSubdomain(ctx, userID, nil, "api")
 		assert.Error(t, err)
 	})
 
 	t.Run("generate random subdomain", func(t *testing.T) {
-		subdomain, err := manager.AllocateSubdomain(ctx, userID, "")
+		subdomain, _, err := manager.AllocateSubdomain(ctx, userID, nil, "")
 		require.NoError(t, err)
 		assert.Len(t, subdomain, 8)
 	})
@@ -54,20 +57,21 @@ func TestAllocateSubdomain(t *testing.T) {
 
 func TestRegisterTunnel(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "localhost", 10)
+	manager := NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
 	ctx := context.Background()
 
 	userID := uuid.New()
 	tokenID := uuid.New()
 
 	// Allocate subdomain first
-	subdomain, err := manager.AllocateSubdomain(ctx, userID, "testapp")
+	subdomain, _, err := manager.AllocateSubdomain(ctx, userID, nil, "testapp")
 	require.NoError(t, err)
 
 	// Create tunnel
 	tunnel := NewTunnel(
 		userID,
 		tokenID,
+		nil, // no orgID
 		subdomain,
 		tunnelv1.TunnelProtocol_HTTP,
 		"localhost:3000",
@@ -99,16 +103,15 @@ func TestRegisterTunnel(t *testing.T) {
 		_, exists := manager.GetTunnelBySubdomain(subdomain)
 		assert.False(t, exists)
 
-		// Domain should be deleted (allowing reuse)
-		newSubdomain, err := manager.AllocateSubdomain(ctx, userID, subdomain)
-		require.NoError(t, err)
-		assert.Equal(t, subdomain, newSubdomain)
+		// Domain should still be reserved (persistent tunnels keep domains)
+		_, _, err = manager.AllocateSubdomain(ctx, userID, nil, subdomain)
+		assert.Error(t, err) // Should error because domain is still reserved
 	})
 }
 
 func TestGetUserTunnels(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "localhost", 10)
+	manager := NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
 	ctx := context.Background()
 
 	userID := uuid.New()
@@ -117,12 +120,13 @@ func TestGetUserTunnels(t *testing.T) {
 	// Create multiple tunnels
 	tunnels := make([]*Tunnel, 3)
 	for i := 0; i < 3; i++ {
-		subdomain, err := manager.AllocateSubdomain(ctx, userID, "")
+		subdomain, _, err := manager.AllocateSubdomain(ctx, userID, nil, "")
 		require.NoError(t, err)
 
 		tunnel := NewTunnel(
 			userID,
 			tokenID,
+			nil, // no orgID
 			subdomain,
 			tunnelv1.TunnelProtocol_HTTP,
 			"localhost:3000",
@@ -146,7 +150,7 @@ func TestGetUserTunnels(t *testing.T) {
 
 func TestCountActiveTunnels(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "localhost", 10)
+	manager := NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
 	ctx := context.Background()
 
 	assert.Equal(t, 0, manager.CountActiveTunnels())
@@ -156,12 +160,13 @@ func TestCountActiveTunnels(t *testing.T) {
 
 	// Register 2 tunnels
 	for i := 0; i < 2; i++ {
-		subdomain, err := manager.AllocateSubdomain(ctx, userID, "")
+		subdomain, _, err := manager.AllocateSubdomain(ctx, userID, nil, "")
 		require.NoError(t, err)
 
 		tunnel := NewTunnel(
 			userID,
 			tokenID,
+			nil, // no orgID
 			subdomain,
 			tunnelv1.TunnelProtocol_HTTP,
 			"localhost:3000",
@@ -178,21 +183,26 @@ func TestCountActiveTunnels(t *testing.T) {
 
 func TestBuildPublicURL(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "example.com", 10)
 
 	tests := []struct {
-		name      string
-		subdomain string
-		protocol  string
-		expected  string
+		name       string
+		tlsEnabled bool
+		httpPort   int
+		httpsPort  int
+		subdomain  string
+		protocol   string
+		expected   string
 	}{
-		{"HTTP", "myapp", "http", "https://myapp.example.com"},
-		{"HTTPS", "secure", "https", "https://secure.example.com"},
-		{"TCP", "database", "tcp", "tcp://database.example.com"},
+		{"HTTPS default port", true, 80, 443, "myapp", "http", "https://myapp.example.com"},
+		{"HTTPS custom port", true, 80, 8443, "myapp", "https", "https://myapp.example.com:8443"},
+		{"HTTP default port", false, 80, 443, "myapp", "http", "http://myapp.example.com"},
+		{"HTTP custom port", false, 8080, 443, "myapp", "http", "http://myapp.example.com:8080"},
+		{"TCP", true, 80, 443, "database", "tcp", "tcp://database.example.com"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			manager := NewManager(database, "example.com", 10, tt.tlsEnabled, tt.httpPort, tt.httpsPort)
 			url := manager.BuildPublicURL(tt.subdomain, tt.protocol)
 			assert.Equal(t, tt.expected, url)
 		})

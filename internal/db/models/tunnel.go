@@ -10,18 +10,23 @@ import (
 
 // Tunnel represents an active tunnel
 type Tunnel struct {
-	ID         uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID     uuid.UUID      `gorm:"type:uuid;not null;index" json:"user_id"`
-	TokenID    uuid.UUID      `gorm:"type:uuid;not null" json:"token_id"`
-	DomainID   *uuid.UUID     `gorm:"type:uuid" json:"domain_id,omitempty"`
+	ID             uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID         uuid.UUID      `gorm:"type:uuid;not null;index;uniqueIndex:idx_user_savedname" json:"user_id"`
+	TokenID        uuid.UUID      `gorm:"type:uuid;not null" json:"token_id"`
+	DomainID       *uuid.UUID     `gorm:"type:uuid" json:"domain_id,omitempty"`
+	OrganizationID *uuid.UUID     `gorm:"type:uuid;index" json:"organization_id,omitempty"`
 
 	TunnelType string `gorm:"not null" json:"tunnel_type"` // http, https, tcp, tls
-	Subdomain  string `gorm:"index" json:"subdomain"`
-	RemotePort *int   `json:"remote_port,omitempty"` // For TCP
+	Subdomain  string `gorm:"index" json:"subdomain"`       // Full subdomain: {custom}-{org}
+	RemotePort *int   `json:"remote_port,omitempty"`        // For TCP
 	LocalAddr  string `gorm:"not null" json:"local_addr"`
 
 	PublicURL string `json:"public_url"`
 	ClientID  string `gorm:"uniqueIndex" json:"client_id"`
+
+	// Persistent tunnel fields
+	SavedName    *string `gorm:"uniqueIndex:idx_user_savedname" json:"saved_name,omitempty"`
+	IsPersistent bool    `gorm:"default:false;index" json:"is_persistent"`
 
 	Status   string         `gorm:"default:'active';index" json:"status"`
 	Metadata datatypes.JSON `gorm:"type:json" json:"metadata,omitempty"`
@@ -35,9 +40,10 @@ type Tunnel struct {
 	LastActivityAt time.Time  `json:"last_activity_at"`
 
 	// Relationships - omit from JSON to avoid nested data
-	User   User       `gorm:"foreignKey:UserID" json:"-"`
-	Token  AuthToken  `gorm:"foreignKey:TokenID" json:"-"`
-	Domain *Domain    `gorm:"foreignKey:DomainID" json:"-"`
+	User         User          `gorm:"foreignKey:UserID" json:"-"`
+	Token        AuthToken     `gorm:"foreignKey:TokenID" json:"-"`
+	Domain       *Domain       `gorm:"foreignKey:DomainID" json:"-"`
+	Organization *Organization `gorm:"foreignKey:OrganizationID" json:"-"`
 }
 
 // BeforeCreate hook to set UUID and timestamps

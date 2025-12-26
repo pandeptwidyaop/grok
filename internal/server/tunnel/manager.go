@@ -7,12 +7,34 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
+	"google.golang.org/grpc"
 	"gorm.io/gorm"
 )
+
+// TunnelEventType represents the type of tunnel event
+type TunnelEventType string
+
+const (
+	EventTunnelConnected    TunnelEventType = "tunnel_connected"
+	EventTunnelDisconnected TunnelEventType = "tunnel_disconnected"
+	EventTunnelUpdated      TunnelEventType = "tunnel_updated"
+	EventTunnelStatsUpdated TunnelEventType = "tunnel_stats_updated"
+)
+
+// TunnelEvent represents a tunnel state change event
+type TunnelEvent struct {
+	Type     TunnelEventType
+	TunnelID uuid.UUID
+	Tunnel   *models.Tunnel
+}
+
+// TunnelEventHandler is a callback for tunnel events
+type TunnelEventHandler func(TunnelEvent)
 
 // Manager manages active tunnels
 type Manager struct {
@@ -21,15 +43,23 @@ type Manager struct {
 	tunnelsByID    sync.Map // tunnel_id → *Tunnel
 	maxTunnelsPerUser int
 	baseDomain     string
+	tlsEnabled     bool   // Whether TLS is enabled
+	httpPort       int    // HTTP port (default 80)
+	httpsPort      int    // HTTPS port (default 443)
 	mu             sync.RWMutex
+	eventHandlers  []TunnelEventHandler
+	eventMu        sync.RWMutex
 }
 
 // NewManager creates a new tunnel manager
-func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int) *Manager {
+func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int, tlsEnabled bool, httpPort, httpsPort int) *Manager {
 	m := &Manager{
 		db:             db,
 		baseDomain:     baseDomain,
 		maxTunnelsPerUser: maxTunnelsPerUser,
+		tlsEnabled:     tlsEnabled,
+		httpPort:       httpPort,
+		httpsPort:      httpsPort,
 	}
 
 	// Cleanup stale tunnels from previous server runs
@@ -39,20 +69,24 @@ func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int) *Manager 
 			Msg("Failed to cleanup stale tunnels on startup")
 	}
 
+	// Start periodic stats updater (every 3 seconds)
+	go m.startPeriodicStatsUpdater()
+
 	return m
 }
 
 // CleanupStaleTunnels cleans up tunnels that are marked as active but have no active connection
 // This happens when server restarts and old tunnel records remain in database
+// All tunnels are persistent - they are marked offline but domain reservations are kept
 func (m *Manager) CleanupStaleTunnels(ctx context.Context) error {
 	logger.InfoEvent().Msg("Cleaning up stale tunnels from previous sessions...")
 
-	// Update all active/connected tunnels to disconnected
+	// Update all active/connected tunnels to offline (keeping domain reservations)
 	result := m.db.WithContext(ctx).
 		Model(&models.Tunnel{}).
 		Where("status IN (?)", []string{"active", "connected"}).
 		Updates(map[string]interface{}{
-			"status":          "disconnected",
+			"status":          "offline",
 			"disconnected_at": time.Now(),
 		})
 
@@ -63,69 +97,91 @@ func (m *Manager) CleanupStaleTunnels(ctx context.Context) error {
 	if result.RowsAffected > 0 {
 		logger.InfoEvent().
 			Int64("count", result.RowsAffected).
-			Msg("Cleaned up stale tunnels")
-	}
-
-	// Also cleanup orphaned domain reservations
-	// (domains without any active tunnel using them)
-	subResult := m.db.WithContext(ctx).Exec(`
-		DELETE FROM domains
-		WHERE id NOT IN (
-			SELECT domain_id FROM tunnels
-			WHERE domain_id IS NOT NULL
-			AND status = 'active'
-		)
-	`)
-
-	if subResult.Error != nil {
-		logger.WarnEvent().
-			Err(subResult.Error).
-			Msg("Failed to cleanup orphaned domains")
-	} else if subResult.RowsAffected > 0 {
-		logger.InfoEvent().
-			Int64("count", subResult.RowsAffected).
-			Msg("Cleaned up orphaned domain reservations")
+			Msg("Marked stale tunnels as offline, domain reservations retained")
 	}
 
 	return nil
 }
 
-// AllocateSubdomain allocates a subdomain (custom or random)
-func (m *Manager) AllocateSubdomain(ctx context.Context, userID uuid.UUID, requested string) (string, error) {
-	// Normalize subdomain if provided
-	if requested != "" {
-		requested = utils.NormalizeSubdomain(requested)
-
-		// Validate custom subdomain
-		if !utils.IsValidSubdomain(requested) {
-			return "", pkgerrors.ErrInvalidSubdomain
-		}
-
-		// Check if subdomain is already taken
-		if err := m.reserveSubdomain(ctx, userID, requested); err != nil {
-			return "", err
-		}
-
-		return requested, nil
-	}
-
-	// Generate random subdomain
-	for attempts := 0; attempts < 10; attempts++ {
-		subdomain, err := utils.GenerateRandomSubdomain(8)
-		if err != nil {
-			continue
-		}
-
-		if err := m.reserveSubdomain(ctx, userID, subdomain); err == nil {
-			return subdomain, nil
-		}
-	}
-
-	return "", pkgerrors.ErrSubdomainAllocationFailed
+// OnTunnelEvent subscribes to tunnel events
+func (m *Manager) OnTunnelEvent(handler TunnelEventHandler) {
+	m.eventMu.Lock()
+	defer m.eventMu.Unlock()
+	m.eventHandlers = append(m.eventHandlers, handler)
 }
 
-// reserveSubdomain atomically reserves a subdomain in the database
-func (m *Manager) reserveSubdomain(ctx context.Context, userID uuid.UUID, subdomain string) error {
+// emitEvent emits a tunnel event to all subscribers
+func (m *Manager) emitEvent(event TunnelEvent) {
+	m.eventMu.RLock()
+	defer m.eventMu.RUnlock()
+
+	// Call all event handlers in goroutines to avoid blocking
+	for _, handler := range m.eventHandlers {
+		go handler(event)
+	}
+}
+
+// AllocateSubdomain allocates a subdomain with organization support (custom or random)
+// Returns: (fullSubdomain, customPart, error)
+// fullSubdomain format: {custom}-{org} or just {custom} if no org
+func (m *Manager) AllocateSubdomain(ctx context.Context, userID uuid.UUID, orgID *uuid.UUID, requested string) (string, string, error) {
+	var orgSubdomain string
+	var customPart string
+
+	// If user belongs to organization, fetch org subdomain
+	if orgID != nil {
+		var org models.Organization
+		if err := m.db.WithContext(ctx).Where("id = ? AND is_active = ?", orgID, true).First(&org).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				return "", "", fmt.Errorf("organization not found or inactive")
+			}
+			return "", "", pkgerrors.Wrap(err, "failed to fetch organization")
+		}
+		orgSubdomain = org.Subdomain
+	}
+
+	// Normalize and validate custom subdomain if provided
+	if requested != "" {
+		customPart = utils.NormalizeSubdomain(requested)
+
+		// Validate custom subdomain
+		if !utils.IsValidSubdomain(customPart) {
+			return "", "", pkgerrors.ErrInvalidSubdomain
+		}
+	} else {
+		// Generate random custom part
+		for attempts := 0; attempts < 10; attempts++ {
+			random, err := utils.GenerateRandomSubdomain(8)
+			if err != nil {
+				continue
+			}
+			customPart = random
+			break
+		}
+
+		if customPart == "" {
+			return "", "", pkgerrors.ErrSubdomainAllocationFailed
+		}
+	}
+
+	// Build full subdomain: {custom}-{org} or just {custom}
+	var fullSubdomain string
+	if orgSubdomain != "" {
+		fullSubdomain = fmt.Sprintf("%s-%s", customPart, orgSubdomain)
+	} else {
+		fullSubdomain = customPart
+	}
+
+	// Reserve the full subdomain
+	if err := m.reserveSubdomain(ctx, userID, orgID, fullSubdomain); err != nil {
+		return "", "", err
+	}
+
+	return fullSubdomain, customPart, nil
+}
+
+// reserveSubdomain atomically reserves a subdomain in the database with organization support
+func (m *Manager) reserveSubdomain(ctx context.Context, userID uuid.UUID, orgID *uuid.UUID, subdomain string) error {
 	// Check if already taken in memory
 	if _, exists := m.tunnels.Load(subdomain); exists {
 		return pkgerrors.ErrSubdomainTaken
@@ -133,8 +189,9 @@ func (m *Manager) reserveSubdomain(ctx context.Context, userID uuid.UUID, subdom
 
 	// Try to create domain record
 	domain := &models.Domain{
-		UserID:    userID,
-		Subdomain: subdomain,
+		UserID:         userID,
+		OrganizationID: orgID,
+		Subdomain:      subdomain,
 	}
 
 	if err := m.db.WithContext(ctx).Create(domain).Error; err != nil {
@@ -161,15 +218,18 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 
 	// Store in database
 	dbTunnel := &models.Tunnel{
-		ID:         tunnel.ID,
-		UserID:     tunnel.UserID,
-		TokenID:    tunnel.TokenID,
-		TunnelType: tunnel.Protocol.String(),
-		Subdomain:  tunnel.Subdomain,
-		LocalAddr:  tunnel.LocalAddr,
-		PublicURL:  tunnel.PublicURL,
-		ClientID:   tunnel.ID.String(), // Use tunnel ID as unique client ID
-		Status:     "active",
+		ID:             tunnel.ID,
+		UserID:         tunnel.UserID,
+		TokenID:        tunnel.TokenID,
+		OrganizationID: tunnel.OrganizationID,
+		TunnelType:     tunnel.Protocol.String(),
+		Subdomain:      tunnel.Subdomain,
+		LocalAddr:      tunnel.LocalAddr,
+		PublicURL:      tunnel.PublicURL,
+		ClientID:       tunnel.ID.String(), // Use tunnel ID as unique client ID
+		Status:         "active",
+		SavedName:      tunnel.SavedName,
+		IsPersistent:   tunnel.SavedName != nil, // If has saved name, it's persistent
 	}
 
 	if err := m.db.WithContext(ctx).Create(dbTunnel).Error; err != nil {
@@ -185,10 +245,18 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 		Str("user_id", tunnel.UserID.String()).
 		Msg("Tunnel registered")
 
+	// Emit tunnel connected event
+	m.emitEvent(TunnelEvent{
+		Type:     EventTunnelConnected,
+		TunnelID: tunnel.ID,
+		Tunnel:   dbTunnel,
+	})
+
 	return nil
 }
 
 // UnregisterTunnel unregisters an active tunnel
+// All tunnels are now persistent - they are marked offline but not deleted
 func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) error {
 	// Load tunnel
 	value, ok := m.tunnelsByID.Load(tunnelID)
@@ -205,45 +273,43 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 	m.tunnels.Delete(tunnel.Subdomain)
 	m.tunnelsByID.Delete(tunnelID)
 
-	// Update database - clear domain_id to break FK reference
+	// Fetch tunnel from database
+	var dbTunnel models.Tunnel
+	if err := m.db.WithContext(ctx).Where("id = ?", tunnelID).First(&dbTunnel).Error; err != nil {
+		return pkgerrors.Wrap(err, "failed to fetch tunnel from database")
+	}
+
+	// Mark tunnel as offline, KEEP domain reservation
 	err := m.db.WithContext(ctx).
 		Model(&models.Tunnel{}).
 		Where("id = ?", tunnelID).
 		Updates(map[string]interface{}{
-			"status":          "disconnected",
+			"status":          "offline",
 			"disconnected_at": "NOW()",
-			"domain_id":       nil, // Clear domain reference before deleting domain
 		}).Error
 
 	if err != nil {
 		return pkgerrors.Wrap(err, "failed to update tunnel status")
 	}
 
-	// Delete domain reservation to allow reuse
-	logger.InfoEvent().
-		Str("subdomain", tunnel.Subdomain).
-		Msg("Attempting to delete domain reservation")
-
-	result := m.db.WithContext(ctx).
-		Where("subdomain = ?", tunnel.Subdomain).
-		Delete(&models.Domain{})
-
-	if result.Error != nil {
-		logger.WarnEvent().
-			Err(result.Error).
-			Str("subdomain", tunnel.Subdomain).
-			Msg("Failed to delete domain reservation")
-	} else {
-		logger.InfoEvent().
-			Str("subdomain", tunnel.Subdomain).
-			Int64("rows_affected", result.RowsAffected).
-			Msg("Domain reservation deleted successfully")
+	savedName := "unnamed"
+	if dbTunnel.SavedName != nil {
+		savedName = *dbTunnel.SavedName
 	}
 
 	logger.InfoEvent().
 		Str("tunnel_id", tunnelID.String()).
 		Str("subdomain", tunnel.Subdomain).
-		Msg("Tunnel unregistered")
+		Str("saved_name", savedName).
+		Msg("Tunnel marked offline, domain reservation retained")
+
+	// Emit tunnel disconnected event
+	dbTunnel.Status = "offline"
+	m.emitEvent(TunnelEvent{
+		Type:     EventTunnelDisconnected,
+		TunnelID: tunnelID,
+		Tunnel:   &dbTunnel,
+	})
 
 	return nil
 }
@@ -350,7 +416,28 @@ func (m *Manager) BuildPublicURL(subdomain string, protocol string) string {
 	if protocol == "tcp" {
 		return fmt.Sprintf("tcp://%s.%s", subdomain, m.baseDomain)
 	}
-	return fmt.Sprintf("https://%s.%s", subdomain, m.baseDomain)
+
+	// Determine scheme and port based on TLS configuration
+	var scheme string
+	var port int
+	var defaultPort int
+
+	if m.tlsEnabled {
+		scheme = "https"
+		port = m.httpsPort
+		defaultPort = 443
+	} else {
+		scheme = "http"
+		port = m.httpPort
+		defaultPort = 80
+	}
+
+	// Build URL with or without port
+	host := fmt.Sprintf("%s.%s", subdomain, m.baseDomain)
+	if port != defaultPort && port != 0 {
+		return fmt.Sprintf("%s://%s:%d", scheme, host, port)
+	}
+	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
 // isDuplicateError checks if the error is a duplicate key error
@@ -378,4 +465,152 @@ func containsAny(str string, substrs []string) bool {
 		}
 	}
 	return false
+}
+
+// FindOfflineTunnelBySavedName finds an existing offline tunnel by saved name
+func (m *Manager) FindOfflineTunnelBySavedName(ctx context.Context, userID uuid.UUID, savedName string) (*models.Tunnel, error) {
+	var tunnel models.Tunnel
+	err := m.db.WithContext(ctx).
+		Where("user_id = ? AND saved_name = ? AND is_persistent = ? AND status IN (?)",
+			userID, savedName, true, []string{"offline", "disconnected"}).
+		Preload("Domain").
+		First(&tunnel).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil // Not an error, just not found
+		}
+		return nil, pkgerrors.Wrap(err, "failed to find offline tunnel")
+	}
+
+	return &tunnel, nil
+}
+
+// ReactivateTunnel reactivates an offline persistent tunnel
+func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tunnel, stream grpc.ServerStream, newLocalAddr string) (*Tunnel, error) {
+	// Determine protocol from tunnel type
+	protocol := "http"
+	if offlineTunnel.TunnelType == "HTTPS" {
+		protocol = "https"
+	} else if offlineTunnel.TunnelType == "TCP" {
+		protocol = "tcp"
+	}
+
+	// Regenerate public URL with current TLS and port configuration
+	publicURL := m.BuildPublicURL(offlineTunnel.Subdomain, protocol)
+
+	// Update database with new public URL, local address, and active status
+	err := m.db.WithContext(ctx).
+		Model(&models.Tunnel{}).
+		Where("id = ?", offlineTunnel.ID).
+		Updates(map[string]interface{}{
+			"status":          "active",
+			"public_url":      publicURL,      // Update with regenerated URL
+			"local_addr":      newLocalAddr,   // Update with new local address
+			"connected_at":    time.Now(),
+			"disconnected_at": nil,
+			"last_activity_at": time.Now(),
+		}).Error
+
+	if err != nil {
+		return nil, pkgerrors.Wrap(err, "failed to reactivate tunnel")
+	}
+
+	// Create in-memory tunnel object with the same ID and subdomain
+	tunnel := &Tunnel{
+		ID:             offlineTunnel.ID,
+		UserID:         offlineTunnel.UserID,
+		TokenID:        offlineTunnel.TokenID,
+		OrganizationID: offlineTunnel.OrganizationID,
+		Subdomain:      offlineTunnel.Subdomain,
+		Protocol:       tunnelv1.TunnelProtocol(tunnelv1.TunnelProtocol_value[offlineTunnel.TunnelType]),
+		LocalAddr:      newLocalAddr, // Use new local address
+		PublicURL:      publicURL,    // Use regenerated URL
+		SavedName:      offlineTunnel.SavedName,
+		Stream:         stream,
+		RequestQueue:   make(chan *PendingRequest, 100),
+		ResponseMap:    sync.Map{},
+		Status:         "active",
+		ConnectedAt:    time.Now(),
+		LastActivity:   time.Now(),
+	}
+
+	// Store in memory maps
+	m.tunnels.Store(tunnel.Subdomain, tunnel)
+	m.tunnelsByID.Store(tunnel.ID, tunnel)
+
+	logger.InfoEvent().
+		Str("tunnel_id", tunnel.ID.String()).
+		Str("subdomain", tunnel.Subdomain).
+		Str("public_url", publicURL).
+		Str("local_addr", newLocalAddr).
+		Str("saved_name", *offlineTunnel.SavedName).
+		Msg("Persistent tunnel reactivated")
+
+	// Emit tunnel connected event with updated public URL and local address
+	offlineTunnel.Status = "active"
+	offlineTunnel.PublicURL = publicURL       // Update event data with new URL
+	offlineTunnel.LocalAddr = newLocalAddr    // Update event data with new local addr
+	m.emitEvent(TunnelEvent{
+		Type:     EventTunnelConnected,
+		TunnelID: tunnel.ID,
+		Tunnel:   offlineTunnel,
+	})
+
+	return tunnel, nil
+}
+
+// startPeriodicStatsUpdater runs in background and periodically broadcasts stats updates
+func (m *Manager) startPeriodicStatsUpdater() {
+	ticker := time.NewTicker(3 * time.Second) // Update every 3 seconds
+	defer ticker.Stop()
+
+	for range ticker.C {
+		// Get all active tunnels and broadcast their stats
+		m.tunnelsByID.Range(func(key, value interface{}) bool {
+			tunnel := value.(*Tunnel)
+
+			// Get current stats from in-memory tunnel
+			bytesIn, bytesOut, requestsCount := tunnel.GetStats()
+
+			// Load tunnel from database to get full data
+			var dbTunnel models.Tunnel
+			if err := m.db.Where("id = ?", tunnel.ID).First(&dbTunnel).Error; err != nil {
+				return true // Continue to next tunnel
+			}
+
+			// Update database with latest stats
+			err := m.db.Model(&models.Tunnel{}).
+				Where("id = ?", tunnel.ID).
+				Updates(map[string]interface{}{
+					"bytes_in":         bytesIn,
+					"bytes_out":        bytesOut,
+					"requests_count":   requestsCount,
+					"last_activity_at": time.Now(),
+				}).Error
+
+			if err != nil {
+				logger.WarnEvent().
+					Err(err).
+					Str("tunnel_id", tunnel.ID.String()).
+					Msg("Failed to update tunnel stats")
+				return true // Continue to next tunnel
+			}
+
+			// Update dbTunnel with new stats for event
+			dbTunnel.BytesIn = bytesIn
+			dbTunnel.BytesOut = bytesOut
+			dbTunnel.RequestsCount = requestsCount
+			dbTunnel.LastActivityAt = time.Now()
+
+			// Emit stats update event
+			m.emitEvent(TunnelEvent{
+				Type:     EventTunnelStatsUpdated,
+				TunnelID: tunnel.ID,
+				Tunnel:   &dbTunnel,
+			})
+
+			return true // Continue to next tunnel
+		})
+	}
 }

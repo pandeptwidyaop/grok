@@ -36,12 +36,14 @@ func setupTestServer(t *testing.T) (*grpc.Server, *gorm.DB, *tunnel.Manager, *au
 	err = db.AutoMigrate(database)
 	require.NoError(t, err)
 
-	// Create test user
+	// Create test user (without organization for basic tests)
 	testUser := &models.User{
-		Email:    "test@example.com",
-		Password: "hashedpassword",
-		Name:     "Test User",
-		IsActive: true,
+		Email:          "test@example.com",
+		Password:       "hashedpassword",
+		Name:           "Test User",
+		IsActive:       true,
+		Role:           models.RoleOrgUser,
+		OrganizationID: nil, // No organization for basic tests
 	}
 	require.NoError(t, database.Create(testUser).Error)
 
@@ -59,7 +61,7 @@ func setupTestServer(t *testing.T) (*grpc.Server, *gorm.DB, *tunnel.Manager, *au
 
 	// Create services
 	tokenService := auth.NewTokenService(database)
-	tunnelManager := tunnel.NewManager(database, "localhost", 10)
+	tunnelManager := tunnel.NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
 
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
@@ -180,10 +182,19 @@ func TestSubdomainAllocation(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()
 
+	// Create test organization for duplicate testing
+	testOrg := &models.Organization{
+		Name:      "TestOrg",
+		Subdomain: "testorg",
+		IsActive:  true,
+	}
+	require.NoError(t, database.Create(testOrg).Error)
+
 	t.Run("allocate custom subdomain", func(t *testing.T) {
-		subdomain, err := tunnelManager.AllocateSubdomain(ctx, userID, "custom")
+		subdomain, customPart, err := tunnelManager.AllocateSubdomain(ctx, userID, nil, "custom")
 		require.NoError(t, err)
 		assert.Equal(t, "custom", subdomain)
+		assert.Equal(t, "custom", customPart)
 
 		// Verify in database
 		var domain models.Domain
@@ -192,19 +203,25 @@ func TestSubdomainAllocation(t *testing.T) {
 	})
 
 	t.Run("reject reserved subdomain", func(t *testing.T) {
-		_, err := tunnelManager.AllocateSubdomain(ctx, userID, "api")
+		_, _, err := tunnelManager.AllocateSubdomain(ctx, userID, nil, "api")
 		assert.Error(t, err, "Should reject reserved subdomain 'api'")
 	})
 
-	t.Run("reject duplicate subdomain", func(t *testing.T) {
-		_, err := tunnelManager.AllocateSubdomain(ctx, userID, "custom")
-		assert.Error(t, err, "Should reject duplicate subdomain")
+	t.Run("reject duplicate subdomain with organization", func(t *testing.T) {
+		// Allocate first time with organization
+		_, _, err := tunnelManager.AllocateSubdomain(ctx, userID, &testOrg.ID, "duplicate-test")
+		require.NoError(t, err, "First allocation should succeed")
+
+		// Try to allocate again with same org - should fail
+		_, _, err = tunnelManager.AllocateSubdomain(ctx, userID, &testOrg.ID, "duplicate-test")
+		assert.Error(t, err, "Should reject duplicate subdomain within same org")
 	})
 
 	t.Run("generate random subdomain", func(t *testing.T) {
-		subdomain, err := tunnelManager.AllocateSubdomain(ctx, userID, "")
+		subdomain, customPart, err := tunnelManager.AllocateSubdomain(ctx, userID, nil, "")
 		require.NoError(t, err)
 		assert.Len(t, subdomain, 8, "Random subdomain should be 8 characters")
+		assert.Equal(t, subdomain, customPart, "Without org, subdomain should equal custom part")
 		assert.Regexp(t, "^[a-z0-9]+$", subdomain, "Should contain only alphanumeric")
 	})
 }
@@ -218,12 +235,13 @@ func TestDomainCleanupOnDisconnect(t *testing.T) {
 	tokenID := uuid.New()
 
 	// Create and register a tunnel
-	subdomain, err := tunnelManager.AllocateSubdomain(ctx, userID, "cleanup-test")
+	subdomain, _, err := tunnelManager.AllocateSubdomain(ctx, userID, nil, "cleanup-test")
 	require.NoError(t, err)
 
 	tun := tunnel.NewTunnel(
 		userID,
 		tokenID,
+		nil, // No organization
 		subdomain,
 		tunnelv1.TunnelProtocol_HTTP,
 		"localhost:3000",
@@ -248,7 +266,147 @@ func TestDomainCleanupOnDisconnect(t *testing.T) {
 	assert.Equal(t, int64(0), domainCount, "Domain should be deleted after unregister")
 
 	// Verify we can reuse the subdomain immediately
-	subdomain2, err := tunnelManager.AllocateSubdomain(ctx, userID, "cleanup-test")
+	subdomain2, _, err := tunnelManager.AllocateSubdomain(ctx, userID, nil, "cleanup-test")
 	require.NoError(t, err, "Should be able to reuse subdomain after cleanup")
 	assert.Equal(t, "cleanup-test", subdomain2)
+}
+
+// TestOrganizationSubdomainAllocation tests subdomain allocation with organizations
+func TestOrganizationSubdomainAllocation(t *testing.T) {
+	_, database, tunnelManager, _, _ := setupTestServer(t)
+
+	ctx := context.Background()
+
+	// Create two organizations
+	org1 := &models.Organization{
+		Name:      "Trofeo",
+		Subdomain: "trofeo",
+		IsActive:  true,
+	}
+	require.NoError(t, database.Create(org1).Error)
+
+	org2 := &models.Organization{
+		Name:      "ACME Corp",
+		Subdomain: "acme",
+		IsActive:  true,
+	}
+	require.NoError(t, database.Create(org2).Error)
+
+	// Create users in different organizations
+	user1 := &models.User{
+		Email:          "user1@trofeo.com",
+		Password:       "hashedpass",
+		Name:           "User 1",
+		IsActive:       true,
+		Role:           models.RoleOrgUser,
+		OrganizationID: &org1.ID,
+	}
+	require.NoError(t, database.Create(user1).Error)
+
+	user2 := &models.User{
+		Email:          "user2@acme.com",
+		Password:       "hashedpass",
+		Name:           "User 2",
+		IsActive:       true,
+		Role:           models.RoleOrgUser,
+		OrganizationID: &org2.ID,
+	}
+	require.NoError(t, database.Create(user2).Error)
+
+	t.Run("allocate subdomain with organization prefix", func(t *testing.T) {
+		// User in "trofeo" org creates tunnel "app1"
+		subdomain, customPart, err := tunnelManager.AllocateSubdomain(ctx, user1.ID, user1.OrganizationID, "app1")
+		require.NoError(t, err)
+		assert.Equal(t, "app1-trofeo", subdomain, "Subdomain should have org prefix")
+		assert.Equal(t, "app1", customPart, "Custom part should be stored separately")
+
+		// Verify in database
+		var domain models.Domain
+		err = database.Where("subdomain = ?", "app1-trofeo").First(&domain).Error
+		require.NoError(t, err)
+		assert.Equal(t, org1.ID, *domain.OrganizationID)
+	})
+
+	t.Run("different orgs can use same custom part", func(t *testing.T) {
+		// User in "acme" org also creates tunnel "app1"
+		subdomain, customPart, err := tunnelManager.AllocateSubdomain(ctx, user2.ID, user2.OrganizationID, "app1")
+		require.NoError(t, err)
+		assert.Equal(t, "app1-acme", subdomain, "Subdomain should have different org prefix")
+		assert.Equal(t, "app1", customPart)
+
+		// Verify both domains exist
+		var domainCount int64
+		database.Model(&models.Domain{}).Where("subdomain IN ?", []string{"app1-trofeo", "app1-acme"}).Count(&domainCount)
+		assert.Equal(t, int64(2), domainCount, "Both domains should exist")
+	})
+
+	t.Run("duplicate within same org should fail", func(t *testing.T) {
+		// Try to create "app1" again in trofeo org
+		_, _, err := tunnelManager.AllocateSubdomain(ctx, user1.ID, user1.OrganizationID, "app1")
+		assert.Error(t, err, "Should reject duplicate subdomain within same org")
+	})
+
+	t.Run("random subdomain with org", func(t *testing.T) {
+		subdomain, customPart, err := tunnelManager.AllocateSubdomain(ctx, user1.ID, user1.OrganizationID, "")
+		require.NoError(t, err)
+		assert.Contains(t, subdomain, "-trofeo", "Random subdomain should have org suffix")
+		assert.Len(t, customPart, 8, "Random custom part should be 8 characters")
+		assert.Equal(t, customPart+"-trofeo", subdomain)
+	})
+}
+
+// TestOrganizationTunnelIsolation tests that tunnels are properly isolated by organization
+func TestOrganizationTunnelIsolation(t *testing.T) {
+	_, database, tunnelManager, _, _ := setupTestServer(t)
+
+	ctx := context.Background()
+
+	// Create organization
+	org := &models.Organization{
+		Name:      "TestOrg",
+		Subdomain: "testorg",
+		IsActive:  true,
+	}
+	require.NoError(t, database.Create(org).Error)
+
+	// Create user in org
+	user := &models.User{
+		Email:          "user@testorg.com",
+		Password:       "hashedpass",
+		Name:           "Test User",
+		IsActive:       true,
+		Role:           models.RoleOrgUser,
+		OrganizationID: &org.ID,
+	}
+	require.NoError(t, database.Create(user).Error)
+
+	// Allocate subdomain and create tunnel
+	subdomain, _, err := tunnelManager.AllocateSubdomain(ctx, user.ID, user.OrganizationID, "myapi")
+	require.NoError(t, err)
+	assert.Equal(t, "myapi-testorg", subdomain)
+
+	tun := tunnel.NewTunnel(
+		user.ID,
+		uuid.New(),
+		user.OrganizationID,
+		subdomain,
+		tunnelv1.TunnelProtocol_HTTPS,
+		"localhost:3000",
+		"https://myapi-testorg.localhost",
+		nil,
+	)
+
+	err = tunnelManager.RegisterTunnel(ctx, tun)
+	require.NoError(t, err)
+
+	// Verify tunnel has organization_id
+	var dbTunnel models.Tunnel
+	err = database.Where("subdomain = ?", subdomain).First(&dbTunnel).Error
+	require.NoError(t, err)
+	assert.NotNil(t, dbTunnel.OrganizationID)
+	assert.Equal(t, org.ID, *dbTunnel.OrganizationID)
+
+	// Cleanup
+	err = tunnelManager.UnregisterTunnel(ctx, tun.ID)
+	require.NoError(t, err)
 }

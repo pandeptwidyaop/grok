@@ -1,11 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  TextField,
+  Typography,
+  Alert,
+  CircularProgress,
+  Container,
+  Paper,
+} from '@mui/material';
 import { Sparkles, ArrowRight } from 'lucide-react';
 
 export default function Login() {
@@ -32,91 +39,145 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center gradient-primary relative overflow-hidden">
+    <Box
+      sx={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
       {/* Animated background elements */}
-      <div className="absolute inset-0">
-        <div className="absolute top-20 left-20 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
-      </div>
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 80,
+          left: 80,
+          width: 300,
+          height: 300,
+          background: 'rgba(255, 255, 255, 0.1)',
+          borderRadius: '50%',
+          filter: 'blur(60px)',
+          animation: 'pulse 3s ease-in-out infinite',
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: 80,
+          right: 80,
+          width: 400,
+          height: 400,
+          background: 'rgba(255, 255, 255, 0.1)',
+          borderRadius: '50%',
+          filter: 'blur(60px)',
+          animation: 'pulse 3s ease-in-out infinite 1s',
+        }}
+      />
 
-      <div className="w-full max-w-md relative z-10 px-4 animate-scale-in">
+      <Container maxWidth="sm" sx={{ position: 'relative', zIndex: 10, px: 2 }}>
         {/* Logo/Brand */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-sm mb-4">
-            <Sparkles className="w-8 h-8 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Welcome Back</h1>
-          <p className="text-white/80">Sign in to access your Grok Dashboard</p>
-        </div>
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Paper
+            elevation={0}
+            sx={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 64,
+              height: 64,
+              borderRadius: 3,
+              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              backdropFilter: 'blur(10px)',
+              mb: 2,
+            }}
+          >
+            <Sparkles size={32} color="white" />
+          </Paper>
+          <Typography variant="h3" sx={{ color: 'white', fontWeight: 700, mb: 1 }}>
+            Welcome Back
+          </Typography>
+          <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+            Sign in to access your Grok Dashboard
+          </Typography>
+        </Box>
 
         {/* Login Card */}
-        <Card className="border-0 shadow-2xl backdrop-blur-sm bg-white/95">
-          <CardHeader className="space-y-1 pb-6">
-            <CardTitle className="text-2xl font-bold text-blue-600">
+        <Card
+          elevation={8}
+          sx={{
+            borderRadius: 3,
+            backdropFilter: 'blur(10px)',
+            bgcolor: 'rgba(255, 255, 255, 0.95)',
+          }}
+        >
+          <CardContent sx={{ p: 4 }}>
+            <Typography variant="h4" sx={{ color: 'primary.main', fontWeight: 700, mb: 1 }}>
               Sign In
-            </CardTitle>
-            <CardDescription className="text-base">
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
               Enter your credentials to continue
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            </Typography>
+
+            <form onSubmit={handleSubmit}>
               {error && (
-                <Alert variant="destructive" className="animate-scale-in">
-                  <AlertDescription>{error}</AlertDescription>
+                <Alert severity="error" sx={{ mb: 3 }}>
+                  {error}
                 </Alert>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="username" className="text-sm font-medium">
-                  Username
-                </Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="Enter your username"
-                  value={username}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUsername(e.target.value)}
-                  required
-                  disabled={loading}
-                  className="h-11 transition-all focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              <TextField
+                fullWidth
+                label="Username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                disabled={loading}
+                sx={{ mb: 3 }}
+                autoComplete="username"
+              />
 
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium">
-                  Password
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)}
-                  required
-                  disabled={loading}
-                  className="h-11 transition-all focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              <TextField
+                fullWidth
+                label="Password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                disabled={loading}
+                sx={{ mb: 4 }}
+                autoComplete="current-password"
+              />
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-lg hover:shadow-xl transition-all mt-6"
+                fullWidth
+                variant="contained"
+                size="large"
                 disabled={loading}
+                sx={{
+                  height: 48,
+                  fontWeight: 600,
+                  boxShadow: 3,
+                  '&:hover': {
+                    boxShadow: 6,
+                  },
+                }}
               >
                 {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={20} color="inherit" />
                     Signing in...
-                  </span>
+                  </Box>
                 ) : (
-                  <span className="flex items-center justify-center gap-2">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     Sign in
-                    <ArrowRight className="w-4 h-4" />
-                  </span>
+                    <ArrowRight size={18} />
+                  </Box>
                 )}
               </Button>
             </form>
@@ -124,10 +185,27 @@ export default function Login() {
         </Card>
 
         {/* Footer */}
-        <p className="text-center mt-6 text-white/60 text-sm">
+        <Typography
+          variant="body2"
+          sx={{ textAlign: 'center', mt: 3, color: 'rgba(255, 255, 255, 0.6)' }}
+        >
           Powered by Grok Tunnel
-        </p>
-      </div>
-    </div>
+        </Typography>
+      </Container>
+
+      {/* CSS Animations */}
+      <style>
+        {`
+          @keyframes pulse {
+            0%, 100% {
+              opacity: 0.6;
+            }
+            50% {
+              opacity: 1;
+            }
+          }
+        `}
+      </style>
+    </Box>
   );
 }

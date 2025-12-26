@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
@@ -23,13 +24,15 @@ const (
 // HTTPProxy handles HTTP reverse proxying
 type HTTPProxy struct {
 	router        *Router
+	webhookRouter *WebhookRouter
 	tunnelManager *tunnel.Manager
 }
 
 // NewHTTPProxy creates a new HTTP proxy
-func NewHTTPProxy(router *Router, tunnelManager *tunnel.Manager) *HTTPProxy {
+func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager) *HTTPProxy {
 	return &HTTPProxy{
 		router:        router,
+		webhookRouter: webhookRouter,
 		tunnelManager: tunnelManager,
 	}
 }
@@ -38,7 +41,13 @@ func NewHTTPProxy(router *Router, tunnelManager *tunnel.Manager) *HTTPProxy {
 func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
-	// Route to tunnel
+	// Check if this is a webhook request
+	if p.webhookRouter != nil && p.webhookRouter.IsWebhookRequest(r.Host) {
+		p.handleWebhookRequest(w, r, start)
+		return
+	}
+
+	// Regular tunnel routing
 	tun, err := p.router.RouteToTunnel(r.Host)
 	if err != nil {
 		logger.WarnEvent().
@@ -213,6 +222,127 @@ func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResp
 	}
 
 	return responseBytes
+}
+
+// handleWebhookRequest handles webhook broadcast requests
+func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request, start time.Time) {
+	// Extract webhook components
+	orgSubdomain, appName, userPath, err := p.webhookRouter.ExtractWebhookComponents(r.Host, r.URL.Path)
+	if err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("host", r.Host).
+			Str("path", r.URL.Path).
+			Msg("Invalid webhook URL format")
+		http.Error(w, "Invalid webhook URL", http.StatusBadRequest)
+		return
+	}
+
+	logger.DebugEvent().
+		Str("org", orgSubdomain).
+		Str("app", appName).
+		Str("user_path", userPath).
+		Msg("Webhook request received")
+
+	// Get webhook routes
+	cache, err := p.webhookRouter.GetWebhookRoutes(orgSubdomain, appName)
+	if err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("org", orgSubdomain).
+			Str("app", appName).
+			Msg("Failed to get webhook routes")
+
+		if err == ErrWebhookAppNotFound {
+			http.Error(w, "Webhook app not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Read request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to read webhook request body")
+		http.Error(w, "Failed to read request", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// Prepare request data
+	requestData := &ProxyRequestData{
+		Method:  r.Method,
+		Path:    userPath, // Use user-defined path, not the full path
+		Headers: r.Header,
+		Body:    body,
+	}
+
+	// Broadcast to all enabled tunnels
+	ctx := context.Background()
+	result, err := p.webhookRouter.BroadcastToTunnels(ctx, cache, userPath, requestData)
+
+	duration := time.Since(start)
+
+	// Log webhook event (async)
+	go p.logWebhookEvent(cache.AppID, r, result, duration, err)
+
+	// Handle response
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("app", appName).
+			Int("tunnel_count", result.TunnelCount).
+			Int("success_count", result.SuccessCount).
+			Msg("Webhook broadcast failed")
+
+		http.Error(w, "No available tunnels", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Return first successful response
+	if result.FirstSuccess != nil {
+		// Write headers
+		for key, values := range result.FirstSuccess.Headers {
+			for _, val := range values {
+				w.Header().Add(key, val)
+			}
+		}
+
+		// Write status code
+		w.WriteHeader(result.FirstSuccess.StatusCode)
+
+		// Write body
+		if len(result.FirstSuccess.Body) > 0 {
+			w.Write(result.FirstSuccess.Body)
+		}
+
+		logger.InfoEvent().
+			Str("app", appName).
+			Str("method", r.Method).
+			Str("path", userPath).
+			Int("status", result.FirstSuccess.StatusCode).
+			Int("tunnel_count", result.TunnelCount).
+			Int("success_count", result.SuccessCount).
+			Dur("duration", duration).
+			Msg("Webhook request broadcast completed")
+	} else {
+		http.Error(w, "All tunnels failed", http.StatusServiceUnavailable)
+	}
+}
+
+// logWebhookEvent logs a webhook event to the database
+func (p *HTTPProxy) logWebhookEvent(appID uuid.UUID, r *http.Request, result *BroadcastResult, duration time.Duration, err error) {
+	// This would be implemented to save webhook events to database
+	// For now, just log to console
+	logger.DebugEvent().
+		Str("app_id", appID.String()).
+		Str("path", r.URL.Path).
+		Str("method", r.Method).
+		Int("tunnel_count", result.TunnelCount).
+		Int("success_count", result.SuccessCount).
+		Dur("duration", duration).
+		Msg("Webhook event logged")
 }
 
 // HealthCheckHandler returns a simple health check handler

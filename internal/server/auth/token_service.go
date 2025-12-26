@@ -141,3 +141,21 @@ func (s *TokenService) GetTokenByID(ctx context.Context, tokenID uuid.UUID) (*mo
 
 	return &token, nil
 }
+
+// GetUserByID retrieves a user by ID with organization preloaded
+func (s *TokenService) GetUserByID(ctx context.Context, userID uuid.UUID) (*models.User, error) {
+	var user models.User
+	err := s.db.WithContext(ctx).
+		Where("id = ?", userID).
+		Preload("Organization").
+		First(&user).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, pkgerrors.ErrUserNotFound
+		}
+		return nil, pkgerrors.Wrap(err, "failed to get user")
+	}
+
+	return &user, nil
+}

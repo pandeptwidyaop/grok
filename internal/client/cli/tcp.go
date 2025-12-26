@@ -12,6 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	tcpSavedName string
+)
+
 // tcpCmd represents the tcp command
 var tcpCmd = &cobra.Command{
 	Use:   "tcp [port]",
@@ -19,8 +23,8 @@ var tcpCmd = &cobra.Command{
 	Long: `Create a TCP tunnel to expose a local TCP service to the internet.
 
 Examples:
-  grok tcp 22                       # Tunnel SSH on port 22
-  grok tcp 3306                     # Tunnel MySQL on port 3306
+  grok tcp 22                       # Tunnel SSH on port 22 (auto-generated name)
+  grok tcp 3306 --name my-db        # Named persistent tunnel
   grok tcp localhost:5432           # Tunnel PostgreSQL with explicit host`,
 	Args: cobra.ExactArgs(1),
 	RunE: runTCPTunnel,
@@ -28,6 +32,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(tcpCmd)
+	tcpCmd.Flags().StringVarP(&tcpSavedName, "name", "n", "", "saved tunnel name (auto-generated if not provided)")
 }
 
 func runTCPTunnel(cmd *cobra.Command, args []string) error {
@@ -36,6 +41,7 @@ func runTCPTunnel(cmd *cobra.Command, args []string) error {
 
 	logger.InfoEvent().
 		Str("local_addr", localAddr).
+		Str("saved_name", tcpSavedName).
 		Msg("Starting TCP tunnel")
 
 	// Get config with overrides from flags
@@ -56,6 +62,7 @@ func runTCPTunnel(cmd *cobra.Command, args []string) error {
 		TLSServerName: cfg.Server.TLSServerName,
 		AuthToken:     cfg.Auth.Token,
 		LocalAddr:     localAddr,
+		SavedName:     tcpSavedName,
 		Protocol:      "tcp",
 		ReconnectCfg:  cfg.Reconnect,
 	})

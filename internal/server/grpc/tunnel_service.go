@@ -47,6 +47,16 @@ func (s *TunnelService) CreateTunnel(
 		return nil, status.Error(codes.Unauthenticated, "invalid authentication token")
 	}
 
+	// Load user with organization to get org subdomain
+	user, err := s.tokenService.GetUserByID(ctx, authToken.UserID)
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("user_id", authToken.UserID.String()).
+			Msg("Failed to load user")
+		return nil, status.Error(codes.Internal, "failed to load user")
+	}
+
 	// Validate protocol
 	if req.Protocol == tunnelv1.TunnelProtocol_TUNNEL_PROTOCOL_UNSPECIFIED {
 		return nil, status.Error(codes.InvalidArgument, "protocol is required")
@@ -57,41 +67,80 @@ func (s *TunnelService) CreateTunnel(
 		return nil, status.Error(codes.InvalidArgument, "local_address is required")
 	}
 
-	// Allocate subdomain
-	subdomain, err := s.tunnelManager.AllocateSubdomain(ctx, authToken.UserID, req.Subdomain)
-	if err != nil {
-		logger.ErrorEvent().
-			Err(err).
-			Str("requested_subdomain", req.Subdomain).
-			Str("user_id", authToken.UserID.String()).
-			Msg("Failed to allocate subdomain")
+	var fullSubdomain string
+	var customPart string
 
-		if err == pkgerrors.ErrSubdomainTaken {
-			return nil, status.Error(codes.AlreadyExists, "subdomain already taken")
+	// Check if req.Subdomain is a savedName (check for existing offline tunnel)
+	// This allows reconnecting with the same name and reusing the old subdomain
+	if req.Subdomain != "" {
+		offlineTunnel, err := s.tunnelManager.FindOfflineTunnelBySavedName(ctx, authToken.UserID, req.Subdomain)
+		if err != nil {
+			logger.ErrorEvent().Err(err).Msg("Failed to check for offline tunnel")
+			// Continue with normal allocation
 		}
-		if err == pkgerrors.ErrInvalidSubdomain {
-			return nil, status.Error(codes.InvalidArgument, "invalid subdomain format")
+
+		if offlineTunnel != nil {
+			// Found offline tunnel - reuse its subdomain!
+			fullSubdomain = offlineTunnel.Subdomain
+			customPart = req.Subdomain
+			logger.InfoEvent().
+				Str("saved_name", req.Subdomain).
+				Str("subdomain", fullSubdomain).
+				Str("tunnel_id", offlineTunnel.ID.String()).
+				Msg("Found offline tunnel, will reuse subdomain")
 		}
-		return nil, status.Error(codes.Internal, "failed to allocate subdomain")
 	}
 
-	// Build public URL
+	// If no offline tunnel found, allocate new subdomain
+	if fullSubdomain == "" {
+		var err error
+		fullSubdomain, customPart, err = s.tunnelManager.AllocateSubdomain(
+			ctx,
+			authToken.UserID,
+			user.OrganizationID,
+			req.Subdomain,
+		)
+		if err != nil {
+			logger.ErrorEvent().
+				Err(err).
+				Str("requested_subdomain", req.Subdomain).
+				Str("user_id", authToken.UserID.String()).
+				Msg("Failed to allocate subdomain")
+
+			if err == pkgerrors.ErrSubdomainTaken {
+				return nil, status.Error(codes.AlreadyExists, "subdomain already taken")
+			}
+			if err == pkgerrors.ErrInvalidSubdomain {
+				return nil, status.Error(codes.InvalidArgument, "invalid subdomain format")
+			}
+			return nil, status.Error(codes.Internal, "failed to allocate subdomain")
+		}
+	}
+
+	// Build public URL with full subdomain
 	protocol := "https"
 	if req.Protocol == tunnelv1.TunnelProtocol_TCP {
 		protocol = "tcp"
 	}
-	publicURL := s.tunnelManager.BuildPublicURL(subdomain, protocol)
+	publicURL := s.tunnelManager.BuildPublicURL(fullSubdomain, protocol)
 
 	logger.InfoEvent().
-		Str("subdomain", subdomain).
+		Str("subdomain", fullSubdomain).
+		Str("custom_part", customPart).
 		Str("public_url", publicURL).
 		Str("user_id", authToken.UserID.String()).
+		Str("org_id", func() string {
+			if user.OrganizationID != nil {
+				return user.OrganizationID.String()
+			}
+			return "none"
+		}()).
 		Msg("Tunnel created successfully")
 
 	return &tunnelv1.CreateTunnelResponse{
 		TunnelId:  "",                                // Will be set in ProxyStream
 		PublicUrl: publicURL,
-		Subdomain: subdomain,
+		Subdomain: fullSubdomain,
 		Status:    tunnelv1.TunnelStatus_ACTIVE,
 	}, nil
 }
@@ -140,7 +189,7 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 		case *tunnelv1.ProxyMessage_Control:
 			// First control message should contain tunnel registration
 			if currentTunnel == nil && payload.Control.Type == tunnelv1.ControlMessage_UNKNOWN {
-				// Parse subdomain|token|localaddr|publicurl from TunnelId field
+				// Parse subdomain|token|localaddr|publicurl|savedname(optional) from TunnelId field
 				parts := []string{}
 				data := payload.Control.TunnelId
 				lastIdx := 0
@@ -152,7 +201,7 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 				}
 				parts = append(parts, data[lastIdx:])
 
-				if len(parts) != 4 {
+				if len(parts) < 4 || len(parts) > 5 {
 					logger.WarnEvent().
 						Int("parts_count", len(parts)).
 						Msg("Invalid registration message format")
@@ -163,12 +212,23 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 				authToken := parts[1]
 				localAddr := parts[2]
 				publicURL := parts[3]
+				var savedName string
+				if len(parts) == 5 && parts[4] != "" {
+					savedName = parts[4]
+				}
 
 				// Validate token
 				token, err := s.tokenService.ValidateToken(ctx, authToken)
 				if err != nil {
 					logger.WarnEvent().Err(err).Msg("Invalid token in ProxyStream")
 					return status.Error(codes.Unauthenticated, "invalid authentication token")
+				}
+
+				// Load user to get organization ID
+				user, err := s.tokenService.GetUserByID(ctx, token.UserID)
+				if err != nil {
+					logger.ErrorEvent().Err(err).Msg("Failed to load user in ProxyStream")
+					return status.Error(codes.Internal, "failed to load user")
 				}
 
 				// Determine protocol from public URL
@@ -181,23 +241,69 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 					}
 				}
 
-				// Create tunnel using constructor
-				tun := tunnel.NewTunnel(
-					token.UserID,
-					token.ID,
-					subdomain,
-					protocol,
-					localAddr,
-					publicURL,
-					stream,
-				)
+				var tun *tunnel.Tunnel
 
-				if err := s.tunnelManager.RegisterTunnel(ctx, tun); err != nil {
-					logger.ErrorEvent().
-						Err(err).
+				// Check if savedName is provided (or generate one)
+				if savedName == "" {
+					// Auto-generate Docker-style name
+					generatedName, err := utils.GenerateRandomName()
+					if err != nil {
+						logger.ErrorEvent().Err(err).Msg("Failed to generate random name")
+						return status.Error(codes.Internal, "failed to generate tunnel name")
+					}
+					savedName = generatedName
+					logger.InfoEvent().
+						Str("generated_name", savedName).
+						Msg("Auto-generated tunnel name")
+				}
+
+				// Check for existing offline tunnel with this saved name
+				offlineTunnel, err := s.tunnelManager.FindOfflineTunnelBySavedName(ctx, token.UserID, savedName)
+				if err != nil {
+					logger.ErrorEvent().Err(err).Msg("Failed to check for offline tunnel")
+					return status.Error(codes.Internal, "failed to check existing tunnel")
+				}
+
+				if offlineTunnel != nil {
+					// Reactivate existing tunnel with new local address
+					logger.InfoEvent().
+						Str("saved_name", savedName).
+						Str("tunnel_id", offlineTunnel.ID.String()).
+						Str("new_local_addr", localAddr).
+						Msg("Reactivating existing tunnel")
+
+					tun, err = s.tunnelManager.ReactivateTunnel(ctx, offlineTunnel, stream, localAddr)
+					if err != nil {
+						logger.ErrorEvent().Err(err).Msg("Failed to reactivate tunnel")
+						return status.Error(codes.Internal, "failed to reactivate tunnel")
+					}
+				} else {
+					// Create new persistent tunnel
+					tun = tunnel.NewTunnel(
+						token.UserID,
+						token.ID,
+						user.OrganizationID,
+						subdomain,
+						protocol,
+						localAddr,
+						publicURL,
+						stream,
+					)
+					tun.SavedName = &savedName
+
+					if err := s.tunnelManager.RegisterTunnel(ctx, tun); err != nil {
+						logger.ErrorEvent().
+							Err(err).
+							Str("subdomain", subdomain).
+							Msg("Failed to register tunnel")
+						return status.Error(codes.Internal, "failed to register tunnel")
+					}
+
+					logger.InfoEvent().
+						Str("tunnel_id", tun.ID.String()).
 						Str("subdomain", subdomain).
-						Msg("Failed to register tunnel")
-					return status.Error(codes.Internal, "failed to register tunnel")
+						Str("saved_name", savedName).
+						Msg("New persistent tunnel created")
 				}
 
 				currentTunnel = tun

@@ -25,13 +25,14 @@ func (c *Client) startProxyStream(ctx context.Context) error {
 	logger.InfoEvent().Msg("Proxy stream established")
 
 	// Send registration control message with tunnel details
-	// Format: subdomain|token|localaddr|publicurl
+	// Format: subdomain|token|localaddr|publicurl|savedname(optional)
 	c.mu.RLock()
-	regData := fmt.Sprintf("%s|%s|%s|%s",
+	regData := fmt.Sprintf("%s|%s|%s|%s|%s",
 		c.getSubdomain(),
 		c.cfg.AuthToken,
 		c.cfg.LocalAddr,
 		c.publicURL,
+		c.cfg.SavedName,
 	)
 	c.mu.RUnlock()
 

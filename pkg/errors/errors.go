@@ -10,6 +10,7 @@ var (
 	ErrUnauthorized              = errors.New("unauthorized")
 	ErrInvalidToken              = errors.New("invalid token")
 	ErrTokenExpired              = errors.New("token expired")
+	ErrUserNotFound              = errors.New("user not found")
 	ErrTunnelNotFound            = errors.New("tunnel not found")
 	ErrSubdomainTaken            = errors.New("subdomain already taken")
 	ErrInvalidSubdomain          = errors.New("invalid subdomain format")
@@ -19,6 +20,7 @@ var (
 	ErrRequestTimeout            = errors.New("request timeout")
 	ErrRateLimited               = errors.New("rate limited")
 	ErrInvalidProtocol           = errors.New("invalid protocol")
+	ErrNoAvailablePorts          = errors.New("no available ports in pool")
 )
 
 // AppError represents an application error with context

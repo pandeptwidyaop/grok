@@ -1,16 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
-import { api, type Tunnel } from '@/lib/api';
 import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
-  TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+  Chip,
+  Link,
+  CircularProgress,
+  Paper,
+} from '@mui/material';
 import { Globe, Activity, ArrowUpDown } from 'lucide-react';
+import { api, type Tunnel } from '@/lib/api';
 
 function TunnelList() {
   const { data: tunnels, isLoading } = useQuery({
@@ -19,7 +25,7 @@ function TunnelList() {
       const response = await api.tunnels.list();
       return response.data;
     },
-    refetchInterval: 3000, // Refresh every 3 seconds
+    // Real-time updates via SSE in Dashboard - no need for polling
   });
 
   const formatBytes = (bytes: number) => {
@@ -37,40 +43,50 @@ function TunnelList() {
   };
 
   const getStatusBadge = (status: string) => {
-    if (!status) return <Badge variant="outline">Unknown</Badge>;
+    if (!status) return <Chip label="Unknown" variant="outlined" size="small" />;
 
     switch (status.toLowerCase()) {
       case 'active':
-        return <Badge variant="default">Active</Badge>;
+        return <Chip label="Active" color="success" size="small" />;
+      case 'offline':
+        return <Chip label="Offline" color="warning" size="small" />;
+      case 'disconnected':
+        return <Chip label="Disconnected" color="error" size="small" />;
       case 'inactive':
-        return <Badge variant="secondary">Inactive</Badge>;
+        return <Chip label="Inactive" color="default" size="small" />;
       default:
-        return <Badge variant="outline">{status}</Badge>;
+        return <Chip label={status} variant="outlined" size="small" />;
     }
   };
 
   const getTypeBadge = (type: string) => {
-    if (!type) return <Badge>Unknown</Badge>;
+    if (!type) return <Chip label="Unknown" size="small" />;
 
-    const colors: Record<string, string> = {
-      http: 'bg-blue-500',
-      https: 'bg-green-500',
-      tcp: 'bg-purple-500',
+    const colors: Record<string, 'primary' | 'success' | 'secondary'> = {
+      http: 'primary',
+      https: 'success',
+      tcp: 'secondary',
     };
     return (
-      <Badge className={colors[type.toLowerCase()] || ''}>
-        {type.toUpperCase()}
-      </Badge>
+      <Chip
+        label={type.toUpperCase()}
+        color={colors[type.toLowerCase()] || 'default'}
+        size="small"
+      />
     );
   };
 
   if (isLoading) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Active Tunnels</CardTitle>
-          <CardDescription>Loading tunnels...</CardDescription>
-        </CardHeader>
+        <CardContent sx={{ py: 8 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <CircularProgress />
+            <Typography variant="body2" color="text.secondary">
+              Loading tunnels...
+            </Typography>
+          </Box>
+        </CardContent>
       </Card>
     );
   }
@@ -78,21 +94,46 @@ function TunnelList() {
   if (!tunnels || tunnels.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Active Tunnels</CardTitle>
-          <CardDescription>
-            No active tunnels. Start a tunnel with the Grok client.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <Globe className="h-16 w-16 mx-auto mb-4 opacity-50" />
-            <p className="text-lg mb-2">No tunnels running</p>
-            <p className="text-sm">
-              Run <code className="bg-muted px-2 py-1 rounded">grok http 3000</code>{' '}
+        <CardContent sx={{ py: 4 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Active Tunnels
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              No active tunnels. Start a tunnel with the Grok client.
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              textAlign: 'center',
+              py: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            <Globe size={64} style={{ opacity: 0.3 }} />
+            <Typography variant="h6" color="text.secondary">
+              No tunnels running
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Run{' '}
+              <Box
+                component="code"
+                sx={{
+                  bgcolor: 'grey.100',
+                  px: 1,
+                  py: 0.5,
+                  borderRadius: 1,
+                  fontFamily: 'monospace',
+                }}
+              >
+                grok http 3000
+              </Box>{' '}
               to create your first tunnel
-            </p>
-          </div>
+            </Typography>
+          </Box>
         </CardContent>
       </Card>
     );
@@ -100,65 +141,111 @@ function TunnelList() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Active Tunnels</CardTitle>
-        <CardDescription>
-          {tunnels.length} tunnel{tunnels.length !== 1 ? 's' : ''} currently active
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Type</TableHead>
-              <TableHead>Public URL</TableHead>
-              <TableHead>Local Address</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Requests</TableHead>
-              <TableHead className="text-right">Data In/Out</TableHead>
-              <TableHead>Connected</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tunnels.map((tunnel: Tunnel) => (
-              <TableRow key={tunnel.id}>
-                <TableCell>{getTypeBadge(tunnel.tunnel_type)}</TableCell>
-                <TableCell>
-                  <a
-                    href={tunnel.public_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline flex items-center gap-2"
-                  >
-                    {tunnel.public_url}
-                    <Globe className="h-4 w-4" />
-                  </a>
-                </TableCell>
-                <TableCell>
-                  <code className="text-sm">{tunnel.local_addr}</code>
-                </TableCell>
-                <TableCell>{getStatusBadge(tunnel.status)}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Activity className="h-4 w-4 text-muted-foreground" />
-                    {(tunnel.requests_count ?? 0).toLocaleString()}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex flex-col items-end text-sm">
-                    <div className="flex items-center gap-1">
-                      <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
-                      {formatBytes(tunnel.bytes_in ?? 0)} / {formatBytes(tunnel.bytes_out ?? 0)}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {formatDate(tunnel.connected_at)}
-                </TableCell>
+      <CardContent sx={{ py: 4 }}>
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Active Tunnels
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {tunnels.length} tunnel{tunnels.length !== 1 ? 's' : ''} currently active
+          </Typography>
+        </Box>
+        <TableContainer component={Paper} variant="outlined">
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Type</TableCell>
+                <TableCell>Name</TableCell>
+                <TableCell>Public URL</TableCell>
+                <TableCell>Local Address</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell align="right">Requests</TableCell>
+                <TableCell align="right">Data In/Out</TableCell>
+                <TableCell>Connected</TableCell>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHead>
+            <TableBody>
+              {tunnels.map((tunnel: Tunnel) => (
+                <TableRow
+                  key={tunnel.id}
+                  sx={{
+                    '&:hover': {
+                      bgcolor: 'action.hover',
+                    },
+                  }}
+                >
+                  <TableCell>{getTypeBadge(tunnel.tunnel_type)}</TableCell>
+                  <TableCell>
+                    {tunnel.saved_name ? (
+                      <Chip
+                        label={tunnel.saved_name}
+                        color="primary"
+                        variant="outlined"
+                        size="small"
+                        sx={{ fontFamily: 'monospace', fontWeight: 500 }}
+                      />
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                        —
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={tunnel.public_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        color: 'primary.main',
+                        textDecoration: 'none',
+                        '&:hover': {
+                          textDecoration: 'underline',
+                        },
+                      }}
+                    >
+                      {tunnel.public_url}
+                      <Globe size={16} />
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    <Box
+                      component="code"
+                      sx={{
+                        fontSize: '0.875rem',
+                        fontFamily: 'monospace',
+                      }}
+                    >
+                      {tunnel.local_addr}
+                    </Box>
+                  </TableCell>
+                  <TableCell>{getStatusBadge(tunnel.status)}</TableCell>
+                  <TableCell align="right">
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                      <Activity size={16} style={{ color: '#9e9e9e' }} />
+                      {(tunnel.requests_count ?? 0).toLocaleString()}
+                    </Box>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.875rem' }}>
+                        <ArrowUpDown size={12} style={{ color: '#9e9e9e' }} />
+                        {formatBytes(tunnel.bytes_in ?? 0)} / {formatBytes(tunnel.bytes_out ?? 0)}
+                      </Box>
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {formatDate(tunnel.connected_at)}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       </CardContent>
     </Card>
   );

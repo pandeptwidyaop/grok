@@ -7,20 +7,35 @@ import (
 	"gorm.io/gorm"
 )
 
+// UserRole represents the role of a user
+type UserRole string
+
+const (
+	RoleSuperAdmin UserRole = "super_admin" // Platform-wide admin, no org affiliation
+	RoleOrgAdmin   UserRole = "org_admin"   // Organization administrator
+	RoleOrgUser    UserRole = "org_user"    // Regular organization user
+)
+
 // User represents a user in the system
 type User struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	Email     string    `gorm:"uniqueIndex;not null"`
-	Password  string    `gorm:"not null"` // bcrypt hash
-	Name      string
-	IsActive  bool      `gorm:"default:true"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	Email     string    `gorm:"uniqueIndex;not null" json:"email"`
+	Password  string    `gorm:"not null" json:"-"` // bcrypt hash, never expose in JSON
+	Name      string    `json:"name"`
+	IsActive  bool      `gorm:"default:true" json:"is_active"`
+
+	// Organization fields
+	OrganizationID *uuid.UUID `gorm:"type:uuid;index" json:"organization_id,omitempty"` // NULL for super_admins
+	Role           UserRole   `gorm:"type:varchar(20);not null;default:'org_user'" json:"role"`
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 
 	// Relationships
-	Tokens  []AuthToken `gorm:"foreignKey:UserID"`
-	Domains []Domain    `gorm:"foreignKey:UserID"`
-	Tunnels []Tunnel    `gorm:"foreignKey:UserID"`
+	Organization *Organization `gorm:"foreignKey:OrganizationID" json:"-"`
+	Tokens       []AuthToken   `gorm:"foreignKey:UserID" json:"-"`
+	Domains      []Domain      `gorm:"foreignKey:UserID" json:"-"`
+	Tunnels      []Tunnel      `gorm:"foreignKey:UserID" json:"-"`
 }
 
 // BeforeCreate hook to set UUID if not provided

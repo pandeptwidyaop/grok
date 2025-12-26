@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/google/uuid"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/auth"
 	"github.com/pandeptwidyaop/grok/internal/server/config"
+	"github.com/pandeptwidyaop/grok/internal/server/proxy"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	"github.com/pandeptwidyaop/grok/internal/server/web/middleware"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
@@ -20,23 +22,90 @@ type Handler struct {
 	db            *gorm.DB
 	tokenService  *auth.TokenService
 	tunnelManager *tunnel.Manager
+	webhookRouter *proxy.WebhookRouter
 	config        *config.Config
 	authMW        *middleware.AuthMiddleware
+	sseBroker     *SSEBroker
 }
 
 // NewHandler creates a new dashboard API handler
-func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tunnel.Manager, cfg *config.Config) *Handler {
-	return &Handler{
+func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tunnel.Manager, webhookRouter *proxy.WebhookRouter, cfg *config.Config) *Handler {
+	h := &Handler{
 		db:            db,
 		tokenService:  tokenService,
 		tunnelManager: tunnelManager,
+		webhookRouter: webhookRouter,
 		config:        cfg,
 		authMW:        middleware.NewAuthMiddleware(cfg.Auth.JWTSecret),
+		sseBroker:     NewSSEBroker(),
 	}
+
+	// Subscribe to tunnel events and broadcast via SSE
+	tunnelManager.OnTunnelEvent(func(event tunnel.TunnelEvent) {
+		// Broadcast tunnel event via SSE
+		h.sseBroker.Broadcast(SSEEvent{
+			Type: string(event.Type),
+			Data: map[string]interface{}{
+				"tunnel_id": event.TunnelID.String(),
+				"tunnel":    event.Tunnel,
+			},
+		})
+	})
+
+	// Subscribe to webhook events and broadcast via SSE
+	if webhookRouter != nil {
+		webhookRouter.OnWebhookEvent(func(event interface{}) {
+			// Type assert to WebhookEvent
+			if webhookEvent, ok := event.(proxy.WebhookEvent); ok {
+				// Broadcast webhook event via SSE
+				h.sseBroker.Broadcast(SSEEvent{
+					Type: string(webhookEvent.Type),
+					Data: map[string]interface{}{
+						"app_id":        webhookEvent.AppID.String(),
+						"request_path":  webhookEvent.RequestPath,
+						"method":        webhookEvent.Method,
+						"status_code":   webhookEvent.StatusCode,
+						"tunnel_count":  webhookEvent.TunnelCount,
+						"success_count": webhookEvent.SuccessCount,
+						"error_message": webhookEvent.ErrorMessage,
+					},
+				})
+			}
+		})
+	}
+
+	return h
+}
+
+// CORSMiddleware adds CORS headers to all responses
+func CORSMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Max-Age", "3600")
+		}
+
+		// Handle preflight OPTIONS request
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // RegisterRoutes registers all API routes
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	// Create organization handler, webhook handler, and RBAC middleware
+	orgHandler := NewOrganizationHandler(h.db, h.config.Server.Domain)
+	webhookHandler := NewWebhookHandler(h.db, h.tunnelManager)
+	rbac := middleware.NewPermissionChecker()
+
 	// Public routes
 	mux.HandleFunc("POST /api/auth/login", h.login)
 
@@ -51,6 +120,75 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/tunnels/{id}/logs", h.authMW.Protect(http.HandlerFunc(h.getTunnelLogs)))
 
 	mux.Handle("GET /api/stats", h.authMW.Protect(http.HandlerFunc(h.getStats)))
+	mux.Handle("GET /api/config", h.authMW.Protect(http.HandlerFunc(h.getConfig)))
+
+	// Organization routes - Super Admin only
+	mux.Handle("POST /api/organizations",
+		h.authMW.Protect(rbac.RequireRole(string(models.RoleSuperAdmin))(http.HandlerFunc(orgHandler.CreateOrganization))))
+	mux.Handle("GET /api/organizations",
+		h.authMW.Protect(rbac.RequireRole(string(models.RoleSuperAdmin))(http.HandlerFunc(orgHandler.ListOrganizations))))
+	mux.Handle("GET /api/organizations/{id}",
+		h.authMW.Protect(rbac.RequireRole(string(models.RoleSuperAdmin))(http.HandlerFunc(orgHandler.GetOrganization))))
+	mux.Handle("PATCH /api/organizations/{id}",
+		h.authMW.Protect(rbac.RequireRole(string(models.RoleSuperAdmin))(http.HandlerFunc(orgHandler.UpdateOrganization))))
+	mux.Handle("DELETE /api/organizations/{id}",
+		h.authMW.Protect(rbac.RequireRole(string(models.RoleSuperAdmin))(http.HandlerFunc(orgHandler.DeleteOrganization))))
+	mux.Handle("PATCH /api/organizations/{id}/toggle",
+		h.authMW.Protect(rbac.RequireRole(string(models.RoleSuperAdmin))(http.HandlerFunc(orgHandler.ToggleOrganization))))
+
+	// Organization user routes - Org Admin + Super Admin
+	mux.Handle("GET /api/organizations/{org_id}/users",
+		h.authMW.Protect(rbac.RequireOrgMembership(rbac.RequireOrgAdmin(http.HandlerFunc(orgHandler.ListOrgUsers)))))
+	mux.Handle("POST /api/organizations/{org_id}/users",
+		h.authMW.Protect(rbac.RequireOrgMembership(rbac.RequireOrgAdmin(http.HandlerFunc(orgHandler.CreateOrgUser)))))
+	mux.Handle("PATCH /api/organizations/{org_id}/users/{user_id}",
+		h.authMW.Protect(rbac.RequireOrgMembership(rbac.RequireOrgAdmin(http.HandlerFunc(orgHandler.UpdateUserRole)))))
+	mux.Handle("DELETE /api/organizations/{org_id}/users/{user_id}",
+		h.authMW.Protect(rbac.RequireOrgMembership(rbac.RequireOrgAdmin(http.HandlerFunc(orgHandler.DeleteOrgUser)))))
+	mux.Handle("POST /api/organizations/{org_id}/users/{user_id}/reset-password",
+		h.authMW.Protect(rbac.RequireOrgMembership(rbac.RequireOrgAdmin(http.HandlerFunc(orgHandler.ResetUserPassword)))))
+
+	// Organization stats and tunnels - Org Admin + Super Admin
+	mux.Handle("GET /api/organizations/{org_id}/stats",
+		h.authMW.Protect(rbac.RequireOrgMembership(rbac.RequireOrgAdmin(http.HandlerFunc(orgHandler.GetOrgStats)))))
+	mux.Handle("GET /api/organizations/{org_id}/tunnels",
+		h.authMW.Protect(rbac.RequireOrgMembership(rbac.RequireOrgAdmin(http.HandlerFunc(orgHandler.ListOrgTunnels)))))
+
+	// Webhook routes - Org membership required
+	// Webhook App Management
+	mux.Handle("POST /api/webhooks/apps",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.CreateApp))))
+	mux.Handle("GET /api/webhooks/apps",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.ListApps))))
+	mux.Handle("GET /api/webhooks/apps/{id}",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.GetApp))))
+	mux.Handle("PATCH /api/webhooks/apps/{id}",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.UpdateApp))))
+	mux.Handle("DELETE /api/webhooks/apps/{id}",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.DeleteApp))))
+	mux.Handle("PATCH /api/webhooks/apps/{id}/toggle",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.ToggleApp))))
+
+	// Webhook Route Management
+	mux.Handle("GET /api/webhooks/apps/{app_id}/routes",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.ListRoutes))))
+	mux.Handle("POST /api/webhooks/apps/{app_id}/routes",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.AddRoute))))
+	mux.Handle("PATCH /api/webhooks/apps/{app_id}/routes/{route_id}",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.UpdateRoute))))
+	mux.Handle("DELETE /api/webhooks/apps/{app_id}/routes/{route_id}",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.DeleteRoute))))
+	mux.Handle("PATCH /api/webhooks/apps/{app_id}/routes/{route_id}/toggle",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.ToggleRoute))))
+
+	// Webhook Events & Stats
+	mux.Handle("GET /api/webhooks/apps/{app_id}/events",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.GetEvents))))
+	mux.Handle("GET /api/webhooks/apps/{app_id}/stats",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.GetStats))))
+
+	// Server-Sent Events (SSE) for real-time updates
+	mux.Handle("GET /api/sse", h.authMW.Protect(http.HandlerFunc(h.HandleSSE)))
 }
 
 // Response helpers
@@ -66,8 +204,33 @@ func respondError(w http.ResponseWriter, status int, message string) {
 
 // Token handlers
 func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
+	// Get claims from context
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	var tokens []models.AuthToken
-	if err := h.db.Find(&tokens).Error; err != nil {
+	query := h.db.Preload("User")
+
+	// Filter by organization for non-super-admins
+	if claims.Role != string(models.RoleSuperAdmin) {
+		// Org admin sees their org's tokens, org user sees only their own
+		if claims.Role == string(models.RoleOrgAdmin) && claims.OrganizationID != nil {
+			// Get all users in the organization first
+			var userIDs []string
+			h.db.Model(&models.User{}).
+				Where("organization_id = ?", *claims.OrganizationID).
+				Pluck("id", &userIDs)
+			query = query.Where("user_id IN ?", userIDs)
+		} else {
+			// Org user sees only their own tokens
+			query = query.Where("user_id = ?", claims.UserID)
+		}
+	}
+
+	if err := query.Find(&tokens).Error; err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to list tokens")
 		respondError(w, http.StatusInternalServerError, "Failed to list tokens")
 		return
@@ -82,6 +245,13 @@ type createTokenRequest struct {
 }
 
 func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
+	// Get claims from context
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	var req createTokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid request body")
@@ -93,23 +263,15 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get or create system user
-	var user models.User
-	if err := h.db.Where("email = ?", "system@grok.local").First(&user).Error; err != nil {
-		// Create system user if not exists
-		user = models.User{
-			Email:    "system@grok.local",
-			Name:     "System User",
-			IsActive: true,
-		}
-		if err := h.db.Create(&user).Error; err != nil {
-			logger.ErrorEvent().Err(err).Msg("Failed to create system user")
-			respondError(w, http.StatusInternalServerError, "Failed to create user")
-			return
-		}
+	// Parse user ID from claims
+	userID, err := uuid.Parse(claims.UserID)
+	if err != nil {
+		logger.ErrorEvent().Err(err).Msg("Invalid user ID in claims")
+		respondError(w, http.StatusInternalServerError, "Invalid user ID")
+		return
 	}
 
-	token, rawToken, err := h.tokenService.CreateToken(r.Context(), user.ID, req.Name, nil)
+	token, rawToken, err := h.tokenService.CreateToken(r.Context(), userID, req.Name, nil)
 	if err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to create token")
 		respondError(w, http.StatusInternalServerError, "Failed to create token")
@@ -172,8 +334,30 @@ func (h *Handler) toggleToken(w http.ResponseWriter, r *http.Request) {
 
 // Tunnel handlers
 func (h *Handler) listTunnels(w http.ResponseWriter, r *http.Request) {
+	// Get claims from context
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	var tunnels []models.Tunnel
-	if err := h.db.Where("status = ?", "active").Find(&tunnels).Error; err != nil {
+	// Show both active and offline tunnels (all persistent tunnels)
+	query := h.db.Where("status IN (?)", []string{"active", "offline"}).
+		Order("status ASC, connected_at DESC") // Active first, then by recent activity
+
+	// Filter by organization for non-super-admins
+	if claims.Role != string(models.RoleSuperAdmin) {
+		// Org admin sees their org's tunnels, org user sees only their own
+		if claims.Role == string(models.RoleOrgAdmin) && claims.OrganizationID != nil {
+			query = query.Where("organization_id = ?", *claims.OrganizationID)
+		} else {
+			// Org user sees only their own tunnels
+			query = query.Where("user_id = ?", claims.UserID)
+		}
+	}
+
+	if err := query.Find(&tunnels).Error; err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to list tunnels")
 		respondError(w, http.StatusInternalServerError, "Failed to list tunnels")
 		return
@@ -227,35 +411,60 @@ func (h *Handler) getTunnelLogs(w http.ResponseWriter, r *http.Request) {
 
 // Stats handler
 func (h *Handler) getStats(w http.ResponseWriter, r *http.Request) {
+	// Get claims from context
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	var stats struct {
-		TotalTunnels   int64 `json:"total_tunnels"`
-		ActiveTunnels  int64 `json:"active_tunnels"`
-		TotalRequests  int64 `json:"total_requests"`
-		TotalBytesIn   int64 `json:"total_bytes_in"`
-		TotalBytesOut  int64 `json:"total_bytes_out"`
+		TotalTunnels  int64 `json:"total_tunnels"`
+		ActiveTunnels int64 `json:"active_tunnels"`
+		TotalRequests int64 `json:"total_requests"`
+		TotalBytesIn  int64 `json:"total_bytes_in"`
+		TotalBytesOut int64 `json:"total_bytes_out"`
+	}
+
+	// Build base query with org filtering
+	baseQuery := h.db.Model(&models.Tunnel{})
+	if claims.Role != string(models.RoleSuperAdmin) {
+		// Org admin sees their org's stats, org user sees only their own
+		if claims.Role == string(models.RoleOrgAdmin) && claims.OrganizationID != nil {
+			baseQuery = baseQuery.Where("organization_id = ?", *claims.OrganizationID)
+		} else {
+			// Org user sees only their own stats
+			baseQuery = baseQuery.Where("user_id = ?", claims.UserID)
+		}
 	}
 
 	// Count tunnels
-	h.db.Model(&models.Tunnel{}).Count(&stats.TotalTunnels)
-	h.db.Model(&models.Tunnel{}).Where("status = ?", "active").Count(&stats.ActiveTunnels)
+	baseQuery.Count(&stats.TotalTunnels)
+
+	activeQuery := h.db.Model(&models.Tunnel{}).Where("status = ?", "active")
+	if claims.Role != string(models.RoleSuperAdmin) {
+		if claims.Role == string(models.RoleOrgAdmin) && claims.OrganizationID != nil {
+			activeQuery = activeQuery.Where("organization_id = ?", *claims.OrganizationID)
+		} else {
+			activeQuery = activeQuery.Where("user_id = ?", claims.UserID)
+		}
+	}
+	activeQuery.Count(&stats.ActiveTunnels)
 
 	// Sum request stats from tunnels
-	h.db.Model(&models.Tunnel{}).
-		Select("COALESCE(SUM(requests_count), 0)").
-		Row().
-		Scan(&stats.TotalRequests)
-
-	h.db.Model(&models.Tunnel{}).
-		Select("COALESCE(SUM(bytes_in), 0)").
-		Row().
-		Scan(&stats.TotalBytesIn)
-
-	h.db.Model(&models.Tunnel{}).
-		Select("COALESCE(SUM(bytes_out), 0)").
-		Row().
-		Scan(&stats.TotalBytesOut)
+	baseQuery.Select("COALESCE(SUM(requests_count), 0)").Row().Scan(&stats.TotalRequests)
+	baseQuery.Select("COALESCE(SUM(bytes_in), 0)").Row().Scan(&stats.TotalBytesIn)
+	baseQuery.Select("COALESCE(SUM(bytes_out), 0)").Row().Scan(&stats.TotalBytesOut)
 
 	respondJSON(w, http.StatusOK, stats)
+}
+
+// Config handler
+func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
+	config := map[string]interface{}{
+		"domain": h.config.Server.Domain,
+	}
+	respondJSON(w, http.StatusOK, config)
 }
 
 // Auth handlers
@@ -266,8 +475,11 @@ type loginRequest struct {
 }
 
 type loginResponse struct {
-	Token string `json:"token"`
-	User  string `json:"user"`
+	Token            string  `json:"token"`
+	User             string  `json:"user"`
+	Role             string  `json:"role"`
+	OrganizationID   *string `json:"organization_id,omitempty"`
+	OrganizationName *string `json:"organization_name,omitempty"`
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -283,9 +495,9 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check against admin credentials from database
+	// Load user with organization
 	var user models.User
-	if err := h.db.Where("email = ?", req.Username).First(&user).Error; err != nil {
+	if err := h.db.Preload("Organization").Where("email = ?", req.Username).First(&user).Error; err != nil {
 		respondError(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
@@ -302,8 +514,24 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate JWT token
-	token, err := h.authMW.GenerateToken(user.Email)
+	// Prepare org_id for token
+	var orgIDStr *string
+	var orgName *string
+	if user.OrganizationID != nil {
+		orgIDString := user.OrganizationID.String()
+		orgIDStr = &orgIDString
+		if user.Organization != nil {
+			orgName = &user.Organization.Name
+		}
+	}
+
+	// Generate JWT token with role and org_id
+	token, err := h.authMW.GenerateToken(
+		user.ID.String(),
+		user.Email,
+		string(user.Role),
+		orgIDStr,
+	)
 	if err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to generate token")
 		respondError(w, http.StatusInternalServerError, "Failed to generate token")
@@ -311,7 +539,10 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, loginResponse{
-		Token: token,
-		User:  user.Email,
+		Token:            token,
+		User:             user.Email,
+		Role:             string(user.Role),
+		OrganizationID:   orgIDStr,
+		OrganizationName: orgName,
 	})
 }

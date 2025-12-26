@@ -57,10 +57,15 @@ func Connect(cfg Config) (*gorm.DB, error) {
 // AutoMigrate runs automatic migrations for all models
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
+		&models.Organization{}, // Must be first (parent table)
 		&models.User{},
 		&models.AuthToken{},
 		&models.Domain{},
 		&models.Tunnel{},
 		&models.RequestLog{},
+		// Webhook system models
+		&models.WebhookApp{},
+		&models.WebhookRoute{},
+		&models.WebhookEvent{},
 	)
 }

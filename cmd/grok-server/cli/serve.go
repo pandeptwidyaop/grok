@@ -58,10 +58,12 @@ func initAdminUser(database *gorm.DB, cfg *config.Config) error {
 		}
 
 		adminUser = models.User{
-			Email:    cfg.Auth.AdminUsername,
-			Password: hashedPassword,
-			Name:     "Administrator",
-			IsActive: true,
+			Email:          cfg.Auth.AdminUsername,
+			Password:       hashedPassword,
+			Name:           "Administrator",
+			IsActive:       true,
+			Role:           models.RoleSuperAdmin,
+			OrganizationID: nil, // Super admin has no organization
 		}
 
 		if err := database.Create(&adminUser).Error; err != nil {
@@ -179,10 +181,17 @@ func runServer() error {
 
 	// Initialize services
 	tokenService := auth.NewTokenService(database)
+
+	// Determine if TLS is enabled
+	tlsEnabled := tlsMgr != nil && tlsMgr.IsEnabled()
+
 	tunnelManager := tunnel.NewManager(
 		database,
 		cfg.Server.Domain,
 		cfg.Tunnels.MaxPerUser,
+		tlsEnabled,
+		cfg.Server.HTTPPort,
+		cfg.Server.HTTPSPort,
 	)
 
 	// Create gRPC server with interceptors
@@ -224,7 +233,8 @@ func runServer() error {
 
 	// Setup HTTP reverse proxy
 	router := proxy.NewRouter(tunnelManager, cfg.Server.Domain)
-	httpProxy := proxy.NewHTTPProxy(router, tunnelManager)
+	webhookRouter := proxy.NewWebhookRouter(database, tunnelManager, cfg.Server.Domain)
+	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager)
 
 	// Create HTTP handler (with autocert support if enabled)
 	var httpHandler http.Handler = httpProxy
@@ -256,8 +266,8 @@ func runServer() error {
 	// Setup Dashboard API server
 	apiMux := http.NewServeMux()
 
-	// Register API handlers
-	apiHandler := api.NewHandler(database, tokenService, tunnelManager, cfg)
+	// Register API handlers (pass webhookRouter for SSE event broadcasting)
+	apiHandler := api.NewHandler(database, tokenService, tunnelManager, webhookRouter, cfg)
 	apiHandler.RegisterRoutes(apiMux)
 
 	// Serve embedded dashboard
@@ -270,7 +280,7 @@ func runServer() error {
 
 	apiServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Server.APIPort),
-		Handler:      apiMux,
+		Handler:      api.CORSMiddleware(apiMux), // Wrap with CORS middleware
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	}

@@ -32,6 +32,8 @@ type ClientConfig struct {
 	LocalAddr       string
 	Subdomain       string
 	Protocol        string
+	SavedName       string                  // Saved tunnel name (optional, for persistent tunnels)
+	WebhookAppID    string                  // Webhook app ID (optional, for webhook tunnels)
 	ReconnectCfg    config.ReconnectConfig
 }
 
@@ -259,11 +261,18 @@ func (c *Client) createTunnel(ctx context.Context) error {
 		protocol = tunnelv1.TunnelProtocol_TCP
 	}
 
+	// Use SavedName as subdomain if provided (for reconnection with same domain)
+	// Otherwise use custom Subdomain if provided
+	requestedSubdomain := c.cfg.Subdomain
+	if c.cfg.SavedName != "" {
+		requestedSubdomain = c.cfg.SavedName
+	}
+
 	req := &tunnelv1.CreateTunnelRequest{
 		AuthToken:    c.cfg.AuthToken,
 		Protocol:     protocol,
 		LocalAddress: c.cfg.LocalAddr,
-		Subdomain:    c.cfg.Subdomain,
+		Subdomain:    requestedSubdomain,
 	}
 
 	resp, err := c.tunnelSvc.CreateTunnel(ctx, req)

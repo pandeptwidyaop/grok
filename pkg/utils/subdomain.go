@@ -34,11 +34,31 @@ var (
 		"smtp":      true,
 		"ftp":       true,
 		"localhost": true,
-		// "test":      true,  // Removed - allow "test" subdomain
+		"test":      true, // Removed - allow "test" subdomain
 		"dev":       true,
 		"staging":   true,
 		"prod":      true,
 		"grpc":      true,
+		"webhook":   true,
+	}
+
+	// Docker-style name components
+	adjectives = []string{
+		"happy", "silly", "peaceful", "brave", "clever",
+		"kind", "gentle", "bright", "swift", "noble",
+		"wise", "cool", "calm", "bold", "eager",
+		"keen", "smart", "witty", "sharp", "quick",
+		"jolly", "merry", "lucky", "sunny", "cozy",
+		"fancy", "grand", "proud", "royal", "prime",
+	}
+
+	nouns = []string{
+		"panda", "tiger", "eagle", "dolphin", "falcon",
+		"phoenix", "dragon", "panther", "cobra", "hawk",
+		"wolf", "lion", "bear", "shark", "cheetah",
+		"fox", "owl", "raven", "lynx", "orca",
+		"jaguar", "viper", "condor", "bison", "moose",
+		"badger", "otter", "mink", "skunk", "seal",
 	}
 )
 
@@ -93,4 +113,22 @@ func IsReservedSubdomain(subdomain string) bool {
 // NormalizeSubdomain normalizes a subdomain (lowercase, trim)
 func NormalizeSubdomain(subdomain string) string {
 	return strings.ToLower(strings.TrimSpace(subdomain))
+}
+
+// GenerateRandomName generates a Docker-style random name (adjective-noun)
+// Examples: happy-panda, brave-eagle, clever-dolphin
+func GenerateRandomName() (string, error) {
+	// Pick random adjective
+	adjIdx, err := rand.Int(rand.Reader, big.NewInt(int64(len(adjectives))))
+	if err != nil {
+		return "", err
+	}
+
+	// Pick random noun
+	nounIdx, err := rand.Int(rand.Reader, big.NewInt(int64(len(nouns))))
+	if err != nil {
+		return "", err
+	}
+
+	return adjectives[adjIdx.Int64()] + "-" + nouns[nounIdx.Int64()], nil
 }

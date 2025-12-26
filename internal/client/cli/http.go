@@ -15,6 +15,7 @@ import (
 
 var (
 	httpSubdomain string
+	httpSavedName string
 )
 
 // httpCmd represents the http command
@@ -24,9 +25,10 @@ var httpCmd = &cobra.Command{
 	Long: `Create an HTTP tunnel to expose a local HTTP server to the internet.
 
 Examples:
-  grok http 3000                    # Tunnel to localhost:3000
-  grok http 8080 --subdomain demo   # Custom subdomain demo.grok.io
-  grok http localhost:3000          # Explicit host and port`,
+  grok http 3000                       # Tunnel to localhost:3000 (auto-generated name)
+  grok http 8080 --subdomain demo      # Custom subdomain demo.grok.io
+  grok http 3000 --name my-api         # Named persistent tunnel
+  grok http localhost:3000             # Explicit host and port`,
 	Args: cobra.ExactArgs(1),
 	RunE: runHTTPTunnel,
 }
@@ -35,6 +37,7 @@ func init() {
 	rootCmd.AddCommand(httpCmd)
 
 	httpCmd.Flags().StringVarP(&httpSubdomain, "subdomain", "s", "", "request custom subdomain")
+	httpCmd.Flags().StringVarP(&httpSavedName, "name", "n", "", "saved tunnel name (auto-generated if not provided)")
 }
 
 func runHTTPTunnel(cmd *cobra.Command, args []string) error {
@@ -44,6 +47,7 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 	logger.InfoEvent().
 		Str("local_addr", localAddr).
 		Str("subdomain", httpSubdomain).
+		Str("saved_name", httpSavedName).
 		Msg("Starting HTTP tunnel")
 
 	// Get config with overrides from flags
@@ -65,6 +69,7 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 		AuthToken:     cfg.Auth.Token,
 		LocalAddr:     localAddr,
 		Subdomain:     httpSubdomain,
+		SavedName:     httpSavedName,
 		Protocol:      "http",
 		ReconnectCfg:  cfg.Reconnect,
 	})

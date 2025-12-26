@@ -11,11 +11,12 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: 5173, // Vite default port (avoid conflict with API)
     proxy: {
       '/api': {
-        target: 'http://localhost:4040',
+        target: 'http://localhost:4040', // API server port from server.yaml
         changeOrigin: true,
+        ws: true, // Enable WebSocket proxying for SSE
       },
     },
   },
