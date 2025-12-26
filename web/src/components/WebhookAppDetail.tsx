@@ -216,10 +216,12 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
     }
   }
 
-  // Filter available tunnels (exclude already added ones)
+  // Filter available tunnels (exclude already added ones and TCP tunnels)
   const availableTunnels =
     tunnels?.filter(
-      (tunnel: Tunnel) => !routes?.some((route: WebhookRoute) => route.tunnel_id === tunnel.id)
+      (tunnel: Tunnel) =>
+        !routes?.some((route: WebhookRoute) => route.tunnel_id === tunnel.id) &&
+        tunnel.tunnel_type?.toLowerCase() !== 'tcp'
     ) || [];
 
   // Get health status from tunnel's online/offline status
@@ -561,9 +563,23 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
       <Dialog open={addRouteDialogOpen} onClose={() => setAddRouteDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add Webhook Route</DialogTitle>
         <DialogContent>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Add a tunnel to receive webhook broadcasts
           </Typography>
+          <Box
+            sx={{
+              mb: 3,
+              p: 2,
+              borderRadius: 1,
+              bgcolor: 'info.lighter',
+              border: '1px solid',
+              borderColor: 'info.light',
+            }}
+          >
+            <Typography variant="body2" color="info.main" sx={{ fontWeight: 500 }}>
+              ℹ️ Only HTTP tunnels are supported for webhook routing. TCP tunnels cannot be added as webhook routes.
+            </Typography>
+          </Box>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <FormControl fullWidth>
               <InputLabel>Tunnel</InputLabel>
