@@ -293,12 +293,14 @@ func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
 	response := make([]TokenResponse, len(tokens))
 	for i, token := range tokens {
 		resp := TokenResponse{
-			AuthToken:  token,
-			OwnerEmail: token.User.Email,
-			OwnerName:  token.User.Name,
+			AuthToken: token,
 		}
-		if token.User.Organization != nil {
-			resp.OrganizationName = &token.User.Organization.Name
+		if token.User.ID != uuid.Nil {
+			resp.OwnerEmail = token.User.Email
+			resp.OwnerName = token.User.Name
+			if token.User.Organization != nil {
+				resp.OrganizationName = &token.User.Organization.Name
+			}
 		}
 		response[i] = resp
 	}
@@ -443,9 +445,11 @@ func (h *Handler) listTunnels(w http.ResponseWriter, r *http.Request) {
 	response := make([]TunnelResponse, len(tunnels))
 	for i, tun := range tunnels {
 		resp := TunnelResponse{
-			Tunnel:     tun,
-			OwnerEmail: tun.User.Email,
-			OwnerName:  tun.User.Name,
+			Tunnel: tun,
+		}
+		if tun.User != nil {
+			resp.OwnerEmail = tun.User.Email
+			resp.OwnerName = tun.User.Name
 		}
 		if tun.Organization != nil {
 			resp.OrganizationName = &tun.Organization.Name

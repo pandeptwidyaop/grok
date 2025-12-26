@@ -35,7 +35,7 @@ func NewTCPForwarder(localAddr string) *TCPForwarder {
 }
 
 // Forward forwards TCP data to local service and returns whether to start read loop.
-func (f *TCPForwarder) Forward(ctx context.Context, requestID string, data *tunnelv1.TCPData, sendResponse func(*tunnelv1.TCPData) error) (startReadLoop bool, err error) {
+func (f *TCPForwarder) Forward(ctx context.Context, requestID string, data *tunnelv1.TCPData, _ func(*tunnelv1.TCPData) error) (startReadLoop bool, err error) {
 	// Handle connection close signal (empty data)
 	if len(data.Data) == 0 {
 		logger.DebugEvent().
@@ -229,7 +229,7 @@ func (f *TCPForwarder) closeConnection(requestID string) {
 
 // Close closes all connections.
 func (f *TCPForwarder) Close() {
-	f.connections.Range(func(key, value interface{}) bool {
+	f.connections.Range(func(key, _ interface{}) bool {
 		requestID, ok := key.(string)
 		if !ok {
 			return true // Skip invalid entries

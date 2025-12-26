@@ -17,12 +17,12 @@ type Domain struct {
 	CreatedAt      time.Time
 
 	// Relationships
-	User         User          `gorm:"foreignKey:UserID"`
+	User         *User         `gorm:"foreignKey:UserID"`
 	Organization *Organization `gorm:"foreignKey:OrganizationID"`
 }
 
 // BeforeCreate hook to set UUID if not provided.
-func (d *Domain) BeforeCreate(tx *gorm.DB) error {
+func (d *Domain) BeforeCreate(_ *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
 	}

@@ -44,7 +44,7 @@ func init() {
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Show version information",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			fmt.Printf("Grok Server\n")
 			fmt.Printf("  Version:    %s\n", version)
 			fmt.Printf("  Build Time: %s\n", buildTime)

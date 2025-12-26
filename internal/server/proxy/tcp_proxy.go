@@ -187,7 +187,7 @@ func (tp *TCPProxy) connectionToStream(
 	conn net.Conn,
 	tun *tunnel.Tunnel,
 	connID string,
-	remoteAddr string,
+	_ string,
 ) {
 	buffer := make([]byte, 32*1024) // 32KB buffer
 

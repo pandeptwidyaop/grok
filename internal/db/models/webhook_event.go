@@ -32,7 +32,7 @@ type WebhookEvent struct {
 }
 
 // BeforeCreate sets UUID if not already set.
-func (w *WebhookEvent) BeforeCreate(tx *gorm.DB) error {
+func (w *WebhookEvent) BeforeCreate(_ *gorm.DB) error {
 	if w.ID == uuid.Nil {
 		w.ID = uuid.New()
 	}

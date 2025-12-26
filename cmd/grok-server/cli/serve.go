@@ -40,7 +40,7 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the Grok server",
 	Long:  `Start the Grok tunnel server with gRPC, HTTP proxy, and web dashboard.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		return runServer()
 	},
 }

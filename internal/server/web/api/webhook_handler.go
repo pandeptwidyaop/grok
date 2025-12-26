@@ -177,13 +177,18 @@ func (wh *WebhookHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 
 	response := make([]AppResponse, len(apps))
 	for i, app := range apps {
-		response[i] = AppResponse{
-			WebhookApp:       app,
-			WebhookURL:       wh.buildWebhookURL(&app),
-			OwnerName:        app.User.Name,
-			OwnerEmail:       app.User.Email,
-			OrganizationName: app.Organization.Name,
+		resp := AppResponse{
+			WebhookApp: app,
+			WebhookURL: wh.buildWebhookURL(&app),
 		}
+		if app.User != nil {
+			resp.OwnerName = app.User.Name
+			resp.OwnerEmail = app.User.Email
+		}
+		if app.Organization != nil {
+			resp.OrganizationName = app.Organization.Name
+		}
+		response[i] = resp
 	}
 
 	respondJSON(w, http.StatusOK, response)

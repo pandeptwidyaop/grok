@@ -35,7 +35,7 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 		httpClient: &http.Client{
 			Timeout:   30 * time.Second,
 			Transport: transport,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				// Don't follow redirects
 				return http.ErrUseLastResponse
 			},

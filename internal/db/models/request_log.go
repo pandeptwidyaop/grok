@@ -27,7 +27,7 @@ type RequestLog struct {
 }
 
 // BeforeCreate hook to set UUID.
-func (r *RequestLog) BeforeCreate(tx *gorm.DB) error {
+func (r *RequestLog) BeforeCreate(_ *gorm.DB) error {
 	if r.ID == uuid.Nil {
 		r.ID = uuid.New()
 	}

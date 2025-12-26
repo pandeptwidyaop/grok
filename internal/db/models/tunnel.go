@@ -40,14 +40,14 @@ type Tunnel struct {
 	LastActivityAt time.Time  `json:"last_activity_at"`
 
 	// Relationships - omit from JSON to avoid nested data
-	User         User          `gorm:"foreignKey:UserID" json:"-"`
-	Token        AuthToken     `gorm:"foreignKey:TokenID" json:"-"`
+	User         *User         `gorm:"foreignKey:UserID" json:"-"`
+	Token        *AuthToken    `gorm:"foreignKey:TokenID" json:"-"`
 	Domain       *Domain       `gorm:"foreignKey:DomainID" json:"-"`
 	Organization *Organization `gorm:"foreignKey:OrganizationID" json:"-"`
 }
 
 // BeforeCreate hook to set UUID and timestamps.
-func (t *Tunnel) BeforeCreate(tx *gorm.DB) error {
+func (t *Tunnel) BeforeCreate(_ *gorm.DB) error {
 	if t.ID == uuid.Nil {
 		t.ID = uuid.New()
 	}

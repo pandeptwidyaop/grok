@@ -52,7 +52,7 @@ Examples:
   # Generate with 2 year validity
   grok-server gencert --days 730
 `,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		return generateCertificate()
 	},
 }

@@ -100,7 +100,7 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 }
 
 // parseLocalAddr converts port or host:port to full address.
-func parseLocalAddr(addr string, protocol string) string {
+func parseLocalAddr(addr string, _ string) string {
 	// If it's just a number, treat as port
 	if port, err := strconv.Atoi(addr); err == nil {
 		return fmt.Sprintf("localhost:%d", port)

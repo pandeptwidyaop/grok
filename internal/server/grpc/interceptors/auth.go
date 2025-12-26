@@ -16,6 +16,14 @@ const (
 	authorizationKey = "authorization"
 )
 
+// Context key types for storing auth data.
+type contextKey string
+
+const (
+	userIDKey  contextKey = "user_id"
+	tokenIDKey contextKey = "token_id"
+)
+
 // AuthInterceptor validates authentication tokens.
 func AuthInterceptor(tokenService *auth.TokenService) grpc.UnaryServerInterceptor {
 	return func(
@@ -50,8 +58,8 @@ func AuthInterceptor(tokenService *auth.TokenService) grpc.UnaryServerIntercepto
 		}
 
 		// Add user info to context
-		ctx = context.WithValue(ctx, "user_id", authToken.UserID)
-		ctx = context.WithValue(ctx, "token_id", authToken.ID)
+		ctx = context.WithValue(ctx, userIDKey, authToken.UserID)
+		ctx = context.WithValue(ctx, tokenIDKey, authToken.ID)
 
 		return handler(ctx, req)
 	}
@@ -95,7 +103,7 @@ func StreamAuthInterceptor(tokenService *auth.TokenService) grpc.StreamServerInt
 		// Create wrapped stream with auth context
 		wrappedStream := &authServerStream{
 			ServerStream: stream,
-			ctx:          context.WithValue(ctx, "user_id", authToken.UserID),
+			ctx:          context.WithValue(ctx, userIDKey, authToken.UserID),
 		}
 
 		return handler(srv, wrappedStream)

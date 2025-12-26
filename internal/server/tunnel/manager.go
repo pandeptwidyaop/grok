@@ -56,7 +56,6 @@ type Manager struct {
 	httpsPort         int           // HTTPS port (default 443)
 	portPool          *tcp.PortPool // TCP port pool for TCP tunnels
 	tcpProxy          TCPProxy      // TCP proxy for starting/stopping listeners
-	mu                sync.RWMutex
 	eventHandlers     []TunnelEventHandler
 	eventMu           sync.RWMutex
 }
@@ -498,7 +497,7 @@ func (m *Manager) SaveTunnelStats(ctx context.Context, tunnelID uuid.UUID) error
 func (m *Manager) GetUserTunnels(userID uuid.UUID) []*Tunnel {
 	var tunnels []*Tunnel
 
-	m.tunnelsByID.Range(func(key, value interface{}) bool {
+	m.tunnelsByID.Range(func(_ interface{}, value interface{}) bool {
 		tunnel, ok := value.(*Tunnel)
 		if !ok {
 			return true // Skip invalid entries
@@ -775,7 +774,7 @@ func (m *Manager) startPeriodicStatsUpdater() {
 
 	for range ticker.C {
 		// Get all active tunnels and broadcast their stats
-		m.tunnelsByID.Range(func(key, value interface{}) bool {
+		m.tunnelsByID.Range(func(_ interface{}, value interface{}) bool {
 			tunnel, ok := value.(*Tunnel)
 			if !ok {
 				return true // Skip invalid entries

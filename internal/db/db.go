@@ -29,9 +29,9 @@ func Connect(cfg Config) (*gorm.DB, error) {
 
 	switch strings.ToLower(cfg.Driver) {
 	case "sqlite":
-		// SQLite connection
+		// SQLite connection with datetime parsing enabled
 		// cfg.Database should be file path, e.g., "grok.db" or ":memory:" for in-memory
-		dialector = sqlite.Open(cfg.Database)
+		dialector = sqlite.Open(cfg.Database + "?_time_format=sqlite")
 
 	case "postgres", "postgresql":
 		// PostgreSQL connection

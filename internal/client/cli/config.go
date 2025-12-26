@@ -24,7 +24,7 @@ var setTokenCmd = &cobra.Command{
 Example:
   grok config set-token grok_abc123def456...`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		token := args[0]
 
 		if err := config.SaveToken(token); err != nil {
@@ -54,7 +54,7 @@ Examples:
   grok config set-server cloudtunnel.id:8080
   grok config set-server localhost:4443`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		addr := args[0]
 
 		// Add default port if not specified
@@ -102,7 +102,7 @@ Examples:
   grok config set-tls-cert certs/server.crt
   grok config set-tls-cert /path/to/ca-bundle.crt`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		certPath := args[0]
 
 		if err := config.SetTLSCert(certPath); err != nil {
@@ -134,7 +134,7 @@ Examples:
   grok config set-tls-insecure true   # Enable insecure mode (dev only)
   grok config set-tls-insecure false  # Disable insecure mode`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		insecureStr := args[0]
 		insecure := insecureStr == "true"
 
@@ -170,7 +170,7 @@ will be used to verify the server.
 
 Example:
   grok config enable-tls`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		if err := config.EnableTLS(); err != nil {
 			return fmt.Errorf("failed to enable TLS: %w", err)
 		}
@@ -194,7 +194,7 @@ Only use this for local development when connecting to localhost.
 
 Example:
   grok config disable-tls`,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		if err := config.DisableTLS(); err != nil {
 			return fmt.Errorf("failed to disable TLS: %w", err)
 		}

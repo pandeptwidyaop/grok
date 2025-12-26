@@ -43,7 +43,7 @@ type User struct {
 }
 
 // BeforeCreate hook to set UUID if not provided.
-func (u *User) BeforeCreate(tx *gorm.DB) error {
+func (u *User) BeforeCreate(_ *gorm.DB) error {
 	if u.ID == uuid.Nil {
 		u.ID = uuid.New()
 	}

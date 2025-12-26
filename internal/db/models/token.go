@@ -21,11 +21,11 @@ type AuthToken struct {
 	CreatedAt  time.Time      `json:"created_at"`
 
 	// Relationships - omit from JSON
-	User User `gorm:"foreignKey:UserID" json:"-"`
+	User *User `gorm:"foreignKey:UserID" json:"-"`
 }
 
 // BeforeCreate hook to set UUID if not provided.
-func (t *AuthToken) BeforeCreate(tx *gorm.DB) error {
+func (t *AuthToken) BeforeCreate(_ *gorm.DB) error {
 	if t.ID == uuid.Nil {
 		t.ID = uuid.New()
 	}

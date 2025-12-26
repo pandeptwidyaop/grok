@@ -500,9 +500,3 @@ func (s *TunnelService) processRequests(ctx context.Context, tun *tunnel.Tunnel)
 		}
 	}
 }
-
-// generateTunnelID generates a unique tunnel ID.
-func generateTunnelID() string {
-	id, _ := utils.GenerateRandomToken(16)
-	return id
-}

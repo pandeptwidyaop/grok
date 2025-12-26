@@ -21,14 +21,14 @@ type WebhookApp struct {
 	UpdatedAt time.Time `json:"updated_at"`
 
 	// Relationships
-	Organization Organization   `gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" json:"-"`
-	User         User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+	Organization *Organization  `gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" json:"-"`
+	User         *User          `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
 	Routes       []WebhookRoute `gorm:"foreignKey:WebhookAppID" json:"routes,omitempty"`
 	Events       []WebhookEvent `gorm:"foreignKey:WebhookAppID" json:"events,omitempty"`
 }
 
 // BeforeCreate sets UUID if not already set.
-func (w *WebhookApp) BeforeCreate(tx *gorm.DB) error {
+func (w *WebhookApp) BeforeCreate(_ *gorm.DB) error {
 	if w.ID == uuid.Nil {
 		w.ID = uuid.New()
 	}

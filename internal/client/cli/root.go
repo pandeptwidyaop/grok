@@ -31,7 +31,7 @@ Example usage:
   grok http 8080 --subdomain demo   # Create tunnel with custom subdomain
   grok tcp 22                       # Create TCP tunnel to localhost:22
   grok config set-token <token>     # Configure auth token`,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+	PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 		// Skip config loading for config and version commands
 		// Check both the command name and its parent
 		cmdName := cmd.Name()

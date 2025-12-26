@@ -338,7 +338,7 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 }
 
 // logWebhookEvent logs a webhook event to the database.
-func (p *HTTPProxy) logWebhookEvent(appID uuid.UUID, r *http.Request, result *BroadcastResult, duration time.Duration, err error) {
+func (p *HTTPProxy) logWebhookEvent(appID uuid.UUID, r *http.Request, result *BroadcastResult, duration time.Duration, _ error) {
 	// This would be implemented to save webhook events to database
 	// For now, just log to console
 	logger.DebugEvent().
@@ -384,7 +384,7 @@ func (p *HTTPProxy) saveRequestLog(tunnelID uuid.UUID, r *http.Request, statusCo
 
 // HealthCheckHandler returns a simple health check handler.
 func HealthCheckHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "OK")
 	}

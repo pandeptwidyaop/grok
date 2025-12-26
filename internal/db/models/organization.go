@@ -24,7 +24,7 @@ type Organization struct {
 }
 
 // BeforeCreate hook to set UUID if not provided.
-func (o *Organization) BeforeCreate(tx *gorm.DB) error {
+func (o *Organization) BeforeCreate(_ *gorm.DB) error {
 	if o.ID == uuid.Nil {
 		o.ID = uuid.New()
 	}

@@ -72,8 +72,6 @@ type WebhookRouter struct {
 	// Event handlers
 	eventHandlers []WebhookEventHandler
 	eventMu       sync.RWMutex
-
-	mu sync.RWMutex
 }
 
 // WebhookRouteCache holds cached webhook routing information.
@@ -575,7 +573,7 @@ func (wr *WebhookRouter) InvalidateCache(orgSubdomain, appName string) {
 
 // InvalidateAllCache invalidates all cached webhook routes.
 func (wr *WebhookRouter) InvalidateAllCache() {
-	wr.webhookCache.Range(func(key, value interface{}) bool {
+	wr.webhookCache.Range(func(key, _ interface{}) bool {
 		wr.webhookCache.Delete(key)
 		return true
 	})

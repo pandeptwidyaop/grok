@@ -31,7 +31,7 @@ func init() {
 	rootCmd.AddCommand(updateCmd)
 }
 
-func runUpdate(cmd *cobra.Command, args []string) error {
+func runUpdate(_ *cobra.Command, _ []string) error {
 	logger.InfoEvent().Msg("Checking for updates...")
 
 	// Create updater

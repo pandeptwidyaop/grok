@@ -51,7 +51,6 @@ type Client struct {
 	mu            sync.RWMutex
 	connected     bool
 	stopCh        chan struct{}
-	stopped       bool
 }
 
 // NewClient creates a new tunnel client.
@@ -118,8 +117,6 @@ func tcpDialer(ctx context.Context, addr string) (net.Conn, error) {
 func (c *Client) connect(ctx context.Context) error {
 	// Create gRPC connection with keepalive parameters and TCP optimizations
 	opts := []grpc.DialOption{
-		grpc.WithBlock(),
-		grpc.WithTimeout(10 * time.Second),
 		// Use custom dialer with TCP_NODELAY
 		grpc.WithContextDialer(tcpDialer),
 		// Keepalive parameters to prevent connection timeout
@@ -184,7 +181,7 @@ func (c *Client) connect(ctx context.Context) error {
 		Str("server", c.cfg.ServerAddr).
 		Msg("Connecting to server")
 
-	conn, err := grpc.DialContext(ctx, c.cfg.ServerAddr, opts...)
+	conn, err := grpc.NewClient(c.cfg.ServerAddr, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to connect to server: %w", err)
 	}

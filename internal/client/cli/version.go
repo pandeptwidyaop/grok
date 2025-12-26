@@ -10,7 +10,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Long:  "Display the version, build time, and git commit of the Grok client",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		fmt.Printf("Grok Client\n")
 		fmt.Printf("  Version:    %s\n", version)
 		fmt.Printf("  Build Time: %s\n", buildTime)
