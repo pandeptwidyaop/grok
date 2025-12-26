@@ -535,13 +535,13 @@ func (m *Manager) BuildPublicURL(subdomain string, protocol string) string {
 		return "tcp://pending-allocation"
 	}
 
-	// Determine scheme and port based on requested protocol
+	// Determine scheme and port based on TLS configuration
 	var scheme string
 	var port int
 	var defaultPort int
 
-	// Use requested protocol (http/https), fallback to TLS config
-	if protocol == "https" || (protocol != "http" && m.tlsEnabled) {
+	// When TLS is enabled, always use HTTPS for public URLs
+	if m.tlsEnabled {
 		scheme = "https"
 		port = m.httpsPort
 		defaultPort = 443
