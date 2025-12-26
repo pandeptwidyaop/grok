@@ -3,13 +3,14 @@ package tcp
 import (
 	"testing"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"github.com/pandeptwidyaop/grok/internal/db/models"
-	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/pandeptwidyaop/grok/internal/db/models"
+	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {

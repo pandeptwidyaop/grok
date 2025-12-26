@@ -9,12 +9,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// TCPProxy manages TCP listeners for allocated ports
+// TCPProxy manages TCP listeners for allocated ports.
 type TCPProxy struct {
 	tunnelManager *tunnel.Manager
 	listeners     map[int]net.Listener // port → listener
@@ -22,7 +23,7 @@ type TCPProxy struct {
 	done          chan struct{}
 }
 
-// NewTCPProxy creates a new TCP proxy manager
+// NewTCPProxy creates a new TCP proxy manager.
 func NewTCPProxy(tunnelManager *tunnel.Manager) *TCPProxy {
 	return &TCPProxy{
 		tunnelManager: tunnelManager,
@@ -31,7 +32,7 @@ func NewTCPProxy(tunnelManager *tunnel.Manager) *TCPProxy {
 	}
 }
 
-// StartListener starts a TCP listener on the specified port for a tunnel
+// StartListener starts a TCP listener on the specified port for a tunnel.
 func (tp *TCPProxy) StartListener(port int, tunnelID uuid.UUID) error {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
@@ -61,7 +62,7 @@ func (tp *TCPProxy) StartListener(port int, tunnelID uuid.UUID) error {
 	return nil
 }
 
-// StopListener stops the TCP listener on the specified port
+// StopListener stops the TCP listener on the specified port.
 func (tp *TCPProxy) StopListener(port int) error {
 	tp.mu.Lock()
 	defer tp.mu.Unlock()
@@ -88,7 +89,7 @@ func (tp *TCPProxy) StopListener(port int) error {
 	return nil
 }
 
-// acceptConnections accepts incoming TCP connections and forwards them
+// acceptConnections accepts incoming TCP connections and forwards them.
 func (tp *TCPProxy) acceptConnections(listener net.Listener, port int, tunnelID uuid.UUID) {
 	for {
 		select {
@@ -126,7 +127,7 @@ func (tp *TCPProxy) acceptConnections(listener net.Listener, port int, tunnelID 
 	}
 }
 
-// handleConnection handles a single TCP connection by forwarding it through the tunnel
+// handleConnection handles a single TCP connection by forwarding it through the tunnel.
 func (tp *TCPProxy) handleConnection(conn net.Conn, port int, tunnelID uuid.UUID) {
 	defer conn.Close()
 
@@ -180,7 +181,7 @@ func (tp *TCPProxy) handleConnection(conn net.Conn, port int, tunnelID uuid.UUID
 		Msg("TCP connection closed")
 }
 
-// connectionToStream reads from TCP connection and sends data to tunnel stream
+// connectionToStream reads from TCP connection and sends data to tunnel stream.
 func (tp *TCPProxy) connectionToStream(
 	ctx context.Context,
 	conn net.Conn,
@@ -283,7 +284,7 @@ func (tp *TCPProxy) connectionToStream(
 	}
 }
 
-// streamToConnection reads from tunnel stream and writes to TCP connection
+// streamToConnection reads from tunnel stream and writes to TCP connection.
 func (tp *TCPProxy) streamToConnection(
 	ctx context.Context,
 	conn net.Conn,
@@ -347,7 +348,7 @@ func (tp *TCPProxy) streamToConnection(
 	}
 }
 
-// Shutdown stops all TCP listeners
+// Shutdown stops all TCP listeners.
 func (tp *TCPProxy) Shutdown() {
 	close(tp.done)
 
@@ -364,7 +365,7 @@ func (tp *TCPProxy) Shutdown() {
 	tp.listeners = make(map[int]net.Listener)
 }
 
-// GetActiveListeners returns a list of active listener ports
+// GetActiveListeners returns a list of active listener ports.
 func (tp *TCPProxy) GetActiveListeners() []int {
 	tp.mu.RLock()
 	defer tp.mu.RUnlock()

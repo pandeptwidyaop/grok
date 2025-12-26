@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// UserRole represents the role of a user
+// UserRole represents the role of a user.
 type UserRole string
 
 const (
@@ -16,13 +16,13 @@ const (
 	RoleOrgUser    UserRole = "org_user"    // Regular organization user
 )
 
-// User represents a user in the system
+// User represents a user in the system.
 type User struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	Email     string    `gorm:"uniqueIndex;not null" json:"email"`
-	Password  string    `gorm:"not null" json:"-"` // bcrypt hash, never expose in JSON
-	Name      string    `json:"name"`
-	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	ID       uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	Email    string    `gorm:"uniqueIndex;not null" json:"email"`
+	Password string    `gorm:"not null" json:"-"` // bcrypt hash, never expose in JSON
+	Name     string    `json:"name"`
+	IsActive bool      `gorm:"default:true" json:"is_active"`
 
 	// Organization fields
 	OrganizationID *uuid.UUID `gorm:"type:uuid;index" json:"organization_id,omitempty"` // NULL for super_admins
@@ -42,7 +42,7 @@ type User struct {
 	Tunnels      []Tunnel      `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// BeforeCreate hook to set UUID if not provided
+// BeforeCreate hook to set UUID if not provided.
 func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == uuid.Nil {
 		u.ID = uuid.New()
@@ -50,7 +50,7 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// TableName specifies the table name
+// TableName specifies the table name.
 func (User) TableName() string {
 	return "users"
 }

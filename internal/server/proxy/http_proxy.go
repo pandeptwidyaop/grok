@@ -9,21 +9,22 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
-	"gorm.io/gorm"
 )
 
 const (
-	// DefaultRequestTimeout is the default timeout for proxied requests
+	// DefaultRequestTimeout is the default timeout for proxied requests.
 	DefaultRequestTimeout = 30 * time.Second
 )
 
-// HTTPProxy handles HTTP reverse proxying
+// HTTPProxy handles HTTP reverse proxying.
 type HTTPProxy struct {
 	router        *Router
 	webhookRouter *WebhookRouter
@@ -31,7 +32,7 @@ type HTTPProxy struct {
 	db            *gorm.DB
 }
 
-// NewHTTPProxy creates a new HTTP proxy
+// NewHTTPProxy creates a new HTTP proxy.
 func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager, db *gorm.DB) *HTTPProxy {
 	return &HTTPProxy{
 		router:        router,
@@ -41,7 +42,7 @@ func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *t
 	}
 }
 
-// ServeHTTP implements http.Handler
+// ServeHTTP implements http.Handler.
 func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -118,8 +119,7 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go p.saveRequestLog(tun.ID, r, int(resp.StatusCode), duration, reqBytes, respBytes)
 }
 
-// proxyRequest proxies an HTTP request through a tunnel
-// Returns: (response, requestBytes, error)
+// Returns: (response, requestBytes, error).
 func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, int64, error) {
 	// Generate request ID
 	requestID := utils.GenerateRequestID()
@@ -197,8 +197,7 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 	}
 }
 
-// writeResponse writes a proto HTTP response to http.ResponseWriter
-// Returns: bytes written
+// Returns: bytes written.
 func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) int64 {
 	// Calculate response size (headers + body)
 	responseBytes := int64(len(resp.Body))
@@ -231,7 +230,7 @@ func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResp
 	return responseBytes
 }
 
-// handleWebhookRequest handles webhook broadcast requests
+// handleWebhookRequest handles webhook broadcast requests.
 func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request, start time.Time) {
 	// Extract webhook components
 	orgSubdomain, appName, userPath, err := p.webhookRouter.ExtractWebhookComponents(r.Host, r.URL.Path)
@@ -338,7 +337,7 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 	}
 }
 
-// logWebhookEvent logs a webhook event to the database
+// logWebhookEvent logs a webhook event to the database.
 func (p *HTTPProxy) logWebhookEvent(appID uuid.UUID, r *http.Request, result *BroadcastResult, duration time.Duration, err error) {
 	// This would be implemented to save webhook events to database
 	// For now, just log to console
@@ -352,7 +351,7 @@ func (p *HTTPProxy) logWebhookEvent(appID uuid.UUID, r *http.Request, result *Br
 		Msg("Webhook event logged")
 }
 
-// saveRequestLog saves HTTP request log to database
+// saveRequestLog saves HTTP request log to database.
 func (p *HTTPProxy) saveRequestLog(tunnelID uuid.UUID, r *http.Request, statusCode int, duration time.Duration, bytesIn, bytesOut int64) {
 	if p.db == nil {
 		return
@@ -383,7 +382,7 @@ func (p *HTTPProxy) saveRequestLog(tunnelID uuid.UUID, r *http.Request, statusCo
 	}
 }
 
-// HealthCheckHandler returns a simple health check handler
+// HealthCheckHandler returns a simple health check handler.
 func HealthCheckHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

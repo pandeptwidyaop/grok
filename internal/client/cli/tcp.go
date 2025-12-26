@@ -7,16 +7,17 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/pandeptwidyaop/grok/internal/client/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
-	"github.com/spf13/cobra"
 )
 
 var (
 	tcpSavedName string
 )
 
-// tcpCmd represents the tcp command
+// tcpCmd represents the tcp command.
 var tcpCmd = &cobra.Command{
 	Use:   "tcp [port]",
 	Short: "Start TCP tunnel",

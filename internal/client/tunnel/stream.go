@@ -11,7 +11,7 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// startProxyStream starts the bidirectional proxy stream
+// startProxyStream starts the bidirectional proxy stream.
 func (c *Client) startProxyStream(ctx context.Context) error {
 	stream, err := c.tunnelSvc.ProxyStream(ctx)
 	if err != nil {
@@ -57,7 +57,7 @@ func (c *Client) startProxyStream(ctx context.Context) error {
 	return nil
 }
 
-// getSubdomain extracts subdomain from public URL
+// getSubdomain extracts subdomain from public URL.
 func (c *Client) getSubdomain() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -82,7 +82,7 @@ func (c *Client) getSubdomain() string {
 	return url
 }
 
-// receiveRequests receives and handles proxy requests from server
+// receiveRequests receives and handles proxy requests from server.
 func (c *Client) receiveRequests(ctx context.Context) {
 	for {
 		select {
@@ -127,7 +127,7 @@ func (c *Client) receiveRequests(ctx context.Context) {
 	}
 }
 
-// handleProxyRequest handles a proxy request from the server
+// handleProxyRequest handles a proxy request from the server.
 func (c *Client) handleProxyRequest(ctx context.Context, req *tunnelv1.ProxyRequest) {
 	logger.DebugEvent().
 		Str("request_id", req.RequestId).
@@ -148,7 +148,7 @@ func (c *Client) handleProxyRequest(ctx context.Context, req *tunnelv1.ProxyRequ
 	}
 }
 
-// handleHTTPRequest forwards HTTP request to local service
+// handleHTTPRequest forwards HTTP request to local service.
 func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpReq *tunnelv1.HTTPRequest) {
 	start := time.Now()
 
@@ -170,10 +170,10 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 
 	// Send response back to server
 	proxyResp := &tunnelv1.ProxyResponse{
-		RequestId:     requestID,
-		TunnelId:      c.tunnelID,
-		Payload:       &tunnelv1.ProxyResponse_Http{Http: httpResp},
-		EndOfStream:   true,
+		RequestId:   requestID,
+		TunnelId:    c.tunnelID,
+		Payload:     &tunnelv1.ProxyResponse_Http{Http: httpResp},
+		EndOfStream: true,
 	}
 
 	msg := &tunnelv1.ProxyMessage{
@@ -200,7 +200,7 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 		Msg("HTTP request processed")
 }
 
-// handleTCPRequest forwards TCP data to local service
+// handleTCPRequest forwards TCP data to local service.
 func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData *tunnelv1.TCPData) {
 	logger.DebugEvent().
 		Str("request_id", requestID).
@@ -244,10 +244,12 @@ func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData
 			Msg("Failed to forward TCP data")
 
 		// Send error response (close signal)
-		sendResponse(&tunnelv1.TCPData{
+		if err := sendResponse(&tunnelv1.TCPData{
 			Data:     []byte{},
 			Sequence: 0,
-		})
+		}); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to send error response")
+		}
 		return
 	}
 
@@ -257,7 +259,7 @@ func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData
 	}
 }
 
-// handleControlMessage handles control messages from server
+// handleControlMessage handles control messages from server.
 func (c *Client) handleControlMessage(ctrl *tunnelv1.ControlMessage) {
 	logger.InfoEvent().
 		Str("type", ctrl.Type.String()).
@@ -296,7 +298,9 @@ func (c *Client) handleControlMessage(ctrl *tunnelv1.ControlMessage) {
 		logger.InfoEvent().Msg("Server requested reconnect")
 		// Close current stream to trigger reconnect
 		if c.stream != nil {
-			c.stream.CloseSend()
+			if err := c.stream.CloseSend(); err != nil {
+				logger.WarnEvent().Err(err).Msg("Failed to close send stream")
+			}
 		}
 
 	case tunnelv1.ControlMessage_UNKNOWN:
@@ -305,7 +309,7 @@ func (c *Client) handleControlMessage(ctrl *tunnelv1.ControlMessage) {
 	}
 }
 
-// sendError sends an error response to the server
+// sendError sends an error response to the server.
 func (c *Client) sendError(requestID string, code tunnelv1.ErrorCode, message string) {
 	errorMsg := &tunnelv1.ProxyError{
 		RequestId: requestID,
@@ -325,7 +329,7 @@ func (c *Client) sendError(requestID string, code tunnelv1.ErrorCode, message st
 	}
 }
 
-// startHeartbeat starts sending heartbeat messages to server
+// startHeartbeat starts sending heartbeat messages to server.
 func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -372,7 +376,9 @@ func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 	for {
 		select {
 		case <-ctx.Done():
-			heartbeatStream.CloseSend()
+			if err := heartbeatStream.CloseSend(); err != nil {
+				logger.WarnEvent().Err(err).Msg("Failed to close heartbeat stream")
+			}
 			return
 
 		case err := <-heartbeatErrCh:
@@ -380,7 +386,9 @@ func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 			logger.WarnEvent().
 				Err(err).
 				Msg("Heartbeat failed, signaling connection lost")
-			heartbeatStream.CloseSend()
+			if err := heartbeatStream.CloseSend(); err != nil {
+				logger.WarnEvent().Err(err).Msg("Failed to close heartbeat stream")
+			}
 			select {
 			case connLostCh <- struct{}{}:
 			default:
@@ -397,7 +405,9 @@ func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 				logger.ErrorEvent().
 					Err(err).
 					Msg("Failed to send heartbeat")
-				heartbeatStream.CloseSend()
+				if err := heartbeatStream.CloseSend(); err != nil {
+					logger.WarnEvent().Err(err).Msg("Failed to close heartbeat stream")
+				}
 				// Signal connection lost
 				select {
 				case connLostCh <- struct{}{}:

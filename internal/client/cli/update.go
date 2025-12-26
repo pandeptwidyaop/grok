@@ -3,9 +3,10 @@ package cli
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/updater"
-	"github.com/spf13/cobra"
 )
 
 var updateCmd = &cobra.Command{
@@ -70,7 +71,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Scanln(&response)
 
 		if response != "y" && response != "Y" && response != "yes" && response != "Yes" {
-			fmt.Println("Update cancelled.")
+			fmt.Println("Update canceled.")
 			return nil
 		}
 	}

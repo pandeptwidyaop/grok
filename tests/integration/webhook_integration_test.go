@@ -4,15 +4,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/pandeptwidyaop/grok/internal/db/models"
 )
 
-// setupWebhookTestDB creates in-memory database for webhook tests
+// setupWebhookTestDB creates in-memory database for webhook tests.
 func setupWebhookTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err, "Failed to connect to test database")
@@ -34,7 +35,7 @@ func setupWebhookTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// createTestOrganization creates a test organization
+// createTestOrganization creates a test organization.
 func createTestOrganization(t *testing.T, db *gorm.DB, subdomain string) *models.Organization {
 	org := &models.Organization{
 		ID:          uuid.New(),
@@ -48,7 +49,7 @@ func createTestOrganization(t *testing.T, db *gorm.DB, subdomain string) *models
 	return org
 }
 
-// createTestUser creates a test user
+// createTestUser creates a test user.
 func createTestUser(t *testing.T, db *gorm.DB, orgID uuid.UUID, email string) *models.User {
 	user := &models.User{
 		ID:             uuid.New(),
@@ -64,7 +65,7 @@ func createTestUser(t *testing.T, db *gorm.DB, orgID uuid.UUID, email string) *m
 	return user
 }
 
-// createTestTunnel creates a test tunnel
+// createTestTunnel creates a test tunnel.
 func createTestTunnel(t *testing.T, db *gorm.DB, orgID, userID uuid.UUID, subdomain string) *models.Tunnel {
 	tokenID := uuid.New() // Create a dummy token ID
 	tunnel := &models.Tunnel{
@@ -547,7 +548,7 @@ func TestOrganizationIsolation(t *testing.T) {
 	})
 }
 
-// Benchmark tests
+// Benchmark tests.
 func BenchmarkWebhookApp_Create(b *testing.B) {
 	db := setupWebhookTestDB(&testing.T{})
 	org := createTestOrganization(&testing.T{}, db, "bench-org")

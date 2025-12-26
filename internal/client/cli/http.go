@@ -8,9 +8,10 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/pandeptwidyaop/grok/internal/client/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -18,7 +19,7 @@ var (
 	httpSavedName string
 )
 
-// httpCmd represents the http command
+// httpCmd represents the http command.
 var httpCmd = &cobra.Command{
 	Use:   "http [port]",
 	Short: "Start HTTP tunnel",
@@ -98,7 +99,7 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// parseLocalAddr converts port or host:port to full address
+// parseLocalAddr converts port or host:port to full address.
 func parseLocalAddr(addr string, protocol string) string {
 	// If it's just a number, treat as port
 	if port, err := strconv.Atoi(addr); err == nil {

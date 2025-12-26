@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Organization represents a tenant organization with its own subdomain
+// Organization represents a tenant organization with its own subdomain.
 type Organization struct {
 	ID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
 	Name        string    `gorm:"not null" json:"name"`
@@ -23,7 +23,7 @@ type Organization struct {
 	Tunnels []Tunnel `gorm:"foreignKey:OrganizationID" json:"-"`
 }
 
-// BeforeCreate hook to set UUID if not provided
+// BeforeCreate hook to set UUID if not provided.
 func (o *Organization) BeforeCreate(tx *gorm.DB) error {
 	if o.ID == uuid.Nil {
 		o.ID = uuid.New()
@@ -31,7 +31,7 @@ func (o *Organization) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// TableName specifies the table name
+// TableName specifies the table name.
 func (Organization) TableName() string {
 	return "organizations"
 }

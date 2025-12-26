@@ -12,13 +12,13 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// HTTPForwarder forwards HTTP requests to local service
+// HTTPForwarder forwards HTTP requests to local service.
 type HTTPForwarder struct {
 	localAddr  string
 	httpClient *http.Client
 }
 
-// NewHTTPForwarder creates a new HTTP forwarder
+// NewHTTPForwarder creates a new HTTP forwarder.
 func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 	// Create custom transport with optimized settings
 	transport := &http.Transport{
@@ -43,7 +43,7 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 	}
 }
 
-// Forward forwards a gRPC HTTP request to local service
+// Forward forwards a gRPC HTTP request to local service.
 func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) (*tunnelv1.HTTPResponse, error) {
 	// Build URL
 	url := fmt.Sprintf("http://%s%s", f.localAddr, req.Path)

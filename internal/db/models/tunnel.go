@@ -8,17 +8,17 @@ import (
 	"gorm.io/gorm"
 )
 
-// Tunnel represents an active tunnel
+// Tunnel represents an active tunnel.
 type Tunnel struct {
-	ID             uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID         uuid.UUID      `gorm:"type:uuid;not null;index;uniqueIndex:idx_user_savedname" json:"user_id"`
-	TokenID        uuid.UUID      `gorm:"type:uuid;not null" json:"token_id"`
-	DomainID       *uuid.UUID     `gorm:"type:uuid" json:"domain_id,omitempty"`
-	OrganizationID *uuid.UUID     `gorm:"type:uuid;index" json:"organization_id,omitempty"`
+	ID             uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID         uuid.UUID  `gorm:"type:uuid;not null;index;uniqueIndex:idx_user_savedname" json:"user_id"`
+	TokenID        uuid.UUID  `gorm:"type:uuid;not null" json:"token_id"`
+	DomainID       *uuid.UUID `gorm:"type:uuid" json:"domain_id,omitempty"`
+	OrganizationID *uuid.UUID `gorm:"type:uuid;index" json:"organization_id,omitempty"`
 
 	TunnelType string `gorm:"not null" json:"tunnel_type"` // http, https, tcp, tls
-	Subdomain  string `gorm:"index" json:"subdomain"`       // Full subdomain: {custom}-{org}
-	RemotePort *int   `json:"remote_port,omitempty"`        // For TCP
+	Subdomain  string `gorm:"index" json:"subdomain"`      // Full subdomain: {custom}-{org}
+	RemotePort *int   `json:"remote_port,omitempty"`       // For TCP
 	LocalAddr  string `gorm:"not null" json:"local_addr"`
 
 	PublicURL string `json:"public_url"`
@@ -46,7 +46,7 @@ type Tunnel struct {
 	Organization *Organization `gorm:"foreignKey:OrganizationID" json:"-"`
 }
 
-// BeforeCreate hook to set UUID and timestamps
+// BeforeCreate hook to set UUID and timestamps.
 func (t *Tunnel) BeforeCreate(tx *gorm.DB) error {
 	if t.ID == uuid.Nil {
 		t.ID = uuid.New()
@@ -57,7 +57,7 @@ func (t *Tunnel) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// TableName specifies the table name
+// TableName specifies the table name.
 func (Tunnel) TableName() string {
 	return "tunnels"
 }

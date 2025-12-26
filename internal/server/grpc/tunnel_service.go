@@ -5,24 +5,25 @@ import (
 	"io"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/server/auth"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
-// TunnelService implements the gRPC TunnelService
+// TunnelService implements the gRPC TunnelService.
 type TunnelService struct {
 	tunnelv1.UnimplementedTunnelServiceServer
 	tunnelManager *tunnel.Manager
 	tokenService  *auth.TokenService
 }
 
-// NewTunnelService creates a new tunnel service
+// NewTunnelService creates a new tunnel service.
 func NewTunnelService(
 	tunnelManager *tunnel.Manager,
 	tokenService *auth.TokenService,
@@ -33,7 +34,7 @@ func NewTunnelService(
 	}
 }
 
-// CreateTunnel handles tunnel creation requests
+// CreateTunnel handles tunnel creation requests.
 func (s *TunnelService) CreateTunnel(
 	ctx context.Context,
 	req *tunnelv1.CreateTunnelRequest,
@@ -150,14 +151,14 @@ func (s *TunnelService) CreateTunnel(
 		Msg("Tunnel created successfully")
 
 	return &tunnelv1.CreateTunnelResponse{
-		TunnelId:  "",                                // Will be set in ProxyStream
+		TunnelId:  "", // Will be set in ProxyStream
 		PublicUrl: publicURL,
 		Subdomain: fullSubdomain,
 		Status:    tunnelv1.TunnelStatus_ACTIVE,
 	}, nil
 }
 
-// ProxyStream handles bidirectional streaming for tunnel proxying
+// ProxyStream handles bidirectional streaming for tunnel proxying.
 func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamServer) error {
 	ctx := stream.Context()
 
@@ -400,7 +401,7 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 	}
 }
 
-// Heartbeat handles heartbeat streaming
+// Heartbeat handles heartbeat streaming.
 func (s *TunnelService) Heartbeat(stream tunnelv1.TunnelService_HeartbeatServer) error {
 	ctx := stream.Context()
 
@@ -445,7 +446,7 @@ func (s *TunnelService) Heartbeat(stream tunnelv1.TunnelService_HeartbeatServer)
 	}
 }
 
-// processRequests processes pending requests from the tunnel queue
+// processRequests processes pending requests from the tunnel queue.
 func (s *TunnelService) processRequests(ctx context.Context, tun *tunnel.Tunnel) {
 	logger.DebugEvent().
 		Str("tunnel_id", tun.ID.String()).
@@ -488,7 +489,7 @@ func (s *TunnelService) processRequests(ctx context.Context, tun *tunnel.Tunnel)
 	}
 }
 
-// generateTunnelID generates a unique tunnel ID
+// generateTunnelID generates a unique tunnel ID.
 func generateTunnelID() string {
 	id, _ := utils.GenerateRandomToken(16)
 	return id

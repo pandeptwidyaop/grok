@@ -3,19 +3,20 @@ package interceptors
 import (
 	"context"
 
-	"github.com/pandeptwidyaop/grok/internal/server/auth"
-	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/pandeptwidyaop/grok/internal/server/auth"
+	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
 const (
 	authorizationKey = "authorization"
 )
 
-// AuthInterceptor validates authentication tokens
+// AuthInterceptor validates authentication tokens.
 func AuthInterceptor(tokenService *auth.TokenService) grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -56,7 +57,7 @@ func AuthInterceptor(tokenService *auth.TokenService) grpc.UnaryServerIntercepto
 	}
 }
 
-// StreamAuthInterceptor validates authentication tokens for streams
+// StreamAuthInterceptor validates authentication tokens for streams.
 func StreamAuthInterceptor(tokenService *auth.TokenService) grpc.StreamServerInterceptor {
 	return func(
 		srv interface{},
@@ -101,18 +102,18 @@ func StreamAuthInterceptor(tokenService *auth.TokenService) grpc.StreamServerInt
 	}
 }
 
-// authServerStream wraps grpc.ServerStream with authentication context
+// authServerStream wraps grpc.ServerStream with authentication context.
 type authServerStream struct {
 	grpc.ServerStream
 	ctx context.Context
 }
 
-// Context returns the wrapped context
+// Context returns the wrapped context.
 func (s *authServerStream) Context() context.Context {
 	return s.ctx
 }
 
-// extractToken extracts the authentication token from gRPC metadata
+// extractToken extracts the authentication token from gRPC metadata.
 func extractToken(ctx context.Context) (string, error) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -127,7 +128,7 @@ func extractToken(ctx context.Context) (string, error) {
 	return values[0], nil
 }
 
-// skipAuth returns true if the method should skip authentication
+// skipAuth returns true if the method should skip authentication.
 func skipAuth(method string) bool {
 	// Add methods that don't require authentication
 	skipMethods := map[string]bool{

@@ -11,49 +11,50 @@ import (
 	"sync"
 	"time"
 
-	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
-	"github.com/pandeptwidyaop/grok/internal/client/config"
-	"github.com/pandeptwidyaop/grok/internal/client/proxy"
-	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/client/config"
+	"github.com/pandeptwidyaop/grok/internal/client/proxy"
+	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// ClientConfig holds tunnel client configuration
+// ClientConfig holds tunnel client configuration.
 type ClientConfig struct {
-	ServerAddr      string
-	TLS             bool
-	TLSCertFile     string
-	TLSInsecure     bool
-	TLSServerName   string
-	AuthToken       string
-	LocalAddr       string
-	Subdomain       string
-	Protocol        string
-	SavedName       string                  // Saved tunnel name (optional, for persistent tunnels)
-	WebhookAppID    string                  // Webhook app ID (optional, for webhook tunnels)
-	ReconnectCfg    config.ReconnectConfig
+	ServerAddr    string
+	TLS           bool
+	TLSCertFile   string
+	TLSInsecure   bool
+	TLSServerName string
+	AuthToken     string
+	LocalAddr     string
+	Subdomain     string
+	Protocol      string
+	SavedName     string // Saved tunnel name (optional, for persistent tunnels)
+	WebhookAppID  string // Webhook app ID (optional, for webhook tunnels)
+	ReconnectCfg  config.ReconnectConfig
 }
 
-// Client represents a tunnel client
+// Client represents a tunnel client.
 type Client struct {
-	cfg            ClientConfig
-	conn           *grpc.ClientConn
-	tunnelSvc      tunnelv1.TunnelServiceClient
-	tunnelID       string
-	publicURL      string
-	stream         tunnelv1.TunnelService_ProxyStreamClient
-	httpForwarder  *proxy.HTTPForwarder
-	tcpForwarder   *proxy.TCPForwarder
-	mu             sync.RWMutex
-	connected      bool
-	stopCh         chan struct{}
-	stopped        bool
+	cfg           ClientConfig
+	conn          *grpc.ClientConn
+	tunnelSvc     tunnelv1.TunnelServiceClient
+	tunnelID      string
+	publicURL     string
+	stream        tunnelv1.TunnelService_ProxyStreamClient
+	httpForwarder *proxy.HTTPForwarder
+	tcpForwarder  *proxy.TCPForwarder
+	mu            sync.RWMutex
+	connected     bool
+	stopCh        chan struct{}
+	stopped       bool
 }
 
-// NewClient creates a new tunnel client
+// NewClient creates a new tunnel client.
 func NewClient(cfg ClientConfig) (*Client, error) {
 	// Create forwarder based on protocol
 	var httpForwarder *proxy.HTTPForwarder
@@ -74,7 +75,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}, nil
 }
 
-// Start starts the tunnel client
+// Start starts the tunnel client.
 func (c *Client) Start(ctx context.Context) error {
 	logger.InfoEvent().
 		Str("server", c.cfg.ServerAddr).
@@ -90,7 +91,7 @@ func (c *Client) Start(ctx context.Context) error {
 	return c.connect(ctx)
 }
 
-// tcpDialer creates a TCP connection with TCP_NODELAY enabled
+// tcpDialer creates a TCP connection with TCP_NODELAY enabled.
 func tcpDialer(ctx context.Context, addr string) (net.Conn, error) {
 	d := &net.Dialer{
 		Timeout:   10 * time.Second,
@@ -113,7 +114,7 @@ func tcpDialer(ctx context.Context, addr string) (net.Conn, error) {
 	return conn, nil
 }
 
-// connect establishes connection to server and creates tunnel
+// connect establishes connection to server and creates tunnel.
 func (c *Client) connect(ctx context.Context) error {
 	// Create gRPC connection with keepalive parameters and TCP optimizations
 	opts := []grpc.DialOption{
@@ -129,8 +130,8 @@ func (c *Client) connect(ctx context.Context) error {
 		}),
 		// Increase max message size for large payloads
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64 << 20), // 64MB
-			grpc.MaxCallSendMsgSize(64 << 20), // 64MB
+			grpc.MaxCallRecvMsgSize(64<<20), // 64MB
+			grpc.MaxCallSendMsgSize(64<<20), // 64MB
 			// Disable compression for better performance on small payloads
 			// Most tunnel traffic is <10KB (HTTP headers, API requests)
 			// Compression overhead > benefit for small messages
@@ -229,10 +230,10 @@ func (c *Client) connect(ctx context.Context) error {
 	// Start heartbeat with connection monitor
 	go c.startHeartbeat(ctx, connLostCh)
 
-	// Block until context is cancelled or connection lost
+	// Block until context is canceled or connection lost
 	select {
 	case <-ctx.Done():
-		logger.InfoEvent().Msg("Context cancelled, closing tunnel")
+		logger.InfoEvent().Msg("Context canceled, closing tunnel")
 	case <-connLostCh:
 		logger.WarnEvent().Msg("Connection lost, will reconnect")
 	}
@@ -249,7 +250,7 @@ func (c *Client) connect(ctx context.Context) error {
 		c.conn.Close()
 	}
 
-	// If connection was lost (not context cancelled), return error to trigger reconnect
+	// If connection was lost (not context canceled), return error to trigger reconnect
 	select {
 	case <-connLostCh:
 		return fmt.Errorf("connection lost")
@@ -259,7 +260,7 @@ func (c *Client) connect(ctx context.Context) error {
 	}
 }
 
-// createTunnel creates a tunnel on the server
+// createTunnel creates a tunnel on the server.
 func (c *Client) createTunnel(ctx context.Context) error {
 	protocol := tunnelv1.TunnelProtocol_HTTP
 	if c.cfg.Protocol == "https" {
@@ -298,7 +299,7 @@ func (c *Client) createTunnel(ctx context.Context) error {
 	return nil
 }
 
-// maintainConnection maintains connection with automatic reconnection
+// maintainConnection maintains connection with automatic reconnection.
 func (c *Client) maintainConnection(ctx context.Context) error {
 	delay := time.Duration(c.cfg.ReconnectCfg.InitialDelay) * time.Second
 	maxDelay := time.Duration(c.cfg.ReconnectCfg.MaxDelay) * time.Second
@@ -349,14 +350,14 @@ func (c *Client) maintainConnection(ctx context.Context) error {
 	}
 }
 
-// IsConnected returns whether the client is connected
+// IsConnected returns whether the client is connected.
 func (c *Client) IsConnected() bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.connected
 }
 
-// GetPublicURL returns the public URL of the tunnel
+// GetPublicURL returns the public URL of the tunnel.
 func (c *Client) GetPublicURL() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

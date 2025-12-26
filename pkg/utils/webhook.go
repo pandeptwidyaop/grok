@@ -8,35 +8,27 @@ import (
 )
 
 var (
-	// ErrInvalidWebhookAppName is returned when webhook app name is invalid
+	// ErrInvalidWebhookAppName is returned when webhook app name is invalid.
 	ErrInvalidWebhookAppName = errors.New("invalid webhook app name")
 
-	// ErrInvalidWebhookPath is returned when webhook path is invalid
+	// ErrInvalidWebhookPath is returned when webhook path is invalid.
 	ErrInvalidWebhookPath = errors.New("invalid webhook path")
 
-	// ErrReservedWebhookAppName is returned when webhook app name is reserved
+	// ErrReservedWebhookAppName is returned when webhook app name is reserved.
 	ErrReservedWebhookAppName = errors.New("webhook app name is reserved")
 
-	// Reserved webhook app names that cannot be used
+	// Reserved webhook app names that cannot be used.
 	reservedWebhookAppNames = []string{
 		"api", "admin", "webhook", "webhooks", "dashboard", "status",
 		"health", "metrics", "docs", "apps", "system", "config",
 		"www", "blog", "support", "help",
 	}
 
-	// Webhook app name regex: lowercase alphanumeric + hyphens only, no consecutive hyphens
-	// Matches: payment-app, my-webhook-app-123
-	// Rejects: payment--app, payment_app, PaymentApp, -payment, payment-
+	// Rejects: payment--app, payment_app, PaymentApp, -payment, payment-.
 	webhookAppNameRegex = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 )
 
-// IsValidWebhookAppName validates a webhook app name
-// Rules:
-// - Length: 3-50 characters
-// - Format: lowercase alphanumeric + hyphens only (strict, no normalization)
-// - No consecutive hyphens
-// - Must start and end with alphanumeric
-// - Cannot be a reserved name (case-sensitive)
+// - Cannot be a reserved name (case-sensitive).
 func IsValidWebhookAppName(name string) bool {
 	// Check length
 	if len(name) < 3 || len(name) > 50 {
@@ -52,13 +44,12 @@ func IsValidWebhookAppName(name string) bool {
 	return webhookAppNameRegex.MatchString(name)
 }
 
-// NormalizeWebhookAppName normalizes a webhook app name to lowercase and trims whitespace
+// NormalizeWebhookAppName normalizes a webhook app name to lowercase and trims whitespace.
 func NormalizeWebhookAppName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
-// IsReservedWebhookAppName checks if a webhook app name is reserved
-// Case-sensitive check (only lowercase reserved names match)
+// Case-sensitive check (only lowercase reserved names match).
 func IsReservedWebhookAppName(name string) bool {
 	for _, reserved := range reservedWebhookAppNames {
 		if name == reserved {
@@ -68,12 +59,7 @@ func IsReservedWebhookAppName(name string) bool {
 	return false
 }
 
-// ValidateWebhookPath validates a webhook request path
-// Rules:
-// - Must start with /
-// - No path traversal (../) including URL-encoded variants
-// - Max length: 1024 characters
-// - No null bytes or backslashes
+// - No null bytes or backslashes.
 func ValidateWebhookPath(path string) error {
 	// Check if path starts with /
 	if !strings.HasPrefix(path, "/") {
@@ -110,7 +96,7 @@ func ValidateWebhookPath(path string) error {
 	return nil
 }
 
-// SanitizeWebhookPath sanitizes a webhook path by removing dangerous patterns
+// SanitizeWebhookPath sanitizes a webhook path by removing dangerous patterns.
 func SanitizeWebhookPath(path string) string {
 	// Ensure it starts with /
 	if !strings.HasPrefix(path, "/") {
@@ -132,7 +118,7 @@ func SanitizeWebhookPath(path string) string {
 	return path
 }
 
-// ValidateWebhookAppNameOrError validates webhook app name and returns error if invalid
+// ValidateWebhookAppNameOrError validates webhook app name and returns error if invalid.
 func ValidateWebhookAppNameOrError(name string) error {
 	if len(name) < 3 {
 		return errors.New("webhook app name must be at least 3 characters")

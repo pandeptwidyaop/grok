@@ -5,8 +5,8 @@ FROM golang:alpine AS builder
 # Set Go toolchain to auto-download required version
 ENV GOTOOLCHAIN=auto
 
-# Install build dependencies (including CGO dependencies for SQLite)
-RUN apk add --no-cache git make protobuf-dev gcc musl-dev sqlite-dev
+# Install build dependencies (pure Go build - no CGO required)
+RUN apk add --no-cache git make protobuf-dev
 
 # Set working directory
 WORKDIR /build
@@ -30,8 +30,8 @@ ARG VERSION=dev
 ARG BUILD_TIME
 ARG GIT_COMMIT
 
-# Build the server binary (CGO enabled for SQLite support)
-RUN CGO_ENABLED=1 GOOS=linux go build \
+# Build the server binary (pure Go - no CGO required)
+RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}" \
     -o grok-server \
     ./cmd/grok-server
@@ -39,8 +39,8 @@ RUN CGO_ENABLED=1 GOOS=linux go build \
 # Stage 2: Create minimal runtime image
 FROM alpine:latest
 
-# Install runtime dependencies (including SQLite libraries)
-RUN apk add --no-cache ca-certificates tzdata sqlite-libs
+# Install runtime dependencies (pure Go - no SQLite libraries needed)
+RUN apk add --no-cache ca-certificates tzdata
 
 # Create non-root user
 RUN addgroup -g 1000 grok && \

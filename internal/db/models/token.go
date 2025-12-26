@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// AuthToken represents an authentication token
+// AuthToken represents an authentication token.
 type AuthToken struct {
 	ID         uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
 	UserID     uuid.UUID      `gorm:"type:uuid;not null;index" json:"user_id"`
@@ -24,7 +24,7 @@ type AuthToken struct {
 	User User `gorm:"foreignKey:UserID" json:"-"`
 }
 
-// BeforeCreate hook to set UUID if not provided
+// BeforeCreate hook to set UUID if not provided.
 func (t *AuthToken) BeforeCreate(tx *gorm.DB) error {
 	if t.ID == uuid.Nil {
 		t.ID = uuid.New()
@@ -32,7 +32,7 @@ func (t *AuthToken) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// TableName specifies the table name
+// TableName specifies the table name.
 func (AuthToken) TableName() string {
 	return "auth_tokens"
 }

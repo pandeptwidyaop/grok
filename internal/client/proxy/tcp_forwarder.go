@@ -12,29 +12,29 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// TCPConnection represents a persistent TCP connection to local service
+// TCPConnection represents a persistent TCP connection to local service.
 type TCPConnection struct {
-	conn          net.Conn
-	requestID     string
-	mu            sync.Mutex
-	closed        bool
+	conn            net.Conn
+	requestID       string
+	mu              sync.Mutex
+	closed          bool
 	readLoopStarted bool
 }
 
-// TCPForwarder manages TCP connections and forwards data to local service
+// TCPForwarder manages TCP connections and forwards data to local service.
 type TCPForwarder struct {
 	localAddr   string
 	connections sync.Map // requestID → *TCPConnection
 }
 
-// NewTCPForwarder creates a new TCP forwarder
+// NewTCPForwarder creates a new TCP forwarder.
 func NewTCPForwarder(localAddr string) *TCPForwarder {
 	return &TCPForwarder{
 		localAddr: localAddr,
 	}
 }
 
-// Forward forwards TCP data to local service and returns whether to start read loop
+// Forward forwards TCP data to local service and returns whether to start read loop.
 func (f *TCPForwarder) Forward(ctx context.Context, requestID string, data *tunnelv1.TCPData, sendResponse func(*tunnelv1.TCPData) error) (startReadLoop bool, err error) {
 	// Handle connection close signal (empty data)
 	if len(data.Data) == 0 {
@@ -84,11 +84,15 @@ func (f *TCPForwarder) Forward(ctx context.Context, requestID string, data *tunn
 	return shouldStartReadLoop, nil
 }
 
-// getOrCreateConnection gets existing connection or creates new one, returns (conn, isNew, error)
+// getOrCreateConnection gets existing connection or creates new one, returns (conn, isNew, error).
 func (f *TCPForwarder) getOrCreateConnection(ctx context.Context, requestID string) (*TCPConnection, bool, error) {
 	// Check if connection exists
 	if conn, ok := f.connections.Load(requestID); ok {
-		return conn.(*TCPConnection), false, nil
+		tcpConn, ok := conn.(*TCPConnection)
+		if !ok {
+			return nil, false, fmt.Errorf("invalid connection type")
+		}
+		return tcpConn, false, nil
 	}
 
 	// Create new connection
@@ -118,7 +122,7 @@ func (f *TCPForwarder) getOrCreateConnection(ctx context.Context, requestID stri
 	return tcpConn, true, nil
 }
 
-// StartReadLoop starts reading from a TCP connection and sends responses back
+// StartReadLoop starts reading from a TCP connection and sends responses back.
 func (f *TCPForwarder) StartReadLoop(ctx context.Context, requestID string, sendResponse func(*tunnelv1.TCPData) error) {
 	conn, ok := f.connections.Load(requestID)
 	if !ok {
@@ -128,7 +132,13 @@ func (f *TCPForwarder) StartReadLoop(ctx context.Context, requestID string, send
 		return
 	}
 
-	tcpConn := conn.(*TCPConnection)
+	tcpConn, ok := conn.(*TCPConnection)
+	if !ok {
+		logger.ErrorEvent().
+			Str("request_id", requestID).
+			Msg("Invalid connection type in read loop")
+		return
+	}
 	buffer := make([]byte, 32*1024) // 32KB buffer
 
 	for {
@@ -140,7 +150,9 @@ func (f *TCPForwarder) StartReadLoop(ctx context.Context, requestID string, send
 		}
 
 		// Set read deadline to allow periodic context checks
-		tcpConn.conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if err := tcpConn.conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			logger.WarnEvent().Err(err).Str("request_id", requestID).Msg("Failed to set read deadline")
+		}
 
 		n, err := tcpConn.conn.Read(buffer)
 		if err != nil {
@@ -164,7 +176,9 @@ func (f *TCPForwarder) StartReadLoop(ctx context.Context, requestID string, send
 				Data:     []byte{},
 				Sequence: 0,
 			}
-			sendResponse(closeData)
+			if err := sendResponse(closeData); err != nil {
+				logger.WarnEvent().Err(err).Str("request_id", requestID).Msg("Failed to send close signal")
+			}
 			f.closeConnection(requestID)
 			return
 		}
@@ -173,7 +187,7 @@ func (f *TCPForwarder) StartReadLoop(ctx context.Context, requestID string, send
 			// Send response data
 			respData := &tunnelv1.TCPData{
 				Data:     append([]byte(nil), buffer[:n]...), // Copy buffer
-				Sequence: 0,                                   // TODO: implement proper sequencing
+				Sequence: 0,                                  // TODO: implement proper sequencing
 			}
 
 			if err := sendResponse(respData); err != nil {
@@ -193,10 +207,14 @@ func (f *TCPForwarder) StartReadLoop(ctx context.Context, requestID string, send
 	}
 }
 
-// closeConnection closes and removes a connection
+// closeConnection closes and removes a connection.
 func (f *TCPForwarder) closeConnection(requestID string) {
 	if conn, ok := f.connections.LoadAndDelete(requestID); ok {
-		tcpConn := conn.(*TCPConnection)
+		tcpConn, ok := conn.(*TCPConnection)
+		if !ok {
+			logger.ErrorEvent().Str("request_id", requestID).Msg("Invalid connection type in close")
+			return
+		}
 		tcpConn.mu.Lock()
 		if !tcpConn.closed {
 			tcpConn.conn.Close()
@@ -209,10 +227,13 @@ func (f *TCPForwarder) closeConnection(requestID string) {
 	}
 }
 
-// Close closes all connections
+// Close closes all connections.
 func (f *TCPForwarder) Close() {
 	f.connections.Range(func(key, value interface{}) bool {
-		requestID := key.(string)
+		requestID, ok := key.(string)
+		if !ok {
+			return true // Skip invalid entries
+		}
 		f.closeConnection(requestID)
 		return true
 	})

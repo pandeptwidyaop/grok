@@ -3,18 +3,19 @@ package cli
 import (
 	"fmt"
 
-	"github.com/pandeptwidyaop/grok/internal/client/config"
 	"github.com/spf13/cobra"
+
+	"github.com/pandeptwidyaop/grok/internal/client/config"
 )
 
-// configCmd represents the config command
+// configCmd represents the config command.
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage grok configuration",
 	Long:  `Manage grok client configuration including authentication token.`,
 }
 
-// setTokenCmd represents the set-token command
+// setTokenCmd represents the set-token command.
 var setTokenCmd = &cobra.Command{
 	Use:   "set-token [token]",
 	Short: "Set authentication token",
@@ -37,7 +38,7 @@ Example:
 	},
 }
 
-// setServerCmd represents the set-server command
+// setServerCmd represents the set-server command.
 var setServerCmd = &cobra.Command{
 	Use:   "set-server [address]",
 	Short: "Set grok server address",
@@ -72,7 +73,7 @@ Examples:
 	},
 }
 
-// hasPort checks if address already has a port
+// hasPort checks if address already has a port.
 func hasPort(addr string) bool {
 	// Simple check for colon in address
 	// Works for: "example.com:8080", "192.168.1.1:4443"
@@ -88,7 +89,7 @@ func hasPort(addr string) bool {
 	return false
 }
 
-// setTLSCertCmd represents the set-tls-cert command
+// setTLSCertCmd represents the set-tls-cert command.
 var setTLSCertCmd = &cobra.Command{
 	Use:   "set-tls-cert [path]",
 	Short: "Set TLS certificate file and enable TLS",
@@ -115,7 +116,7 @@ Examples:
 	},
 }
 
-// setTLSInsecureCmd represents the set-tls-insecure command
+// setTLSInsecureCmd represents the set-tls-insecure command.
 var setTLSInsecureCmd = &cobra.Command{
 	Use:   "set-tls-insecure [true|false]",
 	Short: "Enable/disable TLS insecure mode (skip verification)",
@@ -152,7 +153,7 @@ Examples:
 	},
 }
 
-// enableTLSCmd represents the enable-tls command
+// enableTLSCmd represents the enable-tls command.
 var enableTLSCmd = &cobra.Command{
 	Use:   "enable-tls",
 	Short: "Enable TLS with system CA pool",
@@ -182,7 +183,7 @@ Example:
 	},
 }
 
-// disableTLSCmd represents the disable-tls command
+// disableTLSCmd represents the disable-tls command.
 var disableTLSCmd = &cobra.Command{
 	Use:   "disable-tls",
 	Short: "Disable TLS (insecure connection)",

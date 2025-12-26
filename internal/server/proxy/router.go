@@ -7,13 +7,13 @@ import (
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 )
 
-// Router routes incoming requests to appropriate tunnels
+// Router routes incoming requests to appropriate tunnels.
 type Router struct {
 	tunnelManager *tunnel.Manager
 	baseDomain    string
 }
 
-// NewRouter creates a new proxy router
+// NewRouter creates a new proxy router.
 func NewRouter(tunnelManager *tunnel.Manager, baseDomain string) *Router {
 	return &Router{
 		tunnelManager: tunnelManager,
@@ -21,9 +21,7 @@ func NewRouter(tunnelManager *tunnel.Manager, baseDomain string) *Router {
 	}
 }
 
-// ExtractSubdomain extracts subdomain from host header
-// Example: "abc123.localhost" -> "abc123"
-// Example: "myapp.grok.io" -> "myapp"
+// Example: "myapp.grok.io" -> "myapp".
 func (r *Router) ExtractSubdomain(host string) (string, error) {
 	// Remove port if present
 	if idx := strings.Index(host, ":"); idx != -1 {
@@ -46,7 +44,7 @@ func (r *Router) ExtractSubdomain(host string) (string, error) {
 	return subdomain, nil
 }
 
-// RouteToTunnel finds the tunnel for a given host
+// RouteToTunnel finds the tunnel for a given host.
 func (r *Router) RouteToTunnel(host string) (*tunnel.Tunnel, error) {
 	// Extract subdomain
 	subdomain, err := r.ExtractSubdomain(host)

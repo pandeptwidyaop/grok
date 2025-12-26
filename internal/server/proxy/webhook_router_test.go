@@ -25,7 +25,7 @@ func TestWebhookRouter_IsWebhookRequest(t *testing.T) {
 		{"api subdomain", "api.grok.io", false},
 		{"no subdomain", "grok.io", false},
 		{"wrong domain", "trofeo-webhook.example.com", false},
-		{"incomplete webhook", "webhook.grok.io", false}, // no org prefix
+		{"incomplete webhook", "webhook.grok.io", false},    // no org prefix
 		{"webhook prefix", "webhook-trofeo.grok.io", false}, // wrong order
 
 		// Edge cases
@@ -50,13 +50,13 @@ func TestWebhookRouter_ExtractWebhookComponents(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		host           string
-		path           string
-		wantOrg        string
-		wantApp        string
-		wantUserPath   string
-		shouldErr      bool
+		name         string
+		host         string
+		path         string
+		wantOrg      string
+		wantApp      string
+		wantUserPath string
+		shouldErr    bool
 	}{
 		// Valid cases
 		{
@@ -182,7 +182,7 @@ func TestWebhookRouter_ExtractWebhookComponents(t *testing.T) {
 	}
 }
 
-// Benchmark tests
+// Benchmark tests.
 func BenchmarkIsWebhookRequest(b *testing.B) {
 	router := &WebhookRouter{
 		baseDomain: "grok.io",

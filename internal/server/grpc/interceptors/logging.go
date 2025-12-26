@@ -4,12 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
+
+	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// LoggingInterceptor logs gRPC requests and responses
+// LoggingInterceptor logs gRPC requests and responses.
 func LoggingInterceptor() grpc.UnaryServerInterceptor {
 	return func(
 		ctx context.Context,
@@ -41,7 +42,7 @@ func LoggingInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
-// StreamLoggingInterceptor logs gRPC streaming requests
+// StreamLoggingInterceptor logs gRPC streaming requests.
 func StreamLoggingInterceptor() grpc.StreamServerInterceptor {
 	return func(
 		srv interface{},

@@ -10,6 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
+	"gorm.io/gorm"
+
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
@@ -24,11 +30,6 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/server/web/api"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
-	"github.com/spf13/cobra"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/keepalive"
-	"gorm.io/gorm"
 )
 
 func init() {
@@ -44,7 +45,7 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-// initAdminUser creates or updates the admin user from config
+// initAdminUser creates or updates the admin user from config.
 func initAdminUser(database *gorm.DB, cfg *config.Config) error {
 	var adminUser models.User
 
@@ -222,8 +223,8 @@ func runServer() error {
 			Timeout: 20 * time.Second, // Wait 20s for ping ack before closing
 		}),
 		// Increase max message size for large payloads
-		grpc.MaxRecvMsgSize(64 << 20), // 64MB
-		grpc.MaxSendMsgSize(64 << 20), // 64MB
+		grpc.MaxRecvMsgSize(64<<20), // 64MB
+		grpc.MaxSendMsgSize(64<<20), // 64MB
 	)
 
 	// Add TLS credentials for gRPC if enabled

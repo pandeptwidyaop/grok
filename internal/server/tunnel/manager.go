@@ -7,17 +7,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"google.golang.org/grpc"
+	"gorm.io/gorm"
+
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/tcp"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
-	"google.golang.org/grpc"
-	"gorm.io/gorm"
 )
 
-// TunnelEventType represents the type of tunnel event
+// TunnelEventType represents the type of tunnel event.
 type TunnelEventType string
 
 const (
@@ -27,48 +28,48 @@ const (
 	EventTunnelStatsUpdated TunnelEventType = "tunnel_stats_updated"
 )
 
-// TunnelEvent represents a tunnel state change event
+// TunnelEvent represents a tunnel state change event.
 type TunnelEvent struct {
 	Type     TunnelEventType
 	TunnelID uuid.UUID
 	Tunnel   *models.Tunnel
 }
 
-// TunnelEventHandler is a callback for tunnel events
+// TunnelEventHandler is a callback for tunnel events.
 type TunnelEventHandler func(TunnelEvent)
 
-// TCPProxy interface for TCP proxy operations
+// TCPProxy interface for TCP proxy operations.
 type TCPProxy interface {
 	StartListener(port int, tunnelID uuid.UUID) error
 	StopListener(port int) error
 }
 
-// Manager manages active tunnels
+// Manager manages active tunnels.
 type Manager struct {
-	db             *gorm.DB
-	tunnels        sync.Map // subdomain → *Tunnel
-	tunnelsByID    sync.Map // tunnel_id → *Tunnel
+	db                *gorm.DB
+	tunnels           sync.Map // subdomain → *Tunnel
+	tunnelsByID       sync.Map // tunnel_id → *Tunnel
 	maxTunnelsPerUser int
-	baseDomain     string
-	tlsEnabled     bool   // Whether TLS is enabled
-	httpPort       int    // HTTP port (default 80)
-	httpsPort      int    // HTTPS port (default 443)
-	portPool       *tcp.PortPool // TCP port pool for TCP tunnels
-	tcpProxy       TCPProxy       // TCP proxy for starting/stopping listeners
-	mu             sync.RWMutex
-	eventHandlers  []TunnelEventHandler
-	eventMu        sync.RWMutex
+	baseDomain        string
+	tlsEnabled        bool          // Whether TLS is enabled
+	httpPort          int           // HTTP port (default 80)
+	httpsPort         int           // HTTPS port (default 443)
+	portPool          *tcp.PortPool // TCP port pool for TCP tunnels
+	tcpProxy          TCPProxy      // TCP proxy for starting/stopping listeners
+	mu                sync.RWMutex
+	eventHandlers     []TunnelEventHandler
+	eventMu           sync.RWMutex
 }
 
-// NewManager creates a new tunnel manager
+// NewManager creates a new tunnel manager.
 func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int, tlsEnabled bool, httpPort, httpsPort, tcpPortStart, tcpPortEnd int) *Manager {
 	m := &Manager{
-		db:             db,
-		baseDomain:     baseDomain,
+		db:                db,
+		baseDomain:        baseDomain,
 		maxTunnelsPerUser: maxTunnelsPerUser,
-		tlsEnabled:     tlsEnabled,
-		httpPort:       httpPort,
-		httpsPort:      httpsPort,
+		tlsEnabled:        tlsEnabled,
+		httpPort:          httpPort,
+		httpsPort:         httpsPort,
 	}
 
 	// Initialize TCP port pool for TCP tunnels
@@ -97,14 +98,12 @@ func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int, tlsEnable
 	return m
 }
 
-// SetTCPProxy sets the TCP proxy for starting/stopping TCP listeners
+// SetTCPProxy sets the TCP proxy for starting/stopping TCP listeners.
 func (m *Manager) SetTCPProxy(proxy TCPProxy) {
 	m.tcpProxy = proxy
 }
 
-// CleanupStaleTunnels cleans up tunnels that are marked as active but have no active connection
-// This happens when server restarts and old tunnel records remain in database
-// All tunnels are persistent - they are marked offline but domain reservations are kept
+// All tunnels are persistent - they are marked offline but domain reservations are kept.
 func (m *Manager) CleanupStaleTunnels(ctx context.Context) error {
 	logger.InfoEvent().Msg("Cleaning up stale tunnels from previous sessions...")
 
@@ -130,14 +129,14 @@ func (m *Manager) CleanupStaleTunnels(ctx context.Context) error {
 	return nil
 }
 
-// OnTunnelEvent subscribes to tunnel events
+// OnTunnelEvent subscribes to tunnel events.
 func (m *Manager) OnTunnelEvent(handler TunnelEventHandler) {
 	m.eventMu.Lock()
 	defer m.eventMu.Unlock()
 	m.eventHandlers = append(m.eventHandlers, handler)
 }
 
-// emitEvent emits a tunnel event to all subscribers
+// emitEvent emits a tunnel event to all subscribers.
 func (m *Manager) emitEvent(event TunnelEvent) {
 	m.eventMu.RLock()
 	defer m.eventMu.RUnlock()
@@ -148,9 +147,7 @@ func (m *Manager) emitEvent(event TunnelEvent) {
 	}
 }
 
-// AllocateSubdomain allocates a subdomain with organization support (custom or random)
-// Returns: (fullSubdomain, customPart, error)
-// fullSubdomain format: {custom}-{org} or just {custom} if no org
+// fullSubdomain format: {custom}-{org} or just {custom} if no org.
 func (m *Manager) AllocateSubdomain(ctx context.Context, userID uuid.UUID, orgID *uuid.UUID, requested string) (string, string, error) {
 	var orgSubdomain string
 	var customPart string
@@ -207,7 +204,7 @@ func (m *Manager) AllocateSubdomain(ctx context.Context, userID uuid.UUID, orgID
 	return fullSubdomain, customPart, nil
 }
 
-// reserveSubdomain atomically reserves a subdomain in the database with organization support
+// reserveSubdomain atomically reserves a subdomain in the database with organization support.
 func (m *Manager) reserveSubdomain(ctx context.Context, userID uuid.UUID, orgID *uuid.UUID, subdomain string) error {
 	// Check if already taken in memory
 	if _, exists := m.tunnels.Load(subdomain); exists {
@@ -232,7 +229,7 @@ func (m *Manager) reserveSubdomain(ctx context.Context, userID uuid.UUID, orgID 
 	return nil
 }
 
-// RegisterTunnel registers a new active tunnel
+// RegisterTunnel registers a new active tunnel.
 func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 	// Check max tunnels per user
 	if err := m.checkUserTunnelLimit(ctx, tunnel.UserID); err != nil {
@@ -271,7 +268,9 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 		if m.tcpProxy != nil {
 			if err := m.tcpProxy.StartListener(port, tunnel.ID); err != nil {
 				// Release the port if listener fails to start
-				m.portPool.ReleasePort(port, false)
+				if releaseErr := m.portPool.ReleasePort(port, false); releaseErr != nil {
+					logger.WarnEvent().Err(releaseErr).Int("port", port).Msg("Failed to release port")
+				}
 				logger.ErrorEvent().
 					Err(err).
 					Int("port", port).
@@ -310,7 +309,9 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 
 		// Release allocated port if TCP
 		if allocatedPort != nil {
-			m.portPool.ReleasePort(*allocatedPort, false)
+			if releaseErr := m.portPool.ReleasePort(*allocatedPort, false); releaseErr != nil {
+				logger.WarnEvent().Err(releaseErr).Int("port", *allocatedPort).Msg("Failed to release port")
+			}
 		}
 
 		return pkgerrors.Wrap(err, "failed to register tunnel in database")
@@ -333,8 +334,7 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 	return nil
 }
 
-// UnregisterTunnel unregisters an active tunnel
-// All tunnels are now persistent - they are marked offline but not deleted
+// All tunnels are now persistent - they are marked offline but not deleted.
 func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) error {
 	// Load tunnel
 	value, ok := m.tunnelsByID.Load(tunnelID)
@@ -342,7 +342,10 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 		return pkgerrors.ErrTunnelNotFound
 	}
 
-	tunnel := value.(*Tunnel)
+	tunnel, ok := value.(*Tunnel)
+	if !ok {
+		return fmt.Errorf("invalid tunnel type in storage")
+	}
 
 	// Close tunnel
 	tunnel.Close()
@@ -430,25 +433,33 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 	return nil
 }
 
-// GetTunnelBySubdomain retrieves a tunnel by subdomain
+// GetTunnelBySubdomain retrieves a tunnel by subdomain.
 func (m *Manager) GetTunnelBySubdomain(subdomain string) (*Tunnel, bool) {
 	value, ok := m.tunnels.Load(subdomain)
 	if !ok {
 		return nil, false
 	}
-	return value.(*Tunnel), true
+	tunnel, ok := value.(*Tunnel)
+	if !ok {
+		return nil, false
+	}
+	return tunnel, true
 }
 
-// GetTunnelByID retrieves a tunnel by ID
+// GetTunnelByID retrieves a tunnel by ID.
 func (m *Manager) GetTunnelByID(tunnelID uuid.UUID) (*Tunnel, bool) {
 	value, ok := m.tunnelsByID.Load(tunnelID)
 	if !ok {
 		return nil, false
 	}
-	return value.(*Tunnel), true
+	tunnel, ok := value.(*Tunnel)
+	if !ok {
+		return nil, false
+	}
+	return tunnel, true
 }
 
-// SaveTunnelStats saves tunnel statistics to database
+// SaveTunnelStats saves tunnel statistics to database.
 func (m *Manager) SaveTunnelStats(ctx context.Context, tunnelID uuid.UUID) error {
 	tunnel, ok := m.GetTunnelByID(tunnelID)
 	if !ok {
@@ -483,12 +494,15 @@ func (m *Manager) SaveTunnelStats(ctx context.Context, tunnelID uuid.UUID) error
 	return nil
 }
 
-// GetUserTunnels returns all active tunnels for a user
+// GetUserTunnels returns all active tunnels for a user.
 func (m *Manager) GetUserTunnels(userID uuid.UUID) []*Tunnel {
 	var tunnels []*Tunnel
 
 	m.tunnelsByID.Range(func(key, value interface{}) bool {
-		tunnel := value.(*Tunnel)
+		tunnel, ok := value.(*Tunnel)
+		if !ok {
+			return true // Skip invalid entries
+		}
 		if tunnel.UserID == userID {
 			tunnels = append(tunnels, tunnel)
 		}
@@ -498,7 +512,7 @@ func (m *Manager) GetUserTunnels(userID uuid.UUID) []*Tunnel {
 	return tunnels
 }
 
-// CountActiveTunnels returns the total number of active tunnels
+// CountActiveTunnels returns the total number of active tunnels.
 func (m *Manager) CountActiveTunnels() int {
 	count := 0
 	m.tunnels.Range(func(_, _ interface{}) bool {
@@ -508,7 +522,7 @@ func (m *Manager) CountActiveTunnels() int {
 	return count
 }
 
-// checkUserTunnelLimit checks if user has reached max tunnel limit
+// checkUserTunnelLimit checks if user has reached max tunnel limit.
 func (m *Manager) checkUserTunnelLimit(ctx context.Context, userID uuid.UUID) error {
 	var count int64
 	err := m.db.WithContext(ctx).
@@ -527,7 +541,7 @@ func (m *Manager) checkUserTunnelLimit(ctx context.Context, userID uuid.UUID) er
 	return nil
 }
 
-// BuildPublicURL builds the public URL for a tunnel
+// BuildPublicURL builds the public URL for a tunnel.
 func (m *Manager) BuildPublicURL(subdomain string, protocol string) string {
 	if protocol == "tcp" {
 		// TCP tunnels use port-based routing, not subdomain
@@ -559,36 +573,35 @@ func (m *Manager) BuildPublicURL(subdomain string, protocol string) string {
 	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
-// BuildTCPPublicURL builds the public URL for a TCP tunnel with allocated port
+// BuildTCPPublicURL builds the public URL for a TCP tunnel with allocated port.
 func (m *Manager) BuildTCPPublicURL(port int) string {
 	return fmt.Sprintf("tcp://%s:%d", m.baseDomain, port)
 }
 
-// IsTLSEnabled returns whether TLS is enabled on the server
+// IsTLSEnabled returns whether TLS is enabled on the server.
 func (m *Manager) IsTLSEnabled() bool {
 	return m.tlsEnabled
 }
 
-// GetHTTPPort returns the HTTP port
+// GetHTTPPort returns the HTTP port.
 func (m *Manager) GetHTTPPort() int {
 	return m.httpPort
 }
 
-// GetHTTPSPort returns the HTTPS port
+// GetHTTPSPort returns the HTTPS port.
 func (m *Manager) GetHTTPSPort() int {
 	return m.httpsPort
 }
 
-// GetBaseDomain returns the base domain
+// GetBaseDomain returns the base domain.
 func (m *Manager) GetBaseDomain() string {
 	return m.baseDomain
 }
 
-// isDuplicateError checks if the error is a duplicate key error
+// isDuplicateError checks if the error is a duplicate key error.
 func isDuplicateError(err error) bool {
 	// PostgreSQL duplicate key error code: 23505
-	return err != nil && (
-		err == gorm.ErrDuplicatedKey ||
+	return err != nil && (err == gorm.ErrDuplicatedKey ||
 		// Check error string for duplicate key patterns
 		containsAny(err.Error(), []string{
 			"duplicate key",
@@ -611,7 +624,7 @@ func containsAny(str string, substrs []string) bool {
 	return false
 }
 
-// FindOfflineTunnelBySavedName finds an existing offline tunnel by saved name
+// FindOfflineTunnelBySavedName finds an existing offline tunnel by saved name.
 func (m *Manager) FindOfflineTunnelBySavedName(ctx context.Context, userID uuid.UUID, savedName string) (*models.Tunnel, error) {
 	var tunnel models.Tunnel
 	err := m.db.WithContext(ctx).
@@ -630,7 +643,7 @@ func (m *Manager) FindOfflineTunnelBySavedName(ctx context.Context, userID uuid.
 	return &tunnel, nil
 }
 
-// ReactivateTunnel reactivates an offline persistent tunnel
+// ReactivateTunnel reactivates an offline persistent tunnel.
 func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tunnel, stream grpc.ServerStream, newLocalAddr string) (*Tunnel, error) {
 	// Determine protocol from tunnel type
 	protocol := "http"
@@ -672,7 +685,9 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 		if m.tcpProxy != nil {
 			if err := m.tcpProxy.StartListener(port, offlineTunnel.ID); err != nil {
 				// Release the port if listener fails to start
-				m.portPool.ReleasePort(port, false)
+				if releaseErr := m.portPool.ReleasePort(port, false); releaseErr != nil {
+					logger.WarnEvent().Err(releaseErr).Int("port", port).Msg("Failed to release port")
+				}
 				logger.ErrorEvent().
 					Err(err).
 					Int("port", port).
@@ -691,11 +706,11 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 		Model(&models.Tunnel{}).
 		Where("id = ?", offlineTunnel.ID).
 		Updates(map[string]interface{}{
-			"status":          "active",
-			"public_url":      publicURL,      // Update with regenerated URL
-			"local_addr":      newLocalAddr,   // Update with new local address
-			"connected_at":    time.Now(),
-			"disconnected_at": nil,
+			"status":           "active",
+			"public_url":       publicURL,    // Update with regenerated URL
+			"local_addr":       newLocalAddr, // Update with new local address
+			"connected_at":     time.Now(),
+			"disconnected_at":  nil,
 			"last_activity_at": time.Now(),
 		}).Error
 
@@ -742,8 +757,8 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 
 	// Emit tunnel connected event with updated public URL and local address
 	offlineTunnel.Status = "active"
-	offlineTunnel.PublicURL = publicURL       // Update event data with new URL
-	offlineTunnel.LocalAddr = newLocalAddr    // Update event data with new local addr
+	offlineTunnel.PublicURL = publicURL    // Update event data with new URL
+	offlineTunnel.LocalAddr = newLocalAddr // Update event data with new local addr
 	m.emitEvent(TunnelEvent{
 		Type:     EventTunnelConnected,
 		TunnelID: tunnel.ID,
@@ -753,7 +768,7 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 	return tunnel, nil
 }
 
-// startPeriodicStatsUpdater runs in background and periodically broadcasts stats updates
+// startPeriodicStatsUpdater runs in background and periodically broadcasts stats updates.
 func (m *Manager) startPeriodicStatsUpdater() {
 	ticker := time.NewTicker(3 * time.Second) // Update every 3 seconds
 	defer ticker.Stop()
@@ -761,7 +776,10 @@ func (m *Manager) startPeriodicStatsUpdater() {
 	for range ticker.C {
 		// Get all active tunnels and broadcast their stats
 		m.tunnelsByID.Range(func(key, value interface{}) bool {
-			tunnel := value.(*Tunnel)
+			tunnel, ok := value.(*Tunnel)
+			if !ok {
+				return true // Skip invalid entries
+			}
 
 			// Get current stats from in-memory tunnel
 			bytesIn, bytesOut, requestsCount := tunnel.GetStats()

@@ -4,13 +4,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
-	"github.com/pandeptwidyaop/grok/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/db"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {

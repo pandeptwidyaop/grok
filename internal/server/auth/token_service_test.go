@@ -5,15 +5,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"github.com/pandeptwidyaop/grok/internal/db"
-	"github.com/pandeptwidyaop/grok/internal/db/models"
-	"github.com/pandeptwidyaop/grok/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/datatypes"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/pandeptwidyaop/grok/internal/db"
+	"github.com/pandeptwidyaop/grok/internal/db/models"
+	"github.com/pandeptwidyaop/grok/pkg/utils"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {

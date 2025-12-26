@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// WebhookRoute represents a routing rule from a webhook app to a specific tunnel
+// WebhookRoute represents a routing rule from a webhook app to a specific tunnel.
 type WebhookRoute struct {
 	ID           uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
 	WebhookAppID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_webhook_routes_app_tunnel,priority:1" json:"webhook_app_id"`
@@ -29,7 +29,7 @@ type WebhookRoute struct {
 	Tunnel     Tunnel     `gorm:"foreignKey:TunnelID;constraint:OnDelete:CASCADE" json:"tunnel,omitempty"`
 }
 
-// BeforeCreate sets UUID if not already set
+// BeforeCreate sets UUID if not already set.
 func (w *WebhookRoute) BeforeCreate(tx *gorm.DB) error {
 	if w.ID == uuid.Nil {
 		w.ID = uuid.New()
@@ -37,7 +37,7 @@ func (w *WebhookRoute) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// TableName specifies the table name for WebhookRoute
+// TableName specifies the table name for WebhookRoute.
 func (WebhookRoute) TableName() string {
 	return "webhook_routes"
 }

@@ -14,21 +14,21 @@ var (
 	gitCommit  = "unknown"
 )
 
-// SetVersion sets the version information
+// SetVersion sets the version information.
 func SetVersion(v, b, g string) {
 	version = v
 	buildTime = b
 	gitCommit = g
 }
 
-// rootCmd represents the base command
+// rootCmd represents the base command.
 var rootCmd = &cobra.Command{
 	Use:   "grok-server",
 	Short: "Grok tunnel server",
 	Long:  `Grok server provides tunnel services similar to ngrok.`,
 }
 
-// Execute runs the root command
+// Execute runs the root command.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"google.golang.org/grpc"
+
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 )
 
-// Tunnel represents an active tunnel connection
+// Tunnel represents an active tunnel connection.
 type Tunnel struct {
 	ID             uuid.UUID
 	UserID         uuid.UUID
@@ -17,7 +18,7 @@ type Tunnel struct {
 	OrganizationID *uuid.UUID // Organization ID (nullable)
 	Subdomain      string
 	Protocol       tunnelv1.TunnelProtocol
-	RemotePort     *int       // Allocated port for TCP tunnels
+	RemotePort     *int // Allocated port for TCP tunnels
 	LocalAddr      string
 	PublicURL      string
 	Stream         grpc.ServerStream
@@ -42,7 +43,7 @@ type Tunnel struct {
 	mu sync.RWMutex
 }
 
-// PendingRequest represents a request waiting for response
+// PendingRequest represents a request waiting for response.
 type PendingRequest struct {
 	RequestID  string
 	Request    *tunnelv1.ProxyRequest
@@ -51,7 +52,7 @@ type PendingRequest struct {
 	CreatedAt  time.Time
 }
 
-// NewTunnel creates a new tunnel instance
+// NewTunnel creates a new tunnel instance.
 func NewTunnel(
 	userID, tokenID uuid.UUID,
 	organizationID *uuid.UUID,
@@ -78,28 +79,28 @@ func NewTunnel(
 	}
 }
 
-// UpdateActivity updates the last activity timestamp
+// UpdateActivity updates the last activity timestamp.
 func (t *Tunnel) UpdateActivity() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.LastActivity = time.Now()
 }
 
-// GetStatus returns the current tunnel status
+// GetStatus returns the current tunnel status.
 func (t *Tunnel) GetStatus() string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.Status
 }
 
-// SetStatus updates the tunnel status
+// SetStatus updates the tunnel status.
 func (t *Tunnel) SetStatus(status string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Status = status
 }
 
-// UpdateStats updates tunnel statistics (thread-safe)
+// UpdateStats updates tunnel statistics (thread-safe).
 func (t *Tunnel) UpdateStats(bytesIn, bytesOut int64) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -109,14 +110,14 @@ func (t *Tunnel) UpdateStats(bytesIn, bytesOut int64) {
 	t.LastActivity = time.Now()
 }
 
-// GetStats returns current statistics (thread-safe)
+// GetStats returns current statistics (thread-safe).
 func (t *Tunnel) GetStats() (bytesIn, bytesOut, requestsCount int64) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.BytesIn, t.BytesOut, t.RequestsCount
 }
 
-// Close closes the tunnel and cleans up resources
+// Close closes the tunnel and cleans up resources.
 func (t *Tunnel) Close() {
 	t.mu.Lock()
 	defer t.mu.Unlock()

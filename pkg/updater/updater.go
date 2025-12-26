@@ -22,14 +22,14 @@ const (
 	githubRepo      = "grok"
 )
 
-// Updater handles binary updates from GitHub releases
+// Updater handles binary updates from GitHub releases.
 type Updater struct {
 	currentVersion string
 	binaryName     string
 	binaryPath     string
 }
 
-// NewUpdater creates a new updater instance
+// NewUpdater creates a new updater instance.
 func NewUpdater(binaryName string) (*Updater, error) {
 	// Get current binary path
 	binaryPath, err := os.Executable()
@@ -44,12 +44,12 @@ func NewUpdater(binaryName string) (*Updater, error) {
 	}, nil
 }
 
-// CheckForUpdates checks if a new version is available
+// CheckForUpdates checks if a new version is available.
 func (u *Updater) CheckForUpdates() (*version.UpdateInfo, error) {
 	return version.CheckForUpdates(githubOwner, githubRepo)
 }
 
-// Update downloads and installs the latest version
+// Update downloads and installs the latest version.
 func (u *Updater) Update(updateInfo *version.UpdateInfo) error {
 	if !updateInfo.UpdateAvailable {
 		return fmt.Errorf("no update available")
@@ -98,7 +98,7 @@ func (u *Updater) Update(updateInfo *version.UpdateInfo) error {
 	return nil
 }
 
-// getDownloadURL constructs the download URL for the current platform
+// getDownloadURL constructs the download URL for the current platform.
 func (u *Updater) getDownloadURL(version string) (string, error) {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
@@ -135,7 +135,7 @@ func (u *Updater) getDownloadURL(version string) (string, error) {
 	return url, nil
 }
 
-// downloadBinary downloads the binary to a temporary file
+// downloadBinary downloads the binary to a temporary file.
 func (u *Updater) downloadBinary(url string) (string, error) {
 	client := &http.Client{
 		Timeout: downloadTimeout,
@@ -172,7 +172,7 @@ func (u *Updater) downloadBinary(url string) (string, error) {
 	return tmpFile.Name(), nil
 }
 
-// extractBinary extracts the binary from the tar.gz archive
+// extractBinary extracts the binary from the tar.gz archive.
 func (u *Updater) extractBinary(tarGzPath string) (string, error) {
 	// Open the tar.gz file
 	file, err := os.Open(tarGzPath)
@@ -235,7 +235,7 @@ func (u *Updater) extractBinary(tarGzPath string) (string, error) {
 	return extractedPath, nil
 }
 
-// replaceBinary replaces the current binary with the new one
+// replaceBinary replaces the current binary with the new one.
 func (u *Updater) replaceBinary(newBinaryPath string) error {
 	// Backup current binary
 	backupPath := u.binaryPath + ".bak"
@@ -264,7 +264,7 @@ func (u *Updater) replaceBinary(newBinaryPath string) error {
 	return nil
 }
 
-// copyFile copies a file from src to dst
+// copyFile copies a file from src to dst.
 func copyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {

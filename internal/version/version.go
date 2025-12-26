@@ -12,25 +12,24 @@ import (
 )
 
 var (
-	// Version is the current version of the application
-	// This can be set at build time with -ldflags "-X internal/version.Version=v1.0.0"
+	// This can be set at build time with -ldflags "-X internal/version.Version=v1.0.0".
 	Version = "dev"
 
-	// GitCommit is the git commit hash
+	// GitCommit is the git commit hash.
 	GitCommit = "unknown"
 
-	// BuildDate is the build date
+	// BuildDate is the build date.
 	BuildDate = "unknown"
 )
 
-// Info represents version information
+// Info represents version information.
 type Info struct {
 	Version   string `json:"version"`
 	GitCommit string `json:"git_commit"`
 	BuildDate string `json:"build_date"`
 }
 
-// GetVersion returns the current version information
+// GetVersion returns the current version information.
 func GetVersion() Info {
 	return Info{
 		Version:   Version,
@@ -39,7 +38,7 @@ func GetVersion() Info {
 	}
 }
 
-// GitHubRelease represents a GitHub release
+// GitHubRelease represents a GitHub release.
 type GitHubRelease struct {
 	TagName     string    `json:"tag_name"`
 	Name        string    `json:"name"`
@@ -48,16 +47,16 @@ type GitHubRelease struct {
 	Body        string    `json:"body"`
 }
 
-// UpdateInfo represents update availability information
+// UpdateInfo represents update availability information.
 type UpdateInfo struct {
-	CurrentVersion string         `json:"current_version"`
-	LatestVersion  string         `json:"latest_version"`
-	UpdateAvailable bool          `json:"update_available"`
-	ReleaseURL     string         `json:"release_url,omitempty"`
-	ReleaseNotes   string         `json:"release_notes,omitempty"`
+	CurrentVersion  string `json:"current_version"`
+	LatestVersion   string `json:"latest_version"`
+	UpdateAvailable bool   `json:"update_available"`
+	ReleaseURL      string `json:"release_url,omitempty"`
+	ReleaseNotes    string `json:"release_notes,omitempty"`
 }
 
-// CheckForUpdates checks GitHub for the latest release
+// CheckForUpdates checks GitHub for the latest release.
 func CheckForUpdates(owner, repo string) (*UpdateInfo, error) {
 	// Get latest release from GitHub API
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", owner, repo)
@@ -107,8 +106,7 @@ func CheckForUpdates(owner, repo string) (*UpdateInfo, error) {
 	}, nil
 }
 
-// isNewerVersion compares two semantic version strings
-// Returns true if latestVersion is newer than currentVersion
+// Returns true if latestVersion is newer than currentVersion.
 func isNewerVersion(currentVersion, latestVersion string) bool {
 	// Skip check if running dev version
 	if currentVersion == "dev" {

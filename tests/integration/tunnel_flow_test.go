@@ -6,7 +6,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
+	"gorm.io/datatypes"
+	"gorm.io/gorm"
+
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
@@ -15,19 +24,11 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/test/bufconn"
-	"gorm.io/datatypes"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 const bufSize = 1024 * 1024
 
-// setupTestServer creates a test gRPC server with in-memory database
+// setupTestServer creates a test gRPC server with in-memory database.
 func setupTestServer(t *testing.T) (*grpc.Server, *gorm.DB, *tunnel.Manager, *auth.TokenService, *bufconn.Listener) {
 	// Create in-memory SQLite database for testing
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -82,7 +83,7 @@ func setupTestServer(t *testing.T) (*grpc.Server, *gorm.DB, *tunnel.Manager, *au
 	return grpcServer, database, tunnelManager, tokenService, lis
 }
 
-// TestCompleteTunnelFlow tests the complete tunnel creation and data persistence
+// TestCompleteTunnelFlow tests the complete tunnel creation and data persistence.
 func TestCompleteTunnelFlow(t *testing.T) {
 	grpcServer, database, tunnelManager, _, lis := setupTestServer(t)
 	defer grpcServer.Stop()
@@ -175,7 +176,7 @@ func TestCompleteTunnelFlow(t *testing.T) {
 	assert.Equal(t, "offline", dbTunnel.Status, "Status should be updated to offline")
 }
 
-// TestSubdomainAllocation tests subdomain allocation and validation
+// TestSubdomainAllocation tests subdomain allocation and validation.
 func TestSubdomainAllocation(t *testing.T) {
 	grpcServer, database, tunnelManager, _, _ := setupTestServer(t)
 	defer grpcServer.Stop()
@@ -227,7 +228,7 @@ func TestSubdomainAllocation(t *testing.T) {
 	})
 }
 
-// TestDomainPersistenceOnDisconnect tests that domains are kept reserved for persistent tunnels
+// TestDomainPersistenceOnDisconnect tests that domains are kept reserved for persistent tunnels.
 func TestDomainPersistenceOnDisconnect(t *testing.T) {
 	_, database, tunnelManager, _, _ := setupTestServer(t)
 
@@ -272,7 +273,7 @@ func TestDomainPersistenceOnDisconnect(t *testing.T) {
 	assert.Equal(t, pkgerrors.ErrSubdomainTaken, err, "Should return ErrSubdomainTaken")
 }
 
-// TestOrganizationSubdomainAllocation tests subdomain allocation with organizations
+// TestOrganizationSubdomainAllocation tests subdomain allocation with organizations.
 func TestOrganizationSubdomainAllocation(t *testing.T) {
 	_, database, tunnelManager, _, _ := setupTestServer(t)
 
@@ -356,7 +357,7 @@ func TestOrganizationSubdomainAllocation(t *testing.T) {
 	})
 }
 
-// TestOrganizationTunnelIsolation tests that tunnels are properly isolated by organization
+// TestOrganizationTunnelIsolation tests that tunnels are properly isolated by organization.
 func TestOrganizationTunnelIsolation(t *testing.T) {
 	_, database, tunnelManager, _, _ := setupTestServer(t)
 

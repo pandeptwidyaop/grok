@@ -10,15 +10,15 @@ import (
 	"github.com/pquerna/otp/totp"
 )
 
-// TOTPService handles two-factor authentication using TOTP
+// TOTPService handles two-factor authentication using TOTP.
 type TOTPService struct{}
 
-// NewTOTPService creates a new TOTP service
+// NewTOTPService creates a new TOTP service.
 func NewTOTPService() *TOTPService {
 	return &TOTPService{}
 }
 
-// GenerateSecret generates a new TOTP secret for a user
+// GenerateSecret generates a new TOTP secret for a user.
 func (s *TOTPService) GenerateSecret(domain, email string) (string, string, error) {
 	// Generate a random secret
 	secret := make([]byte, 20)
@@ -45,15 +45,14 @@ func (s *TOTPService) GenerateSecret(domain, email string) (string, string, erro
 	return key.Secret(), key.URL(), nil
 }
 
-// ValidateCode validates a TOTP code against a secret
+// ValidateCode validates a TOTP code against a secret.
 func (s *TOTPService) ValidateCode(secret, code string) bool {
 	// Validate the code with a 30-second window
 	valid := totp.Validate(code, secret)
 	return valid
 }
 
-// ValidateCodeWithWindow validates a TOTP code with a time window
-// This allows codes from previous/next periods to be valid
+// This allows codes from previous/next periods to be valid.
 func (s *TOTPService) ValidateCodeWithWindow(secret, code string, window int) bool {
 	now := time.Now()
 
@@ -80,7 +79,7 @@ func (s *TOTPService) ValidateCodeWithWindow(secret, code string, window int) bo
 	return false
 }
 
-// generateCodeAtTime generates a TOTP code at a specific time
+// generateCodeAtTime generates a TOTP code at a specific time.
 func generateCodeAtTime(secret string, t time.Time) string {
 	code, err := totp.GenerateCodeCustom(secret, t, totp.ValidateOpts{
 		Period:    30,

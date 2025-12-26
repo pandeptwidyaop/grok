@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// WebhookApp represents a webhook application that can have multiple tunnel routes
+// WebhookApp represents a webhook application that can have multiple tunnel routes.
 type WebhookApp struct {
 	ID             uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
 	OrganizationID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_webhook_apps_org_name,priority:1" json:"organization_id"`
@@ -21,13 +21,13 @@ type WebhookApp struct {
 	UpdatedAt time.Time `json:"updated_at"`
 
 	// Relationships
-	Organization Organization    `gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" json:"-"`
-	User         User            `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
-	Routes       []WebhookRoute  `gorm:"foreignKey:WebhookAppID" json:"routes,omitempty"`
-	Events       []WebhookEvent  `gorm:"foreignKey:WebhookAppID" json:"events,omitempty"`
+	Organization Organization   `gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" json:"-"`
+	User         User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"-"`
+	Routes       []WebhookRoute `gorm:"foreignKey:WebhookAppID" json:"routes,omitempty"`
+	Events       []WebhookEvent `gorm:"foreignKey:WebhookAppID" json:"events,omitempty"`
 }
 
-// BeforeCreate sets UUID if not already set
+// BeforeCreate sets UUID if not already set.
 func (w *WebhookApp) BeforeCreate(tx *gorm.DB) error {
 	if w.ID == uuid.Nil {
 		w.ID = uuid.New()
@@ -35,7 +35,7 @@ func (w *WebhookApp) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// TableName specifies the table name for WebhookApp
+// TableName specifies the table name for WebhookApp.
 func (WebhookApp) TableName() string {
 	return "webhook_apps"
 }

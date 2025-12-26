@@ -9,26 +9,27 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
-	"gorm.io/gorm"
 )
 
 var (
-	// ErrNoHealthyTunnels is returned when no healthy tunnels are available for webhook
+	// ErrNoHealthyTunnels is returned when no healthy tunnels are available for webhook.
 	ErrNoHealthyTunnels = errors.New("no healthy tunnels available for webhook")
 
-	// ErrWebhookAppNotFound is returned when webhook app is not found
+	// ErrWebhookAppNotFound is returned when webhook app is not found.
 	ErrWebhookAppNotFound = errors.New("webhook app not found")
 
-	// ErrInvalidWebhookURL is returned when webhook URL format is invalid
+	// ErrInvalidWebhookURL is returned when webhook URL format is invalid.
 	ErrInvalidWebhookURL = errors.New("invalid webhook URL format")
 )
 
-// WebhookEventType represents the type of webhook event
+// WebhookEventType represents the type of webhook event.
 type WebhookEventType string
 
 const (
@@ -37,7 +38,7 @@ const (
 	EventWebhookFailed   WebhookEventType = "webhook_failed"
 )
 
-// WebhookEvent represents a webhook processing event
+// WebhookEvent represents a webhook processing event.
 type WebhookEvent struct {
 	Type         WebhookEventType
 	AppID        uuid.UUID
@@ -53,10 +54,10 @@ type WebhookEvent struct {
 	ErrorMessage string
 }
 
-// WebhookEventHandler is a callback for webhook events
+// WebhookEventHandler is a callback for webhook events.
 type WebhookEventHandler func(interface{})
 
-// WebhookRouter handles routing for webhook requests with broadcast support
+// WebhookRouter handles routing for webhook requests with broadcast support.
 type WebhookRouter struct {
 	db            *gorm.DB
 	tunnelManager *tunnel.Manager
@@ -75,17 +76,17 @@ type WebhookRouter struct {
 	mu sync.RWMutex
 }
 
-// WebhookRouteCache holds cached webhook routing information
+// WebhookRouteCache holds cached webhook routing information.
 type WebhookRouteCache struct {
-	AppID         uuid.UUID
-	AppName       string
-	OrgSubdomain  string
-	Routes        []*WebhookRouteCacheEntry
-	LastRefresh   time.Time
-	mu            sync.RWMutex
+	AppID        uuid.UUID
+	AppName      string
+	OrgSubdomain string
+	Routes       []*WebhookRouteCacheEntry
+	LastRefresh  time.Time
+	mu           sync.RWMutex
 }
 
-// WebhookRouteCacheEntry represents a single route in cache
+// WebhookRouteCacheEntry represents a single route in cache.
 type WebhookRouteCacheEntry struct {
 	RouteID      uuid.UUID
 	TunnelID     uuid.UUID
@@ -94,16 +95,16 @@ type WebhookRouteCacheEntry struct {
 	HealthStatus string
 }
 
-// BroadcastResult contains results from broadcasting to tunnels
+// BroadcastResult contains results from broadcasting to tunnels.
 type BroadcastResult struct {
-	TunnelCount   int
-	SuccessCount  int
-	Responses     []*TunnelResponse
-	FirstSuccess  *TunnelResponse
-	ErrorMessage  string
+	TunnelCount  int
+	SuccessCount int
+	Responses    []*TunnelResponse
+	FirstSuccess *TunnelResponse
+	ErrorMessage string
 }
 
-// TunnelResponse represents response from a single tunnel
+// TunnelResponse represents response from a single tunnel.
 type TunnelResponse struct {
 	TunnelID     uuid.UUID
 	StatusCode   int
@@ -114,7 +115,7 @@ type TunnelResponse struct {
 	ErrorMessage string
 }
 
-// NewWebhookRouter creates a new webhook router
+// NewWebhookRouter creates a new webhook router.
 func NewWebhookRouter(db *gorm.DB, tunnelManager *tunnel.Manager, baseDomain string) *WebhookRouter {
 	return &WebhookRouter{
 		db:                   db,
@@ -125,14 +126,14 @@ func NewWebhookRouter(db *gorm.DB, tunnelManager *tunnel.Manager, baseDomain str
 	}
 }
 
-// OnWebhookEvent subscribes to webhook events
+// OnWebhookEvent subscribes to webhook events.
 func (wr *WebhookRouter) OnWebhookEvent(handler WebhookEventHandler) {
 	wr.eventMu.Lock()
 	defer wr.eventMu.Unlock()
 	wr.eventHandlers = append(wr.eventHandlers, handler)
 }
 
-// emitEvent emits a webhook event to all subscribers
+// emitEvent emits a webhook event to all subscribers.
 func (wr *WebhookRouter) emitEvent(event WebhookEvent) {
 	wr.eventMu.RLock()
 	defer wr.eventMu.RUnlock()
@@ -143,9 +144,7 @@ func (wr *WebhookRouter) emitEvent(event WebhookEvent) {
 	}
 }
 
-// IsWebhookRequest checks if the request matches webhook subdomain pattern
-// Pattern: {app_name}-{org}-webhook.{baseDomain}
-// Example: payment-app-trofeo-webhook.grok.io
+// Example: payment-app-trofeo-webhook.grok.io.
 func (wr *WebhookRouter) IsWebhookRequest(host string) bool {
 	// Remove port if present
 	if idx := strings.Index(host, ":"); idx != -1 {
@@ -165,9 +164,7 @@ func (wr *WebhookRouter) IsWebhookRequest(host string) bool {
 	return strings.HasSuffix(subdomain, "-webhook")
 }
 
-// ExtractWebhookComponents extracts organization subdomain, app name, and user path from request
-// Example URL: payment-app-trofeo-webhook.grok.io/stripe/callback
-// Returns: orgSubdomain="trofeo", appName="payment-app", userPath="/stripe/callback"
+// Returns: orgSubdomain="trofeo", appName="payment-app", userPath="/stripe/callback".
 func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdomain, appName, userPath string, err error) {
 	// Remove port from host
 	if idx := strings.Index(host, ":"); idx != -1 {
@@ -231,7 +228,7 @@ func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdoma
 	return validOrgSubdomain, validAppName, userPath, nil
 }
 
-// GetWebhookRoutes retrieves webhook routes from cache or database
+// GetWebhookRoutes retrieves webhook routes from cache or database.
 func (wr *WebhookRouter) GetWebhookRoutes(orgSubdomain, appName string) (*WebhookRouteCache, error) {
 	cacheKey := orgSubdomain + ":" + appName
 
@@ -251,7 +248,7 @@ func (wr *WebhookRouter) GetWebhookRoutes(orgSubdomain, appName string) (*Webhoo
 	return wr.RefreshCache(orgSubdomain, appName)
 }
 
-// RefreshCache refreshes webhook route cache from database
+// RefreshCache refreshes webhook route cache from database.
 func (wr *WebhookRouter) RefreshCache(orgSubdomain, appName string) (*WebhookRouteCache, error) {
 	// Find organization by subdomain
 	var org models.Organization
@@ -314,8 +311,7 @@ func (wr *WebhookRouter) RefreshCache(orgSubdomain, appName string) (*WebhookRou
 	return cache, nil
 }
 
-// BroadcastToTunnels broadcasts a webhook request to all enabled tunnels
-// Returns the first successful response
+// Returns the first successful response.
 func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookRouteCache, userPath string, request *ProxyRequestData) (*BroadcastResult, error) {
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
@@ -473,7 +469,7 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 	return result, nil
 }
 
-// sendToTunnel sends request to a single tunnel via gRPC stream
+// sendToTunnel sends request to a single tunnel via gRPC stream.
 func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, userPath string, request *ProxyRequestData) *TunnelResponse {
 	// Generate request ID
 	requestID := utils.GenerateRequestID()
@@ -555,7 +551,7 @@ func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, u
 	}
 }
 
-// ProxyRequestData holds HTTP request data for proxying
+// ProxyRequestData holds HTTP request data for proxying.
 type ProxyRequestData struct {
 	Method  string
 	Path    string
@@ -563,7 +559,7 @@ type ProxyRequestData struct {
 	Body    []byte
 }
 
-// InvalidateCache invalidates the cache for a specific webhook app
+// InvalidateCache invalidates the cache for a specific webhook app.
 func (wr *WebhookRouter) InvalidateCache(orgSubdomain, appName string) {
 	cacheKey := orgSubdomain + ":" + appName
 	wr.webhookCache.Delete(cacheKey)
@@ -574,7 +570,7 @@ func (wr *WebhookRouter) InvalidateCache(orgSubdomain, appName string) {
 		Msg("Webhook cache invalidated")
 }
 
-// InvalidateAllCache invalidates all cached webhook routes
+// InvalidateAllCache invalidates all cached webhook routes.
 func (wr *WebhookRouter) InvalidateAllCache() {
 	wr.webhookCache.Range(func(key, value interface{}) bool {
 		wr.webhookCache.Delete(key)

@@ -60,18 +60,35 @@ jobs:
     strategy:
       matrix:
         include:
-          # Server binaries (Linux AMD64 only - CGO for SQLite)
+          # Server binaries (Pure Go - no CGO required)
+          # Linux
           - target: server
             goos: linux
             goarch: amd64
             output: grok-server-linux-amd64
+          - target: server
+            goos: linux
+            goarch: arm64
+            output: grok-server-linux-arm64
+          - target: server
+            goos: linux
+            goarch: arm
+            output: grok-server-linux-arm
 
-          # Client binaries (x86/x64 only - no ARM)
+          # Client binaries (Pure Go - no CGO required)
           # Linux
           - target: client
             goos: linux
             goarch: amd64
             output: grok-linux-amd64
+          - target: client
+            goos: linux
+            goarch: arm64
+            output: grok-linux-arm64
+          - target: client
+            goos: linux
+            goarch: arm
+            output: grok-linux-arm
           - target: client
             goos: linux
             goarch: 386
@@ -82,12 +99,20 @@ jobs:
             goos: darwin
             goarch: amd64
             output: grok-darwin-amd64
+          - target: client
+            goos: darwin
+            goarch: arm64
+            output: grok-darwin-arm64
 
           # Windows
           - target: client
             goos: windows
             goarch: amd64
             output: grok-windows-amd64.exe
+          - target: client
+            goos: windows
+            goarch: arm64
+            output: grok-windows-arm64.exe
           - target: client
             goos: windows
             goarch: 386
@@ -100,7 +125,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
 
       - name: Install protoc
         run: |
@@ -133,19 +158,20 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
           VERSION: ${{ needs.version.outputs.new_release_version }}
         run: |
           mkdir -p dist
           if [ "${{ matrix.target }}" = "server" ]; then
-            # Server needs CGO for SQLite support
-            CGO_ENABLED=1 go build -ldflags="-s -w \
+            # Server build (pure Go - no CGO required)
+            go build -ldflags="-s -w \
               -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
               -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$(git rev-parse --short HEAD) \
               -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               -o dist/${{ matrix.output }} ./cmd/grok-server
           else
-            # Client doesn't need CGO
-            CGO_ENABLED=0 go build -ldflags="-s -w \
+            # Client build (pure Go - no CGO required)
+            go build -ldflags="-s -w \
               -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
               -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$(git rev-parse --short HEAD) \
               -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

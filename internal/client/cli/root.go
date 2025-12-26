@@ -3,22 +3,23 @@ package cli
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/pandeptwidyaop/grok/internal/client/config"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
-	"github.com/spf13/cobra"
 )
 
 var (
 	cfgFile string
 	cfg     *config.Config
 
-	// Version info (set by main package)
+	// Version info (set by main package).
 	version   = "dev"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
 
-// rootCmd represents the base command
+// rootCmd represents the base command.
 var rootCmd = &cobra.Command{
 	Use:   "grok",
 	Short: "Grok - Self-hosted tunneling solution",
@@ -68,7 +69,7 @@ Example usage:
 	},
 }
 
-// Execute executes the root command
+// Execute executes the root command.
 func Execute() error {
 	return rootCmd.Execute()
 }
@@ -80,12 +81,12 @@ func init() {
 	rootCmd.PersistentFlags().String("token", "", "auth token (overrides config)")
 }
 
-// GetConfig returns the loaded configuration
+// GetConfig returns the loaded configuration.
 func GetConfig() *config.Config {
 	return cfg
 }
 
-// SetVersion sets the version information
+// SetVersion sets the version information.
 func SetVersion(v, bt, gc string) {
 	version = v
 	buildTime = bt

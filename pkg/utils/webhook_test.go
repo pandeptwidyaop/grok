@@ -106,7 +106,7 @@ func TestValidateWebhookPath(t *testing.T) {
 	}
 }
 
-// Benchmark tests
+// Benchmark tests.
 func BenchmarkIsValidWebhookAppName(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		IsValidWebhookAppName("payment-app-123")

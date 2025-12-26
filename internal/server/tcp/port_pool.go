@@ -5,23 +5,24 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
-	"gorm.io/gorm"
 )
 
-// PortPool manages allocation of TCP ports for tunnels
+// PortPool manages allocation of TCP ports for tunnels.
 type PortPool struct {
-	startPort      int                // Start of port range (e.g., 10000)
-	endPort        int                // End of port range (e.g., 20000)
-	allocatedPorts map[int]uuid.UUID  // port → tunnel_id mapping
-	availablePorts []int              // Queue of available ports
-	mu             sync.RWMutex       // Protects allocatedPorts and availablePorts
-	db             *gorm.DB           // Database connection for persistence
+	startPort      int               // Start of port range (e.g., 10000)
+	endPort        int               // End of port range (e.g., 20000)
+	allocatedPorts map[int]uuid.UUID // port → tunnel_id mapping
+	availablePorts []int             // Queue of available ports
+	mu             sync.RWMutex      // Protects allocatedPorts and availablePorts
+	db             *gorm.DB          // Database connection for persistence
 }
 
-// NewPortPool creates a new port pool manager
+// NewPortPool creates a new port pool manager.
 func NewPortPool(db *gorm.DB, startPort, endPort int) (*PortPool, error) {
 	if startPort < 1024 {
 		return nil, fmt.Errorf("start port must be >= 1024 (avoiding privileged ports)")
@@ -62,7 +63,7 @@ func NewPortPool(db *gorm.DB, startPort, endPort int) (*PortPool, error) {
 	return pp, nil
 }
 
-// loadAllocatedPorts loads port allocations from database on startup
+// loadAllocatedPorts loads port allocations from database on startup.
 func (pp *PortPool) loadAllocatedPorts() error {
 	var tunnels []models.Tunnel
 
@@ -98,7 +99,7 @@ func (pp *PortPool) loadAllocatedPorts() error {
 	return nil
 }
 
-// removeFromAvailable removes a port from the available ports queue
+// removeFromAvailable removes a port from the available ports queue.
 func (pp *PortPool) removeFromAvailable(port int) {
 	for i, p := range pp.availablePorts {
 		if p == port {
@@ -110,7 +111,7 @@ func (pp *PortPool) removeFromAvailable(port int) {
 	}
 }
 
-// AllocatePort allocates a port for the given tunnel
+// AllocatePort allocates a port for the given tunnel.
 func (pp *PortPool) AllocatePort(tunnelID uuid.UUID) (int, error) {
 	pp.mu.Lock()
 	defer pp.mu.Unlock()
@@ -147,8 +148,7 @@ func (pp *PortPool) AllocatePort(tunnelID uuid.UUID) (int, error) {
 	return port, nil
 }
 
-// ReleasePort releases a port back to the pool
-// If tunnel is persistent and status is offline, keep the port reserved
+// If tunnel is persistent and status is offline, keep the port reserved.
 func (pp *PortPool) ReleasePort(port int, isPersistent bool) error {
 	pp.mu.Lock()
 	defer pp.mu.Unlock()
@@ -191,7 +191,7 @@ func (pp *PortPool) ReleasePort(port int, isPersistent bool) error {
 	return nil
 }
 
-// GetAllocatedPort returns the port allocated to a tunnel, if any
+// GetAllocatedPort returns the port allocated to a tunnel, if any.
 func (pp *PortPool) GetAllocatedPort(tunnelID uuid.UUID) (int, bool) {
 	pp.mu.RLock()
 	defer pp.mu.RUnlock()
@@ -205,7 +205,7 @@ func (pp *PortPool) GetAllocatedPort(tunnelID uuid.UUID) (int, bool) {
 	return 0, false
 }
 
-// GetTunnelByPort returns the tunnel ID allocated to a port, if any
+// GetTunnelByPort returns the tunnel ID allocated to a port, if any.
 func (pp *PortPool) GetTunnelByPort(port int) (uuid.UUID, bool) {
 	pp.mu.RLock()
 	defer pp.mu.RUnlock()
@@ -214,7 +214,7 @@ func (pp *PortPool) GetTunnelByPort(port int) (uuid.UUID, bool) {
 	return tunnelID, exists
 }
 
-// IsPortAvailable checks if a port is available for allocation
+// IsPortAvailable checks if a port is available for allocation.
 func (pp *PortPool) IsPortAvailable(port int) bool {
 	pp.mu.RLock()
 	defer pp.mu.RUnlock()
@@ -229,7 +229,7 @@ func (pp *PortPool) IsPortAvailable(port int) bool {
 	return !allocated
 }
 
-// GetStats returns statistics about the port pool
+// GetStats returns statistics about the port pool.
 func (pp *PortPool) GetStats() map[string]interface{} {
 	pp.mu.RLock()
 	defer pp.mu.RUnlock()
@@ -248,7 +248,7 @@ func (pp *PortPool) GetStats() map[string]interface{} {
 	}
 }
 
-// ReallocatePortForTunnel reallocates the same port for a persistent tunnel on reconnection
+// ReallocatePortForTunnel reallocates the same port for a persistent tunnel on reconnection.
 func (pp *PortPool) ReallocatePortForTunnel(tunnelID uuid.UUID, previousPort int) (int, error) {
 	pp.mu.Lock()
 	defer pp.mu.Unlock()
