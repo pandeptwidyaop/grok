@@ -21,6 +21,9 @@ const (
 	downloadTimeout = 5 * time.Minute
 	githubOwner     = "pandeptwidyaop"
 	githubRepo      = "grok"
+	// maxBinarySize is the maximum allowed size for an extracted binary (500MB).
+	// This prevents decompression bomb attacks.
+	maxBinarySize = 500 * 1024 * 1024
 )
 
 // Updater handles binary updates from GitHub releases.
@@ -62,10 +65,7 @@ func (u *Updater) Update(updateInfo *version.UpdateInfo) error {
 		Msg("Starting update")
 
 	// Determine download URL based on OS and architecture
-	downloadURL, err := u.getDownloadURL(updateInfo.LatestVersion)
-	if err != nil {
-		return fmt.Errorf("failed to determine download URL: %w", err)
-	}
+	downloadURL := u.getDownloadURL(updateInfo.LatestVersion)
 
 	logger.InfoEvent().Str("url", downloadURL).Msg("Downloading update")
 
@@ -100,7 +100,7 @@ func (u *Updater) Update(updateInfo *version.UpdateInfo) error {
 }
 
 // getDownloadURL constructs the download URL for the current platform.
-func (u *Updater) getDownloadURL(version string) (string, error) {
+func (u *Updater) getDownloadURL(version string) string {
 	goos := runtime.GOOS
 	goarch := runtime.GOARCH
 
@@ -133,7 +133,7 @@ func (u *Updater) getDownloadURL(version string) (string, error) {
 	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s",
 		githubOwner, githubRepo, version, filename)
 
-	return url, nil
+	return url
 }
 
 // downloadBinary downloads the binary to a temporary file.
@@ -222,11 +222,20 @@ func (u *Updater) extractBinary(tarGzPath string) (string, error) {
 				return "", fmt.Errorf("failed to create extracted file: %w", err)
 			}
 
-			if _, err := io.Copy(outFile, tarReader); err != nil {
+			// Use LimitReader to prevent decompression bomb attacks
+			limitedReader := io.LimitReader(tarReader, maxBinarySize)
+			written, err := io.Copy(outFile, limitedReader)
+			if err != nil {
 				outFile.Close()
 				return "", fmt.Errorf("failed to extract binary: %w", err)
 			}
 			outFile.Close()
+
+			// Check if we hit the size limit
+			if written >= maxBinarySize {
+				os.Remove(extractedPath)
+				return "", fmt.Errorf("extracted binary exceeds maximum allowed size (%d MB)", maxBinarySize/(1024*1024))
+			}
 
 			// Make it executable
 			if err := os.Chmod(extractedPath, 0755); err != nil {

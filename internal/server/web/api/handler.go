@@ -42,7 +42,7 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 	}
 
 	// Subscribe to tunnel events and broadcast via SSE
-	tunnelManager.OnTunnelEvent(func(event tunnel.TunnelEvent) {
+	tunnelManager.OnTunnelEvent(func(event tunnel.Event) {
 		// Broadcast tunnel event via SSE
 		h.sseBroker.Broadcast(SSEEvent{
 			Type: string(event.Type),

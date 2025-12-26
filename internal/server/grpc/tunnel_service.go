@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -159,6 +160,180 @@ func (s *TunnelService) CreateTunnel(
 }
 
 // ProxyStream handles bidirectional streaming for tunnel proxying.
+// registrationData holds parsed tunnel registration information.
+type registrationData struct {
+	subdomain string
+	authToken string
+	localAddr string
+	publicURL string
+	savedName string
+}
+
+// parseRegistrationData parses pipe-delimited registration data.
+func parseRegistrationData(data string) (*registrationData, error) {
+	parts := []string{}
+	lastIdx := 0
+	for i, ch := range data {
+		if ch == '|' {
+			parts = append(parts, data[lastIdx:i])
+			lastIdx = i + 1
+		}
+	}
+	parts = append(parts, data[lastIdx:])
+
+	if len(parts) < 4 || len(parts) > 5 {
+		return nil, fmt.Errorf("invalid registration format: expected 4-5 parts, got %d", len(parts))
+	}
+
+	reg := &registrationData{
+		subdomain: parts[0],
+		authToken: parts[1],
+		localAddr: parts[2],
+		publicURL: parts[3],
+	}
+
+	if len(parts) == 5 && parts[4] != "" {
+		reg.savedName = parts[4]
+	}
+
+	return reg, nil
+}
+
+// determineProtocolFromURL determines the tunnel protocol from public URL.
+func determineProtocolFromURL(publicURL string) tunnelv1.TunnelProtocol {
+	if len(publicURL) > 0 {
+		if len(publicURL) >= 8 && publicURL[:8] == "https://" {
+			return tunnelv1.TunnelProtocol_HTTPS
+		}
+		if len(publicURL) >= 6 && publicURL[:6] == "tcp://" {
+			return tunnelv1.TunnelProtocol_TCP
+		}
+	}
+	return tunnelv1.TunnelProtocol_HTTP
+}
+
+// handleTunnelRegistration handles the registration of a new tunnel.
+func (s *TunnelService) handleTunnelRegistration(
+	ctx context.Context,
+	stream tunnelv1.TunnelService_ProxyStreamServer,
+	reg *registrationData,
+) (*tunnel.Tunnel, error) {
+	// Validate token
+	token, err := s.tokenService.ValidateToken(ctx, reg.authToken)
+	if err != nil {
+		logger.WarnEvent().Err(err).Msg("Invalid token in ProxyStream")
+		return nil, status.Error(codes.Unauthenticated, "invalid authentication token")
+	}
+
+	// Load user to get organization ID
+	user, err := s.tokenService.GetUserByID(ctx, token.UserID)
+	if err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to load user in ProxyStream")
+		return nil, status.Error(codes.Internal, "failed to load user")
+	}
+
+	// Determine protocol from public URL
+	protocol := determineProtocolFromURL(reg.publicURL)
+
+	// Auto-generate tunnel name if not provided
+	savedName := reg.savedName
+	if savedName == "" {
+		generatedName, err := utils.GenerateRandomName()
+		if err != nil {
+			logger.ErrorEvent().Err(err).Msg("Failed to generate random name")
+			return nil, status.Error(codes.Internal, "failed to generate tunnel name")
+		}
+		savedName = generatedName
+		logger.InfoEvent().Str("generated_name", savedName).Msg("Auto-generated tunnel name")
+	}
+
+	// Check for existing offline tunnel with this saved name
+	offlineTunnel, err := s.tunnelManager.FindOfflineTunnelBySavedName(ctx, token.UserID, savedName)
+	if err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to check for offline tunnel")
+		return nil, status.Error(codes.Internal, "failed to check existing tunnel")
+	}
+
+	var tun *tunnel.Tunnel
+	if offlineTunnel != nil {
+		// Reactivate existing tunnel with new local address
+		logger.InfoEvent().
+			Str("saved_name", savedName).
+			Str("tunnel_id", offlineTunnel.ID.String()).
+			Str("new_local_addr", reg.localAddr).
+			Msg("Reactivating existing tunnel")
+
+		tun, err = s.tunnelManager.ReactivateTunnel(ctx, offlineTunnel, stream, reg.localAddr)
+		if err != nil {
+			logger.ErrorEvent().Err(err).Msg("Failed to reactivate tunnel")
+			return nil, status.Error(codes.Internal, "failed to reactivate tunnel")
+		}
+	} else {
+		// Create new persistent tunnel
+		tun = tunnel.NewTunnel(
+			token.UserID,
+			token.ID,
+			user.OrganizationID,
+			reg.subdomain,
+			protocol,
+			reg.localAddr,
+			reg.publicURL,
+			stream,
+		)
+		tun.SavedName = &savedName
+
+		if err := s.tunnelManager.RegisterTunnel(ctx, tun); err != nil {
+			logger.ErrorEvent().
+				Err(err).
+				Str("subdomain", reg.subdomain).
+				Msg("Failed to register tunnel")
+			return nil, status.Error(codes.Internal, "failed to register tunnel")
+		}
+
+		logger.InfoEvent().
+			Str("tunnel_id", tun.ID.String()).
+			Str("subdomain", reg.subdomain).
+			Str("saved_name", savedName).
+			Msg("New persistent tunnel created")
+	}
+
+	logger.InfoEvent().
+		Str("tunnel_id", tun.ID.String()).
+		Str("subdomain", reg.subdomain).
+		Str("public_url", tun.PublicURL).
+		Msg("Tunnel registered successfully")
+
+	// Send updated public URL to client
+	updateMsg := &tunnelv1.ProxyMessage{
+		Message: &tunnelv1.ProxyMessage_Control{
+			Control: &tunnelv1.ControlMessage{
+				Type:     tunnelv1.ControlMessage_UNKNOWN,
+				TunnelId: tun.ID.String(),
+				Metadata: map[string]string{
+					"public_url": tun.PublicURL,
+				},
+			},
+		},
+	}
+	if err := stream.Send(updateMsg); err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("tunnel_id", tun.ID.String()).
+			Msg("Failed to send public URL update to client")
+	}
+
+	return tun, nil
+}
+
+// cleanupTunnel unregisters a tunnel on stream close.
+func (s *TunnelService) cleanupTunnel(tun *tunnel.Tunnel, reason string) {
+	if tun != nil {
+		if err := s.tunnelManager.UnregisterTunnel(context.Background(), tun.ID); err != nil {
+			logger.WarnEvent().Err(err).Str("reason", reason).Msg("Failed to unregister tunnel")
+		}
+	}
+}
+
 func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamServer) error {
 	ctx := stream.Context()
 
@@ -172,11 +347,7 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 		select {
 		case <-ctx.Done():
 			logger.InfoEvent().Msg("ProxyStream context done")
-			if currentTunnel != nil {
-				if err := s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID); err != nil {
-					logger.WarnEvent().Err(err).Msg("Failed to unregister tunnel on context done")
-				}
-			}
+			s.cleanupTunnel(currentTunnel, "context done")
 			return nil
 		default:
 		}
@@ -184,22 +355,12 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 		msg, err := stream.Recv()
 		if err == io.EOF {
 			logger.InfoEvent().Msg("Client closed stream")
-			if currentTunnel != nil {
-				if err := s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID); err != nil {
-					logger.WarnEvent().Err(err).Msg("Failed to unregister tunnel on stream close")
-				}
-			}
+			s.cleanupTunnel(currentTunnel, "stream close")
 			return nil
 		}
 		if err != nil {
-			logger.ErrorEvent().
-				Err(err).
-				Msg("Error receiving message from client")
-			if currentTunnel != nil {
-				if err := s.tunnelManager.UnregisterTunnel(context.Background(), currentTunnel.ID); err != nil {
-					logger.WarnEvent().Err(err).Msg("Failed to unregister tunnel on stream error")
-				}
-			}
+			logger.ErrorEvent().Err(err).Msg("Error receiving message from client")
+			s.cleanupTunnel(currentTunnel, "stream error")
 			return status.Error(codes.Internal, "stream error")
 		}
 
@@ -208,148 +369,18 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 		case *tunnelv1.ProxyMessage_Control:
 			// First control message should contain tunnel registration
 			if currentTunnel == nil && payload.Control.Type == tunnelv1.ControlMessage_UNKNOWN {
-				// Parse subdomain|token|localaddr|publicurl|savedname(optional) from TunnelId field
-				parts := []string{}
-				data := payload.Control.TunnelId
-				lastIdx := 0
-				for i, ch := range data {
-					if ch == '|' {
-						parts = append(parts, data[lastIdx:i])
-						lastIdx = i + 1
-					}
-				}
-				parts = append(parts, data[lastIdx:])
-
-				if len(parts) < 4 || len(parts) > 5 {
-					logger.WarnEvent().
-						Int("parts_count", len(parts)).
-						Msg("Invalid registration message format")
-					return status.Error(codes.InvalidArgument, "invalid registration format")
-				}
-
-				subdomain := parts[0]
-				authToken := parts[1]
-				localAddr := parts[2]
-				publicURL := parts[3]
-				var savedName string
-				if len(parts) == 5 && parts[4] != "" {
-					savedName = parts[4]
-				}
-
-				// Validate token
-				token, err := s.tokenService.ValidateToken(ctx, authToken)
+				reg, err := parseRegistrationData(payload.Control.TunnelId)
 				if err != nil {
-					logger.WarnEvent().Err(err).Msg("Invalid token in ProxyStream")
-					return status.Error(codes.Unauthenticated, "invalid authentication token")
+					logger.WarnEvent().Err(err).Msg("Invalid registration message format")
+					return status.Error(codes.InvalidArgument, err.Error())
 				}
 
-				// Load user to get organization ID
-				user, err := s.tokenService.GetUserByID(ctx, token.UserID)
+				tun, err := s.handleTunnelRegistration(ctx, stream, reg)
 				if err != nil {
-					logger.ErrorEvent().Err(err).Msg("Failed to load user in ProxyStream")
-					return status.Error(codes.Internal, "failed to load user")
-				}
-
-				// Determine protocol from public URL
-				protocol := tunnelv1.TunnelProtocol_HTTP
-				if len(publicURL) > 0 {
-					if publicURL[:8] == "https://" {
-						protocol = tunnelv1.TunnelProtocol_HTTPS
-					} else if publicURL[:6] == "tcp://" {
-						protocol = tunnelv1.TunnelProtocol_TCP
-					}
-				}
-
-				var tun *tunnel.Tunnel
-
-				// Check if savedName is provided (or generate one)
-				if savedName == "" {
-					// Auto-generate Docker-style name
-					generatedName, err := utils.GenerateRandomName()
-					if err != nil {
-						logger.ErrorEvent().Err(err).Msg("Failed to generate random name")
-						return status.Error(codes.Internal, "failed to generate tunnel name")
-					}
-					savedName = generatedName
-					logger.InfoEvent().
-						Str("generated_name", savedName).
-						Msg("Auto-generated tunnel name")
-				}
-
-				// Check for existing offline tunnel with this saved name
-				offlineTunnel, err := s.tunnelManager.FindOfflineTunnelBySavedName(ctx, token.UserID, savedName)
-				if err != nil {
-					logger.ErrorEvent().Err(err).Msg("Failed to check for offline tunnel")
-					return status.Error(codes.Internal, "failed to check existing tunnel")
-				}
-
-				if offlineTunnel != nil {
-					// Reactivate existing tunnel with new local address
-					logger.InfoEvent().
-						Str("saved_name", savedName).
-						Str("tunnel_id", offlineTunnel.ID.String()).
-						Str("new_local_addr", localAddr).
-						Msg("Reactivating existing tunnel")
-
-					tun, err = s.tunnelManager.ReactivateTunnel(ctx, offlineTunnel, stream, localAddr)
-					if err != nil {
-						logger.ErrorEvent().Err(err).Msg("Failed to reactivate tunnel")
-						return status.Error(codes.Internal, "failed to reactivate tunnel")
-					}
-				} else {
-					// Create new persistent tunnel
-					tun = tunnel.NewTunnel(
-						token.UserID,
-						token.ID,
-						user.OrganizationID,
-						subdomain,
-						protocol,
-						localAddr,
-						publicURL,
-						stream,
-					)
-					tun.SavedName = &savedName
-
-					if err := s.tunnelManager.RegisterTunnel(ctx, tun); err != nil {
-						logger.ErrorEvent().
-							Err(err).
-							Str("subdomain", subdomain).
-							Msg("Failed to register tunnel")
-						return status.Error(codes.Internal, "failed to register tunnel")
-					}
-
-					logger.InfoEvent().
-						Str("tunnel_id", tun.ID.String()).
-						Str("subdomain", subdomain).
-						Str("saved_name", savedName).
-						Msg("New persistent tunnel created")
+					return err
 				}
 
 				currentTunnel = tun
-				logger.InfoEvent().
-					Str("tunnel_id", tun.ID.String()).
-					Str("subdomain", subdomain).
-					Str("public_url", tun.PublicURL).
-					Msg("Tunnel registered successfully")
-
-				// Send updated public URL to client (important for TCP tunnels with allocated ports)
-				updateMsg := &tunnelv1.ProxyMessage{
-					Message: &tunnelv1.ProxyMessage_Control{
-						Control: &tunnelv1.ControlMessage{
-							Type:     tunnelv1.ControlMessage_UNKNOWN, // Use UNKNOWN type for URL update
-							TunnelId: tun.ID.String(),
-							Metadata: map[string]string{
-								"public_url": tun.PublicURL,
-							},
-						},
-					},
-				}
-				if err := stream.Send(updateMsg); err != nil {
-					logger.ErrorEvent().
-						Err(err).
-						Str("tunnel_id", tun.ID.String()).
-						Msg("Failed to send public URL update to client")
-				}
 
 				// Start processing requests for this tunnel
 				go s.processRequests(ctx, currentTunnel)

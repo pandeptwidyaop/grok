@@ -329,7 +329,7 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 		Msg("Tunnel registered")
 
 	// Emit tunnel connected event
-	m.emitEvent(TunnelEvent{
+	m.emitEvent(Event{
 		Type:     EventTunnelConnected,
 		TunnelID: tunnel.ID,
 		Tunnel:   dbTunnel,
@@ -429,7 +429,7 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 
 	// Emit tunnel disconnected event
 	dbTunnel.Status = "offline"
-	m.emitEvent(TunnelEvent{
+	m.emitEvent(Event{
 		Type:     EventTunnelDisconnected,
 		TunnelID: tunnelID,
 		Tunnel:   &dbTunnel,
@@ -764,7 +764,7 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 	offlineTunnel.Status = "active"
 	offlineTunnel.PublicURL = publicURL    // Update event data with new URL
 	offlineTunnel.LocalAddr = newLocalAddr // Update event data with new local addr
-	m.emitEvent(TunnelEvent{
+	m.emitEvent(Event{
 		Type:     EventTunnelConnected,
 		TunnelID: tunnel.ID,
 		Tunnel:   offlineTunnel,
@@ -820,7 +820,7 @@ func (m *Manager) startPeriodicStatsUpdater() {
 			dbTunnel.LastActivityAt = time.Now()
 
 			// Emit stats update event
-			m.emitEvent(TunnelEvent{
+			m.emitEvent(Event{
 				Type:     EventTunnelStatsUpdated,
 				TunnelID: tunnel.ID,
 				Tunnel:   &dbTunnel,

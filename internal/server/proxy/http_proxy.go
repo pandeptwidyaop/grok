@@ -277,7 +277,7 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 	defer r.Body.Close()
 
 	// Prepare request data
-	requestData := &ProxyRequestData{
+	requestData := &RequestData{
 		Method:  r.Method,
 		Path:    userPath, // Use user-defined path, not the full path
 		Headers: r.Header,

@@ -151,7 +151,7 @@ func (c *Client) connect(ctx context.Context) error {
 	// Setup TLS or insecure credentials
 	if c.cfg.TLS {
 		tlsConfig := &tls.Config{
-			InsecureSkipVerify: c.cfg.TLSInsecure,
+			InsecureSkipVerify: c.cfg.TLSInsecure, //nolint:gosec // User-configurable option for development/testing
 		}
 
 		// Override server name if specified
