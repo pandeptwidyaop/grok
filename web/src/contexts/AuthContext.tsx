@@ -3,13 +3,22 @@ import type { ReactNode } from 'react';
 
 type UserRole = 'super_admin' | 'org_admin' | 'org_user' | null;
 
+interface LoginResponse {
+  token?: string;
+  user: string;
+  role?: string;
+  organization_id?: string;
+  organization_name?: string;
+  requires_2fa?: boolean;
+}
+
 interface AuthContextType {
   token: string | null;
   user: string | null;
   role: UserRole;
   organizationId: string | null;
   organizationName: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, otpCode?: string) => Promise<LoginResponse>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -43,13 +52,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return localStorage.getItem('auth_org_name');
   });
 
-  const login = async (username: string, password: string) => {
+  const login = async (username: string, password: string, otpCode?: string): Promise<LoginResponse> => {
     const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, otp_code: otpCode }),
     });
 
     if (!response.ok) {
@@ -57,22 +66,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(error.error || 'Login failed');
     }
 
-    const data = await response.json();
-    setToken(data.token);
-    setUser(data.user);
-    setRole(data.role);
-    setOrganizationId(data.organization_id || null);
-    setOrganizationName(data.organization_name || null);
+    const data: LoginResponse = await response.json();
 
-    localStorage.setItem('auth_token', data.token);
-    localStorage.setItem('auth_user', data.user);
-    localStorage.setItem('auth_role', data.role);
-    if (data.organization_id) {
-      localStorage.setItem('auth_org_id', data.organization_id);
+    // If 2FA is required, return without setting auth state
+    if (data.requires_2fa) {
+      return data;
     }
-    if (data.organization_name) {
-      localStorage.setItem('auth_org_name', data.organization_name);
+
+    // Set auth state only if we have a token (successful login)
+    if (data.token) {
+      setToken(data.token);
+      setUser(data.user);
+      setRole(data.role as UserRole);
+      setOrganizationId(data.organization_id || null);
+      setOrganizationName(data.organization_name || null);
+
+      localStorage.setItem('auth_token', data.token);
+      localStorage.setItem('auth_user', data.user);
+      localStorage.setItem('auth_role', data.role || '');
+      if (data.organization_id) {
+        localStorage.setItem('auth_org_id', data.organization_id);
+      }
+      if (data.organization_name) {
+        localStorage.setItem('auth_org_name', data.organization_name);
+      }
     }
+
+    return data;
   };
 
   const logout = () => {

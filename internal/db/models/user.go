@@ -28,6 +28,10 @@ type User struct {
 	OrganizationID *uuid.UUID `gorm:"type:uuid;index" json:"organization_id,omitempty"` // NULL for super_admins
 	Role           UserRole   `gorm:"type:varchar(20);not null;default:'org_user'" json:"role"`
 
+	// 2FA fields
+	TwoFactorEnabled bool   `gorm:"default:false" json:"two_factor_enabled"`
+	TwoFactorSecret  string `gorm:"type:varchar(255)" json:"-"` // TOTP secret, never expose
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 

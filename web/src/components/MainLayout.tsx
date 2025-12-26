@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import {
   Box,
   Drawer,
@@ -13,6 +14,9 @@ import {
   Typography,
   Paper,
   Divider,
+  Alert,
+  IconButton,
+  Collapse,
 } from '@mui/material';
 import {
   LayoutDashboard,
@@ -20,13 +24,18 @@ import {
   LogOut,
   User,
   Building2,
-  Settings,
+  Settings as SettingsIcon,
   Users as UsersIcon,
   Webhook,
   Key,
+  Download,
+  ChevronUp,
+  ChevronDown,
+  Github,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTunnelEvents } from '@/hooks/useSSE';
+import { api } from '@/lib/api';
 import Dashboard from './Dashboard';
 import TunnelList from './TunnelList';
 import TunnelDetail from './TunnelDetail';
@@ -36,6 +45,7 @@ import { WebhookAppDetailPage } from './WebhookAppDetailPage';
 import OrganizationList from './OrganizationList';
 import OrganizationDetail from './OrganizationDetail';
 import OrgUserManagement from './OrgUserManagement';
+import Settings from './Settings';
 
 const DRAWER_WIDTH = 280;
 
@@ -45,6 +55,28 @@ function MainLayout() {
   const { user, role, organizationName, organizationId, isSuperAdmin, isOrgAdmin, logout } =
     useAuth();
   const queryClient = useQueryClient();
+  const [showUpdateDetails, setShowUpdateDetails] = useState(false);
+
+  // Fetch version info
+  const { data: versionInfo } = useQuery({
+    queryKey: ['version'],
+    queryFn: async () => {
+      const response = await api.version.getVersion();
+      return response.data;
+    },
+    staleTime: Infinity, // Version doesn't change during runtime
+  });
+
+  // Check for updates (every 6 hours)
+  const { data: updateInfo } = useQuery({
+    queryKey: ['update-check'],
+    queryFn: async () => {
+      const response = await api.version.checkUpdates();
+      return response.data;
+    },
+    refetchInterval: 6 * 60 * 60 * 1000, // 6 hours
+    staleTime: 6 * 60 * 60 * 1000,
+  });
 
   // Subscribe to real-time tunnel events via SSE
   useTunnelEvents((event) => {
@@ -109,6 +141,12 @@ function MainLayout() {
       label: 'Webhooks',
       icon: Webhook,
     },
+    {
+      id: 'settings',
+      path: '/settings',
+      label: 'Settings',
+      icon: SettingsIcon,
+    },
     // Admin menu items (conditional based on role)
     ...(isSuperAdmin
       ? [
@@ -116,7 +154,7 @@ function MainLayout() {
             id: 'organizations',
             path: '/organizations',
             label: 'Organizations',
-            icon: Settings,
+            icon: Building2,
           },
         ]
       : []),
@@ -275,6 +313,108 @@ function MainLayout() {
           >
             Logout
           </Button>
+
+          {/* Version & Update Notification */}
+          <Box sx={{ mt: 2 }}>
+            {updateInfo?.update_available && (
+              <Alert
+                severity="info"
+                sx={{
+                  mb: 1.5,
+                  bgcolor: 'rgba(33, 150, 243, 0.1)',
+                  color: 'white',
+                  border: '1px solid rgba(33, 150, 243, 0.3)',
+                  '& .MuiAlert-icon': {
+                    color: '#42a5f5',
+                  },
+                }}
+                action={
+                  <IconButton
+                    size="small"
+                    onClick={() => setShowUpdateDetails(!showUpdateDetails)}
+                    sx={{ color: 'white' }}
+                  >
+                    {showUpdateDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </IconButton>
+                }
+              >
+                <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                  Update Available: {updateInfo.latest_version}
+                </Typography>
+              </Alert>
+            )}
+
+            <Collapse in={showUpdateDetails && updateInfo?.update_available}>
+              <Box
+                sx={{
+                  bgcolor: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: 1,
+                  p: 1.5,
+                  mb: 1.5,
+                }}
+              >
+                <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.9)', display: 'block', mb: 1 }}>
+                  New version {updateInfo?.latest_version} is available!
+                </Typography>
+                <Button
+                  fullWidth
+                  size="small"
+                  variant="contained"
+                  component="a"
+                  href={updateInfo?.release_url || ''}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{
+                    bgcolor: '#42a5f5',
+                    '&:hover': { bgcolor: '#1e88e5' },
+                  }}
+                  startIcon={<Download size={14} />}
+                >
+                  Download Update
+                </Button>
+              </Box>
+            </Collapse>
+
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography
+                variant="caption"
+                sx={{
+                  color: 'rgba(255, 255, 255, 0.5)',
+                  display: 'block',
+                  mb: 0.5,
+                }}
+              >
+                v{versionInfo?.version || 'dev'}
+              </Typography>
+              <Box
+                component="a"
+                href="https://github.com/pandeptwidyaop/grok"
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.5,
+                  color: 'rgba(255, 255, 255, 0.4)',
+                  textDecoration: 'none',
+                  '&:hover': {
+                    color: 'rgba(255, 255, 255, 0.7)',
+                  },
+                }}
+              >
+                <Github size={12} />
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'inherit',
+                  }}
+                >
+                  GitHub
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
         </Box>
       </Drawer>
 
@@ -295,6 +435,7 @@ function MainLayout() {
           <Route path="/tokens" element={<TokenManager />} />
           <Route path="/webhooks/:id" element={<WebhookAppDetailPage />} />
           <Route path="/webhooks" element={<WebhookApps />} />
+          <Route path="/settings" element={<Settings />} />
           {isSuperAdmin && (
             <>
               <Route path="/organizations" element={<OrganizationList />} />

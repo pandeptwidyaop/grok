@@ -133,13 +133,17 @@ func CORSMiddleware(next http.Handler) http.Handler {
 
 // RegisterRoutes registers all API routes
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	// Create organization handler, webhook handler, and RBAC middleware
+	// Create organization handler, webhook handler, version handler, 2FA handler, and RBAC middleware
 	orgHandler := NewOrganizationHandler(h.db, h.config.Server.Domain)
 	webhookHandler := NewWebhookHandler(h.db, h.tunnelManager)
+	versionHandler := NewVersionHandler()
+	twoFAHandler := NewTwoFAHandler(h.db, h.config.Server.Domain)
 	rbac := middleware.NewPermissionChecker()
 
 	// Public routes
 	mux.HandleFunc("POST /api/auth/login", h.login)
+	mux.HandleFunc("GET /api/version", versionHandler.GetVersion)
+	mux.HandleFunc("GET /api/version/check-updates", versionHandler.CheckUpdates)
 
 	// Protected routes (require JWT)
 	mux.Handle("GET /api/tokens", h.authMW.Protect(http.HandlerFunc(h.listTokens)))
@@ -154,6 +158,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.Handle("GET /api/stats", h.authMW.Protect(http.HandlerFunc(h.getStats)))
 	mux.Handle("GET /api/config", h.authMW.Protect(http.HandlerFunc(h.getConfig)))
+
+	// 2FA routes
+	mux.Handle("GET /api/2fa/status", h.authMW.Protect(http.HandlerFunc(twoFAHandler.GetStatus)))
+	mux.Handle("POST /api/2fa/setup", h.authMW.Protect(http.HandlerFunc(twoFAHandler.EnableSetup)))
+	mux.Handle("POST /api/2fa/verify", h.authMW.Protect(http.HandlerFunc(twoFAHandler.VerifyEnable)))
+	mux.Handle("POST /api/2fa/disable", h.authMW.Protect(http.HandlerFunc(twoFAHandler.Disable)))
 
 	// Organization routes - Super Admin only
 	mux.Handle("POST /api/organizations",
@@ -678,14 +688,16 @@ func (h *Handler) getConfig(w http.ResponseWriter, r *http.Request) {
 type loginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	OTPCode  string `json:"otp_code,omitempty"` // For 2FA verification
 }
 
 type loginResponse struct {
-	Token            string  `json:"token"`
+	Token            string  `json:"token,omitempty"`
 	User             string  `json:"user"`
-	Role             string  `json:"role"`
+	Role             string  `json:"role,omitempty"`
 	OrganizationID   *string `json:"organization_id,omitempty"`
 	OrganizationName *string `json:"organization_name,omitempty"`
+	Requires2FA      bool    `json:"requires_2fa,omitempty"` // Indicates 2FA is needed
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -718,6 +730,25 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 	if !user.IsActive {
 		respondError(w, http.StatusUnauthorized, "User account is disabled")
 		return
+	}
+
+	// Check if 2FA is enabled
+	if user.TwoFactorEnabled {
+		// If 2FA is enabled but no OTP code provided, return requires_2fa
+		if req.OTPCode == "" {
+			respondJSON(w, http.StatusOK, loginResponse{
+				User:        user.Email,
+				Requires2FA: true,
+			})
+			return
+		}
+
+		// Verify OTP code
+		totpService := auth.NewTOTPService()
+		if !totpService.ValidateCode(user.TwoFactorSecret, req.OTPCode) {
+			respondError(w, http.StatusUnauthorized, "Invalid OTP code")
+			return
+		}
 	}
 
 	// Prepare org_id for token

@@ -206,6 +206,37 @@ export interface AddWebhookRouteRequest {
   priority: number;
 }
 
+export interface VersionInfo {
+  version: string;
+  git_commit: string;
+  build_date: string;
+}
+
+export interface UpdateInfo {
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
+  release_url?: string;
+  release_notes?: string;
+}
+
+export interface TwoFAStatus {
+  enabled: boolean;
+}
+
+export interface TwoFASetup {
+  secret: string;
+  qr_url: string;
+}
+
+export interface TwoFAVerifyRequest {
+  code: string;
+}
+
+export interface TwoFADisableRequest {
+  password: string;
+}
+
 // API Methods
 export const api = {
   // Auth Tokens
@@ -310,6 +341,20 @@ export const api = {
       apiClient.get<WebhookEvent[]>(`/webhooks/apps/${appId}/events`, { params: { limit } }),
     getStats: (appId: string) =>
       apiClient.get<WebhookStats>(`/webhooks/apps/${appId}/stats`),
+  },
+
+  // Version & Updates
+  version: {
+    getVersion: () => apiClient.get<VersionInfo>('/version'),
+    checkUpdates: () => apiClient.get<UpdateInfo>('/version/check-updates'),
+  },
+
+  // Two-Factor Authentication
+  twoFA: {
+    getStatus: () => apiClient.get<TwoFAStatus>('/2fa/status'),
+    setup: () => apiClient.post<TwoFASetup>('/2fa/setup'),
+    verify: (data: TwoFAVerifyRequest) => apiClient.post('/2fa/verify', data),
+    disable: (data: TwoFADisableRequest) => apiClient.post('/2fa/disable', data),
   },
 };
 
