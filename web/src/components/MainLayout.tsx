@@ -34,6 +34,7 @@ import TokenManager from './TokenManager';
 import { WebhookApps } from './WebhookApps';
 import { WebhookAppDetailPage } from './WebhookAppDetailPage';
 import OrganizationList from './OrganizationList';
+import OrganizationDetail from './OrganizationDetail';
 import OrgUserManagement from './OrgUserManagement';
 
 const DRAWER_WIDTH = 280;
@@ -295,7 +296,10 @@ function MainLayout() {
           <Route path="/webhooks/:id" element={<WebhookAppDetailPage />} />
           <Route path="/webhooks" element={<WebhookApps />} />
           {isSuperAdmin && (
-            <Route path="/organizations" element={<OrganizationList />} />
+            <>
+              <Route path="/organizations" element={<OrganizationList />} />
+              <Route path="/organizations/:id" element={<OrganizationDetail />} />
+            </>
           )}
           {isOrgAdmin && (
             <Route
