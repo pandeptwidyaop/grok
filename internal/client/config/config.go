@@ -144,3 +144,38 @@ func SaveToken(token string) error {
 
 	return nil
 }
+
+// SaveServer saves server address to config file
+func SaveServer(addr string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home dir: %w", err)
+	}
+
+	configDir := filepath.Join(home, ".grok")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// Create config directory if not exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+
+	// Try to read existing config
+	_ = v.ReadInConfig()
+
+	// Set server address
+	v.Set("server.addr", addr)
+
+	// Write config
+	if err := v.WriteConfig(); err != nil {
+		// If file doesn't exist, create it
+		if err := v.SafeWriteConfig(); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+	}
+
+	return nil
+}
