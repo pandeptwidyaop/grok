@@ -18,8 +18,11 @@ type Config struct {
 
 // ServerConfig holds server connection settings
 type ServerConfig struct {
-	Addr string `mapstructure:"addr"`
-	TLS  bool   `mapstructure:"tls"`
+	Addr              string `mapstructure:"addr"`
+	TLS               bool   `mapstructure:"tls"`
+	TLSCertFile       string `mapstructure:"tls_cert_file"`        // Optional: custom CA cert
+	TLSInsecure       bool   `mapstructure:"tls_insecure"`         // Skip cert verification (dev only)
+	TLSServerName     string `mapstructure:"tls_server_name"`      // Override server name for verification
 }
 
 // AuthConfig holds authentication settings
@@ -91,6 +94,9 @@ func setDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.addr", "localhost:4443")
 	v.SetDefault("server.tls", false)
+	v.SetDefault("server.tls_cert_file", "")
+	v.SetDefault("server.tls_insecure", false)
+	v.SetDefault("server.tls_server_name", "")
 
 	// Logging defaults
 	v.SetDefault("logging.level", "info")

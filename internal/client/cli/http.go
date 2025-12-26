@@ -59,6 +59,9 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 	client, err := tunnel.NewClient(tunnel.ClientConfig{
 		ServerAddr:    cfg.Server.Addr,
 		TLS:           cfg.Server.TLS,
+		TLSCertFile:   cfg.Server.TLSCertFile,
+		TLSInsecure:   cfg.Server.TLSInsecure,
+		TLSServerName: cfg.Server.TLSServerName,
 		AuthToken:     cfg.Auth.Token,
 		LocalAddr:     localAddr,
 		Subdomain:     httpSubdomain,

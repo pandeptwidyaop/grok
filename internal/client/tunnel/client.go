@@ -2,9 +2,12 @@ package tunnel
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"math/rand"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -13,19 +16,23 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/client/proxy"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
 
 // ClientConfig holds tunnel client configuration
 type ClientConfig struct {
-	ServerAddr   string
-	TLS          bool
-	AuthToken    string
-	LocalAddr    string
-	Subdomain    string
-	Protocol     string
-	ReconnectCfg config.ReconnectConfig
+	ServerAddr      string
+	TLS             bool
+	TLSCertFile     string
+	TLSInsecure     bool
+	TLSServerName   string
+	AuthToken       string
+	LocalAddr       string
+	Subdomain       string
+	Protocol        string
+	ReconnectCfg    config.ReconnectConfig
 }
 
 // Client represents a tunnel client
@@ -122,11 +129,45 @@ func (c *Client) connect(ctx context.Context) error {
 		),
 	}
 
+	// Setup TLS or insecure credentials
 	if c.cfg.TLS {
-		// TODO: Add TLS credentials
-		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: c.cfg.TLSInsecure,
+		}
+
+		// Override server name if specified
+		if c.cfg.TLSServerName != "" {
+			tlsConfig.ServerName = c.cfg.TLSServerName
+		}
+
+		// Load custom CA certificate if provided
+		if c.cfg.TLSCertFile != "" && !c.cfg.TLSInsecure {
+			certPool := x509.NewCertPool()
+			caCert, err := os.ReadFile(c.cfg.TLSCertFile)
+			if err != nil {
+				return fmt.Errorf("failed to read TLS certificate file: %w", err)
+			}
+			if !certPool.AppendCertsFromPEM(caCert) {
+				return fmt.Errorf("failed to parse TLS certificate")
+			}
+			tlsConfig.RootCAs = certPool
+			logger.InfoEvent().
+				Str("cert_file", c.cfg.TLSCertFile).
+				Msg("Loaded custom CA certificate")
+		} else if c.cfg.TLSInsecure {
+			logger.WarnEvent().Msg("TLS certificate verification disabled (insecure mode)")
+		}
+
+		creds := credentials.NewTLS(tlsConfig)
+		opts = append(opts, grpc.WithTransportCredentials(creds))
+
+		logger.InfoEvent().
+			Bool("tls_enabled", true).
+			Bool("tls_insecure", c.cfg.TLSInsecure).
+			Msg("TLS enabled for gRPC connection")
 	} else {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		logger.WarnEvent().Msg("Connecting without TLS (insecure)")
 	}
 
 	logger.InfoEvent().

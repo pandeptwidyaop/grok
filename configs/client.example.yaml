@@ -1,6 +1,45 @@
+# Server Connection Configuration
 server:
   addr: "localhost:4443"
+
+  # TLS Configuration (default: false)
+  # Enable TLS for secure gRPC connection to server
   tls: false
+
+  # TLS Certificate File (optional)
+  # Path to CA certificate to verify server's certificate
+  # - For self-signed certs: path to server.crt from grok-server gencert
+  # - For Let's Encrypt: leave empty (uses system CA pool)
+  # tls_cert_file: "certs/server.crt"
+
+  # TLS Insecure Mode (default: false)
+  # Skip certificate verification - DEVELOPMENT ONLY, NOT for production!
+  # Use this only for testing with self-signed certificates
+  # tls_insecure: false
+
+  # TLS Server Name (optional)
+  # Override server name for certificate verification
+  # Useful when connecting via IP but cert is for domain
+  # tls_server_name: "grok.io"
+
+  # TLS Examples:
+  #
+  # 1. Development with self-signed certificate (verify):
+  #    tls: true
+  #    tls_cert_file: "certs/server.crt"
+  #
+  # 2. Development with self-signed certificate (skip verify):
+  #    tls: true
+  #    tls_insecure: true
+  #
+  # 3. Production with Let's Encrypt:
+  #    addr: "grok.io:4443"
+  #    tls: true
+  #    (no tls_cert_file needed - uses system CA)
+  #
+  # 4. Production with custom CA:
+  #    tls: true
+  #    tls_cert_file: "/etc/ssl/certs/ca-bundle.crt"
 
 auth:
   token: ""  # Set using: grok config set-token <your-token>
