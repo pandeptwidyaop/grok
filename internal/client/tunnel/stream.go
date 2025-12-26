@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
@@ -65,27 +66,19 @@ func (c *Client) getSubdomain() string {
 		return ""
 	}
 
-	// Simple extraction - just find the subdomain part
-	// This assumes format like "https://subdomain.domain" or "tcp://subdomain.domain:port"
-	start := 0
-	if idx := len("https://"); len(c.publicURL) > idx {
-		start = idx
-	}
-	if idx := len("http://"); len(c.publicURL) > idx {
-		start = idx
+	// Remove protocol prefix
+	url := c.publicURL
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+	url = strings.TrimPrefix(url, "tcp://")
+
+	// Find the subdomain part (everything before the first dot)
+	if dotIdx := strings.Index(url, "."); dotIdx != -1 {
+		return url[:dotIdx]
 	}
 
-	end := len(c.publicURL)
-	if idx := start; idx < len(c.publicURL) {
-		for i := start; i < len(c.publicURL); i++ {
-			if c.publicURL[i] == '.' {
-				end = i
-				break
-			}
-		}
-	}
-
-	return c.publicURL[start:end]
+	// If no dot found, return the whole URL (shouldn't happen in normal cases)
+	return url
 }
 
 // receiveRequests receives and handles proxy requests from server
