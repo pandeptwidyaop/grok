@@ -141,6 +141,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	rbac := middleware.NewPermissionChecker()
 
 	// Public routes
+	mux.HandleFunc("GET /health", h.health)
+	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("POST /api/auth/login", h.login)
 	mux.HandleFunc("GET /api/version", versionHandler.GetVersion)
 	mux.HandleFunc("GET /api/version/check-updates", versionHandler.CheckUpdates)
@@ -698,6 +700,14 @@ type loginResponse struct {
 	OrganizationID   *string `json:"organization_id,omitempty"`
 	OrganizationName *string `json:"organization_name,omitempty"`
 	Requires2FA      bool    `json:"requires_2fa,omitempty"` // Indicates 2FA is needed
+}
+
+// health returns a simple health check response
+func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"status": "healthy",
+		"service": "grok-server",
+	})
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
