@@ -24,6 +24,19 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Go tools
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate gRPC code
+        run: make proto
+
       - name: Run unit tests - Auth Service
         run: |
           echo "Running authentication service tests..."
@@ -63,6 +76,19 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Go tools
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate gRPC code
+        run: make proto
+
       - name: Run integration tests
         run: |
           echo "Running integration tests..."
@@ -101,6 +127,19 @@ jobs:
 
       - name: Install Go dependencies
         run: go mod download
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Go tools
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate gRPC code
+        run: make proto
 
       - name: Install Node dependencies
         run: |
@@ -200,6 +239,19 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Go tools
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate gRPC code
+        run: make proto
+
       - name: Run all Go tests
         run: |
           go test -v -race -coverprofile=coverage.out ./...
@@ -277,6 +329,19 @@ jobs:
 
       - name: Install Go dependencies
         run: go mod download
+
+      - name: Install protoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+
+      - name: Install Go tools
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+      - name: Generate gRPC code
+        run: make proto
 
       - name: Install Node dependencies
         run: |
