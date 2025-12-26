@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -18,13 +19,14 @@ type Config struct {
 
 // ServerConfig holds server settings.
 type ServerConfig struct {
-	GRPCPort     int    `mapstructure:"grpc_port"`
-	HTTPPort     int    `mapstructure:"http_port"`
-	HTTPSPort    int    `mapstructure:"https_port"`
-	APIPort      int    `mapstructure:"api_port"`
-	Domain       string `mapstructure:"domain"`
-	TCPPortStart int    `mapstructure:"tcp_port_start"`
-	TCPPortEnd   int    `mapstructure:"tcp_port_end"`
+	GRPCPort       int      `mapstructure:"grpc_port"`
+	HTTPPort       int      `mapstructure:"http_port"`
+	HTTPSPort      int      `mapstructure:"https_port"`
+	APIPort        int      `mapstructure:"api_port"`
+	Domain         string   `mapstructure:"domain"`
+	TCPPortStart   int      `mapstructure:"tcp_port_start"`
+	TCPPortEnd     int      `mapstructure:"tcp_port_end"`
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
 }
 
 // DatabaseConfig holds database settings.
@@ -74,6 +76,13 @@ func Load(configPath string) (*Config, error) {
 	viper.SetConfigFile(configPath)
 	viper.SetConfigType("yaml")
 
+	// Enable environment variable support
+	// Environment variables like GROK_AUTH_JWT_SECRET override config file values
+	viper.SetEnvPrefix("GROK")
+	viper.AutomaticEnv()
+	// Replace dots with underscores in env vars (auth.jwt_secret -> AUTH_JWT_SECRET)
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
 	// Set defaults
 	setDefaults()
 
@@ -87,7 +96,28 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// Validate critical security settings
+	if err := validateConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid configuration: %w", err)
+	}
+
 	return &cfg, nil
+}
+
+// validateConfig ensures critical security settings are properly configured.
+func validateConfig(cfg *Config) error {
+	// JWT secret must be set and not be the default value
+	if cfg.Auth.JWTSecret == "" {
+		return fmt.Errorf("auth.jwt_secret is required (set via config file or GROK_AUTH_JWT_SECRET environment variable)")
+	}
+	if cfg.Auth.JWTSecret == "change-this-to-a-secure-random-string" {
+		return fmt.Errorf("auth.jwt_secret must be changed from default value (use a secure random string or set GROK_AUTH_JWT_SECRET)")
+	}
+	if len(cfg.Auth.JWTSecret) < 32 {
+		return fmt.Errorf("auth.jwt_secret must be at least 32 characters long for security")
+	}
+
+	return nil
 }
 
 func setDefaults() {
@@ -99,6 +129,11 @@ func setDefaults() {
 	viper.SetDefault("server.domain", "grok.io")
 	viper.SetDefault("server.tcp_port_start", 10000)
 	viper.SetDefault("server.tcp_port_end", 20000)
+	// CORS defaults - localhost for development
+	viper.SetDefault("server.allowed_origins", []string{
+		"http://localhost:5173", // Vite dev server
+		"http://localhost:4040", // Dashboard API port
+	})
 
 	// Database defaults (SQLite for easier local development)
 	viper.SetDefault("database.driver", "sqlite")

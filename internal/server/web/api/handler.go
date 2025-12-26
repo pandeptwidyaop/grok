@@ -26,6 +26,8 @@ type Handler struct {
 	webhookRouter *proxy.WebhookRouter
 	config        *config.Config
 	authMW        *middleware.AuthMiddleware
+	rateLimiter   *middleware.RateLimiter
+	csrf          *middleware.CSRFProtection
 	sseBroker     *SSEBroker
 }
 
@@ -38,6 +40,8 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 		webhookRouter: webhookRouter,
 		config:        cfg,
 		authMW:        middleware.NewAuthMiddleware(cfg.Auth.JWTSecret),
+		rateLimiter:   middleware.NewRateLimiter(0.5, 3), // 1 request per 2 seconds, burst of 3
+		csrf:          middleware.NewCSRFProtection(),
 		sseBroker:     NewSSEBroker(),
 	}
 
@@ -109,11 +113,13 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 	return h
 }
 
-// CORSMiddleware adds CORS headers to all responses
-func CORSMiddleware(next http.Handler) http.Handler {
+// CORSMiddleware adds CORS headers to all responses with origin whitelisting
+func (h *Handler) CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin != "" {
+
+		// Check if origin is in allowed list
+		if origin != "" && h.isAllowedOrigin(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
@@ -131,6 +137,16 @@ func CORSMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// isAllowedOrigin checks if an origin is in the allowed origins list
+func (h *Handler) isAllowedOrigin(origin string) bool {
+	for _, allowed := range h.config.Server.AllowedOrigins {
+		if allowed == origin {
+			return true
+		}
+	}
+	return false
+}
+
 // RegisterRoutes registers all API routes
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Create organization handler, webhook handler, version handler, 2FA handler, and RBAC middleware
@@ -143,7 +159,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Public routes
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /api/health", h.health)
-	mux.HandleFunc("POST /api/auth/login", h.login)
+	// Login endpoint with rate limiting to prevent brute force attacks
+	mux.Handle("POST /api/auth/login", h.rateLimiter.Limit(http.HandlerFunc(h.login)))
 	mux.HandleFunc("GET /api/version", versionHandler.GetVersion)
 	mux.HandleFunc("GET /api/version/check-updates", versionHandler.CheckUpdates)
 
@@ -506,7 +523,9 @@ func (h *Handler) getTunnelLogs(w http.ResponseWriter, r *http.Request) {
 	// Build query
 	query := h.db.Where("tunnel_id = ?", tunnelID)
 	if pathFilter != "" {
-		query = query.Where("path LIKE ?", "%"+pathFilter+"%")
+		// Sanitize LIKE pattern to prevent SQL injection
+		sanitizedPath := utils.SanitizeLikePattern(pathFilter)
+		query = query.Where("path LIKE ?", "%"+sanitizedPath+"%")
 	}
 
 	// Get total count
@@ -789,8 +808,19 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set httpOnly cookie for secure token storage (XSS protection)
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,                     // Prevents JavaScript access (XSS protection)
+		Secure:   r.TLS != nil,             // Only send over HTTPS in production
+		SameSite: http.SameSiteStrictMode,  // CSRF protection
+		MaxAge:   24 * 60 * 60,             // 24 hours (matches JWT expiry)
+	})
+
 	respondJSON(w, http.StatusOK, loginResponse{
-		Token:            token,
+		Token:            "", // Don't send token in response when using cookies
 		User:             user.Email,
 		Role:             string(user.Role),
 		OrganizationID:   orgIDStr,

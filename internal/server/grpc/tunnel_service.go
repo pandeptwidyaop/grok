@@ -6,6 +6,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -35,124 +36,100 @@ func NewTunnelService(
 	}
 }
 
+// allocateSubdomainForTunnel allocates subdomain for new tunnel, checking for offline tunnel reuse.
+func (s *TunnelService) allocateSubdomainForTunnel(ctx context.Context, userID uuid.UUID, orgID *uuid.UUID, requestedSubdomain string) (fullSubdomain, customPart string, err error) {
+	if requestedSubdomain != "" {
+		offlineTunnel, err := s.tunnelManager.FindOfflineTunnelBySavedName(ctx, userID, requestedSubdomain)
+		if err == nil && offlineTunnel != nil {
+			logger.InfoEvent().
+				Str("saved_name", requestedSubdomain).
+				Str("subdomain", offlineTunnel.Subdomain).
+				Str("tunnel_id", offlineTunnel.ID.String()).
+				Msg("Found offline tunnel, will reuse subdomain")
+			return offlineTunnel.Subdomain, requestedSubdomain, nil
+		}
+	}
+
+	return s.tunnelManager.AllocateSubdomain(ctx, userID, orgID, requestedSubdomain)
+}
+
+// determineProtocol determines tunnel protocol from request.
+func (s *TunnelService) determineProtocol(reqProtocol tunnelv1.TunnelProtocol) string {
+	switch reqProtocol {
+	case tunnelv1.TunnelProtocol_HTTP:
+		return "http"
+	case tunnelv1.TunnelProtocol_HTTPS:
+		return "https"
+	case tunnelv1.TunnelProtocol_TCP:
+		return "tcp"
+	default:
+		if s.tunnelManager.IsTLSEnabled() {
+			return "https"
+		}
+		return "http"
+	}
+}
+
 // CreateTunnel handles tunnel creation requests.
 func (s *TunnelService) CreateTunnel(
 	ctx context.Context,
 	req *tunnelv1.CreateTunnelRequest,
 ) (*tunnelv1.CreateTunnelResponse, error) {
-	// Validate token
 	authToken, err := s.tokenService.ValidateToken(ctx, req.AuthToken)
 	if err != nil {
-		logger.WarnEvent().
-			Err(err).
-			Msg("Invalid token in CreateTunnel")
+		logger.WarnEvent().Err(err).Msg("Invalid token in CreateTunnel")
 		return nil, status.Error(codes.Unauthenticated, "invalid authentication token")
 	}
 
-	// Load user with organization to get org subdomain
 	user, err := s.tokenService.GetUserByID(ctx, authToken.UserID)
 	if err != nil {
-		logger.ErrorEvent().
-			Err(err).
-			Str("user_id", authToken.UserID.String()).
-			Msg("Failed to load user")
+		logger.ErrorEvent().Err(err).Str("user_id", authToken.UserID.String()).Msg("Failed to load user")
 		return nil, status.Error(codes.Internal, "failed to load user")
 	}
 
-	// Validate protocol
 	if req.Protocol == tunnelv1.TunnelProtocol_TUNNEL_PROTOCOL_UNSPECIFIED {
 		return nil, status.Error(codes.InvalidArgument, "protocol is required")
 	}
 
-	// Validate local address
 	if req.LocalAddress == "" {
 		return nil, status.Error(codes.InvalidArgument, "local_address is required")
 	}
 
-	var fullSubdomain string
-	var customPart string
+	fullSubdomain, customPart, err := s.allocateSubdomainForTunnel(ctx, authToken.UserID, user.OrganizationID, req.Subdomain)
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("requested_subdomain", req.Subdomain).
+			Str("user_id", authToken.UserID.String()).
+			Msg("Failed to allocate subdomain")
 
-	// Check if req.Subdomain is a savedName (check for existing offline tunnel)
-	// This allows reconnecting with the same name and reusing the old subdomain
-	if req.Subdomain != "" {
-		offlineTunnel, err := s.tunnelManager.FindOfflineTunnelBySavedName(ctx, authToken.UserID, req.Subdomain)
-		if err != nil {
-			logger.ErrorEvent().Err(err).Msg("Failed to check for offline tunnel")
-			// Continue with normal allocation
+		if err == pkgerrors.ErrSubdomainTaken {
+			return nil, status.Error(codes.AlreadyExists, "subdomain already taken")
 		}
-
-		if offlineTunnel != nil {
-			// Found offline tunnel - reuse its subdomain!
-			fullSubdomain = offlineTunnel.Subdomain
-			customPart = req.Subdomain
-			logger.InfoEvent().
-				Str("saved_name", req.Subdomain).
-				Str("subdomain", fullSubdomain).
-				Str("tunnel_id", offlineTunnel.ID.String()).
-				Msg("Found offline tunnel, will reuse subdomain")
+		if err == pkgerrors.ErrInvalidSubdomain {
+			return nil, status.Error(codes.InvalidArgument, "invalid subdomain format")
 		}
+		return nil, status.Error(codes.Internal, "failed to allocate subdomain")
 	}
 
-	// If no offline tunnel found, allocate new subdomain
-	if fullSubdomain == "" {
-		var err error
-		fullSubdomain, customPart, err = s.tunnelManager.AllocateSubdomain(
-			ctx,
-			authToken.UserID,
-			user.OrganizationID,
-			req.Subdomain,
-		)
-		if err != nil {
-			logger.ErrorEvent().
-				Err(err).
-				Str("requested_subdomain", req.Subdomain).
-				Str("user_id", authToken.UserID.String()).
-				Msg("Failed to allocate subdomain")
-
-			if err == pkgerrors.ErrSubdomainTaken {
-				return nil, status.Error(codes.AlreadyExists, "subdomain already taken")
-			}
-			if err == pkgerrors.ErrInvalidSubdomain {
-				return nil, status.Error(codes.InvalidArgument, "invalid subdomain format")
-			}
-			return nil, status.Error(codes.Internal, "failed to allocate subdomain")
-		}
-	}
-
-	// Build public URL with full subdomain
-	var protocol string
-	switch req.Protocol {
-	case tunnelv1.TunnelProtocol_HTTP:
-		protocol = "http"
-	case tunnelv1.TunnelProtocol_HTTPS:
-		protocol = "https"
-	case tunnelv1.TunnelProtocol_TCP:
-		protocol = "tcp"
-	default:
-		// Default to https if TLS enabled, http otherwise
-		if s.tunnelManager.IsTLSEnabled() {
-			protocol = "https"
-		} else {
-			protocol = "http"
-		}
-	}
+	protocol := s.determineProtocol(req.Protocol)
 	publicURL := s.tunnelManager.BuildPublicURL(fullSubdomain, protocol)
+
+	orgID := "none"
+	if user.OrganizationID != nil {
+		orgID = user.OrganizationID.String()
+	}
 
 	logger.InfoEvent().
 		Str("subdomain", fullSubdomain).
 		Str("custom_part", customPart).
 		Str("public_url", publicURL).
 		Str("user_id", authToken.UserID.String()).
-		Str("org_id", func() string {
-			if user.OrganizationID != nil {
-				return user.OrganizationID.String()
-			}
-			return "none"
-		}()).
+		Str("org_id", orgID).
 		Msg("Tunnel created successfully")
 
 	return &tunnelv1.CreateTunnelResponse{
-		TunnelId:  "", // Will be set in ProxyStream
+		TunnelId:  "",
 		PublicUrl: publicURL,
 		Subdomain: fullSubdomain,
 		Status:    tunnelv1.TunnelStatus_ACTIVE,
@@ -334,15 +311,46 @@ func (s *TunnelService) cleanupTunnel(tun *tunnel.Tunnel, reason string) {
 	}
 }
 
+// handleProxyResponse routes proxy response back to waiting HTTP request.
+func (s *TunnelService) handleProxyResponse(currentTunnel *tunnel.Tunnel, response *tunnelv1.ProxyResponse) {
+	logger.DebugEvent().
+		Str("request_id", response.RequestId).
+		Str("tunnel_id", currentTunnel.ID.String()).
+		Msg("Received response from client")
+
+	ch, ok := currentTunnel.ResponseMap.Load(response.RequestId)
+	if !ok {
+		logger.WarnEvent().
+			Str("request_id", response.RequestId).
+			Msg("No waiting request found for response")
+		return
+	}
+
+	respChan, ok := ch.(chan *tunnelv1.ProxyResponse)
+	if !ok {
+		logger.ErrorEvent().
+			Str("request_id", response.RequestId).
+			Msg("Invalid response channel type")
+		return
+	}
+
+	select {
+	case respChan <- response:
+		// Response delivered
+	default:
+		logger.WarnEvent().
+			Str("request_id", response.RequestId).
+			Msg("Response channel full or closed")
+	}
+}
+
 func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamServer) error {
 	ctx := stream.Context()
 
 	logger.InfoEvent().Msg("ProxyStream connection established")
 
-	// Wait for first control message from client with subdomain
 	var currentTunnel *tunnel.Tunnel
 
-	// Handle incoming messages from client (responses)
 	for {
 		select {
 		case <-ctx.Done():
@@ -364,10 +372,8 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 			return status.Error(codes.Internal, "stream error")
 		}
 
-		// Handle different message types
 		switch payload := msg.Message.(type) {
 		case *tunnelv1.ProxyMessage_Control:
-			// First control message should contain tunnel registration
 			if currentTunnel == nil && payload.Control.Type == tunnelv1.ControlMessage_UNKNOWN {
 				reg, err := parseRegistrationData(payload.Control.TunnelId)
 				if err != nil {
@@ -381,62 +387,28 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 				}
 
 				currentTunnel = tun
-
-				// Start processing requests for this tunnel
 				go s.processRequests(ctx, currentTunnel)
 				continue
 			}
 
-			// Handle other control messages
 			logger.InfoEvent().
 				Str("type", payload.Control.Type.String()).
 				Msg("Received control message")
 
 		case *tunnelv1.ProxyMessage_Response:
-			// Handle response from client
 			if currentTunnel == nil {
 				logger.WarnEvent().Msg("Received response before tunnel registration")
 				continue
 			}
 
-			response := payload.Response
-			logger.DebugEvent().
-				Str("request_id", response.RequestId).
-				Str("tunnel_id", currentTunnel.ID.String()).
-				Msg("Received response from client")
-
-			// Route response back to waiting HTTP request
-			if ch, ok := currentTunnel.ResponseMap.Load(response.RequestId); ok {
-				respChan, ok := ch.(chan *tunnelv1.ProxyResponse)
-				if !ok {
-					logger.ErrorEvent().
-						Str("request_id", response.RequestId).
-						Msg("Invalid response channel type")
-					continue
-				}
-				select {
-				case respChan <- response:
-					// Response delivered
-				default:
-					logger.WarnEvent().
-						Str("request_id", response.RequestId).
-						Msg("Response channel full or closed")
-				}
-			} else {
-				logger.WarnEvent().
-					Str("request_id", response.RequestId).
-					Msg("No waiting request found for response")
-			}
+			s.handleProxyResponse(currentTunnel, payload.Response)
 
 		case *tunnelv1.ProxyMessage_Error:
-			// Handle error from client
 			logger.ErrorEvent().
 				Str("request_id", payload.Error.RequestId).
 				Str("error_code", payload.Error.Code.String()).
 				Str("message", payload.Error.Message).
 				Msg("Received error from client")
-
-			// TODO: Send error response to waiting HTTP request
 
 		default:
 			logger.WarnEvent().Msg("Unknown message type received")

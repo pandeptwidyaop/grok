@@ -60,7 +60,7 @@ configs/*.yaml
 web/node_modules/
 web/dist/
 web/.vite/
-web/package-lock.json
+# Keep package-lock.json for Docker builds (npm ci requires it)
 
 # Temporary files
 tmp/

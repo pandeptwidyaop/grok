@@ -329,50 +329,47 @@ func (c *Client) sendError(requestID string, code tunnelv1.ErrorCode, message st
 	}
 }
 
+// receiveHeartbeats receives heartbeat responses from server.
+func receiveHeartbeats(stream tunnelv1.TunnelService_HeartbeatClient, heartbeatErrCh chan error) {
+	for {
+		_, err := stream.Recv()
+		if err == io.EOF {
+			heartbeatErrCh <- io.EOF
+			return
+		}
+		if err != nil {
+			logger.WarnEvent().Err(err).Msg("Heartbeat receive error")
+			heartbeatErrCh <- err
+			return
+		}
+	}
+}
+
+// signalConnectionLost signals that the connection was lost.
+func signalConnectionLost(connLostCh chan struct{}) {
+	select {
+	case connLostCh <- struct{}{}:
+	default:
+	}
+}
+
 // startHeartbeat starts sending heartbeat messages to server.
 func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	// Create heartbeat stream
 	heartbeatStream, err := c.tunnelSvc.Heartbeat(ctx)
 	if err != nil {
-		logger.ErrorEvent().
-			Err(err).
-			Msg("Failed to create heartbeat stream")
-		// Signal connection lost
-		select {
-		case connLostCh <- struct{}{}:
-		default:
-		}
+		logger.ErrorEvent().Err(err).Msg("Failed to create heartbeat stream")
+		signalConnectionLost(connLostCh)
 		return
 	}
 
 	logger.DebugEvent().Msg("Heartbeat stream established")
 
-	// Create channel to signal heartbeat receive errors
 	heartbeatErrCh := make(chan error, 1)
+	go receiveHeartbeats(heartbeatStream, heartbeatErrCh)
 
-	// Start receiving heartbeat responses
-	go func() {
-		for {
-			_, err := heartbeatStream.Recv()
-			if err == io.EOF {
-				heartbeatErrCh <- io.EOF
-				return
-			}
-			if err != nil {
-				logger.WarnEvent().
-					Err(err).
-					Msg("Heartbeat receive error")
-				heartbeatErrCh <- err
-				return
-			}
-			// Heartbeat received, tunnel is healthy
-		}
-	}()
-
-	// Send heartbeat periodically
 	for {
 		select {
 		case <-ctx.Done():
@@ -382,17 +379,11 @@ func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 			return
 
 		case err := <-heartbeatErrCh:
-			// Heartbeat receive failed, signal connection lost
-			logger.WarnEvent().
-				Err(err).
-				Msg("Heartbeat failed, signaling connection lost")
+			logger.WarnEvent().Err(err).Msg("Heartbeat failed, signaling connection lost")
 			if err := heartbeatStream.CloseSend(); err != nil {
 				logger.WarnEvent().Err(err).Msg("Failed to close heartbeat stream")
 			}
-			select {
-			case connLostCh <- struct{}{}:
-			default:
-			}
+			signalConnectionLost(connLostCh)
 			return
 
 		case <-ticker.C:
@@ -402,17 +393,11 @@ func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 			}
 
 			if err := heartbeatStream.Send(req); err != nil {
-				logger.ErrorEvent().
-					Err(err).
-					Msg("Failed to send heartbeat")
+				logger.ErrorEvent().Err(err).Msg("Failed to send heartbeat")
 				if err := heartbeatStream.CloseSend(); err != nil {
 					logger.WarnEvent().Err(err).Msg("Failed to close heartbeat stream")
 				}
-				// Signal connection lost
-				select {
-				case connLostCh <- struct{}{}:
-				default:
-				}
+				signalConnectionLost(connLostCh)
 				return
 			}
 

@@ -125,61 +125,57 @@ func tcpDialer(ctx context.Context, addr string) (net.Conn, error) {
 	return conn, nil
 }
 
-// connect establishes connection to server and creates tunnel.
-func (c *Client) connect(ctx context.Context) error {
-	// Create gRPC connection with keepalive parameters and TCP optimizations
+// setupTLSConfig configures TLS for gRPC connection.
+func (c *Client) setupTLSConfig() (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: c.cfg.TLSInsecure, //nolint:gosec // User-configurable option
+	}
+
+	if c.cfg.TLSServerName != "" {
+		tlsConfig.ServerName = c.cfg.TLSServerName
+	}
+
+	if c.cfg.TLSCertFile != "" && !c.cfg.TLSInsecure {
+		certPool := x509.NewCertPool()
+		caCert, err := os.ReadFile(c.cfg.TLSCertFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read TLS certificate file: %w", err)
+		}
+		if !certPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse TLS certificate")
+		}
+		tlsConfig.RootCAs = certPool
+		logger.InfoEvent().Str("cert_file", c.cfg.TLSCertFile).Msg("Loaded custom CA certificate")
+	} else if c.cfg.TLSInsecure {
+		logger.WarnEvent().Msg("TLS certificate verification disabled (insecure mode)")
+	}
+
+	return tlsConfig, nil
+}
+
+// createGRPCDialOptions creates gRPC dial options for connection.
+func (c *Client) createGRPCDialOptions() ([]grpc.DialOption, error) {
 	opts := []grpc.DialOption{
-		// Use custom dialer with TCP_NODELAY
 		grpc.WithContextDialer(tcpDialer),
-		// Keepalive parameters to prevent connection timeout
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second, // Send keepalive ping every 30s
-			Timeout:             10 * time.Second, // Wait 10s for ping ack before closing
-			PermitWithoutStream: true,             // Send pings even when no active streams
+			Time:                30 * time.Second,
+			Timeout:             10 * time.Second,
+			PermitWithoutStream: true,
 		}),
-		// Increase max message size for large payloads
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64<<20), // 64MB
-			grpc.MaxCallSendMsgSize(64<<20), // 64MB
-			// Disable compression for better performance on small payloads
-			// Most tunnel traffic is <10KB (HTTP headers, API requests)
-			// Compression overhead > benefit for small messages
+			grpc.MaxCallRecvMsgSize(64<<20),
+			grpc.MaxCallSendMsgSize(64<<20),
 			grpc.UseCompressor(""),
 		),
 	}
 
-	// Setup TLS or insecure credentials
 	if c.cfg.TLS {
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: c.cfg.TLSInsecure, //nolint:gosec // User-configurable option for development/testing
+		tlsConfig, err := c.setupTLSConfig()
+		if err != nil {
+			return nil, err
 		}
-
-		// Override server name if specified
-		if c.cfg.TLSServerName != "" {
-			tlsConfig.ServerName = c.cfg.TLSServerName
-		}
-
-		// Load custom CA certificate if provided
-		if c.cfg.TLSCertFile != "" && !c.cfg.TLSInsecure {
-			certPool := x509.NewCertPool()
-			caCert, err := os.ReadFile(c.cfg.TLSCertFile)
-			if err != nil {
-				return fmt.Errorf("failed to read TLS certificate file: %w", err)
-			}
-			if !certPool.AppendCertsFromPEM(caCert) {
-				return fmt.Errorf("failed to parse TLS certificate")
-			}
-			tlsConfig.RootCAs = certPool
-			logger.InfoEvent().
-				Str("cert_file", c.cfg.TLSCertFile).
-				Msg("Loaded custom CA certificate")
-		} else if c.cfg.TLSInsecure {
-			logger.WarnEvent().Msg("TLS certificate verification disabled (insecure mode)")
-		}
-
 		creds := credentials.NewTLS(tlsConfig)
 		opts = append(opts, grpc.WithTransportCredentials(creds))
-
 		logger.InfoEvent().
 			Bool("tls_enabled", true).
 			Bool("tls_insecure", c.cfg.TLSInsecure).
@@ -187,6 +183,16 @@ func (c *Client) connect(ctx context.Context) error {
 	} else {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		logger.WarnEvent().Msg("Connecting without TLS (insecure)")
+	}
+
+	return opts, nil
+}
+
+// connect establishes connection to server and creates tunnel.
+func (c *Client) connect(ctx context.Context) error {
+	opts, err := c.createGRPCDialOptions()
+	if err != nil {
+		return err
 	}
 
 	logger.InfoEvent().

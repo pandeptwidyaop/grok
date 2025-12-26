@@ -102,14 +102,181 @@ func initAdminUser(database *gorm.DB, cfg *config.Config) error {
 	return nil
 }
 
+// setupTLS initializes TLS manager if configured.
+func setupTLS(cfg *config.Config) (*tlsmanager.Manager, error) {
+	if !cfg.TLS.AutoCert && (cfg.TLS.CertFile == "" || cfg.TLS.KeyFile == "") {
+		return nil, nil
+	}
+
+	tlsMgr, err := tlsmanager.NewManager(tlsmanager.Config{
+		AutoCert: cfg.TLS.AutoCert,
+		CertDir:  cfg.TLS.CertDir,
+		Domain:   cfg.Server.Domain,
+		CertFile: cfg.TLS.CertFile,
+		KeyFile:  cfg.TLS.KeyFile,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup TLS: %w", err)
+	}
+
+	if tlsMgr.IsEnabled() {
+		logger.InfoEvent().
+			Bool("auto_cert", cfg.TLS.AutoCert).
+			Str("domain", cfg.Server.Domain).
+			Msg("TLS enabled")
+	}
+
+	return tlsMgr, nil
+}
+
+// createGRPCServer creates and configures gRPC server.
+func createGRPCServer(tlsMgr *tlsmanager.Manager, tunnelManager *tunnel.Manager, tokenService *auth.TokenService) *grpc.Server {
+	grpcOpts := []grpc.ServerOption{
+		grpc.ChainUnaryInterceptor(interceptors.LoggingInterceptor()),
+		grpc.ChainStreamInterceptor(interceptors.StreamLoggingInterceptor()),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             30 * time.Second,
+			PermitWithoutStream: true,
+		}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    60 * time.Second,
+			Timeout: 20 * time.Second,
+		}),
+		grpc.MaxRecvMsgSize(64 << 20),
+		grpc.MaxSendMsgSize(64 << 20),
+	}
+
+	if tlsMgr != nil && tlsMgr.IsEnabled() {
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsMgr.GetTLSConfig())))
+	}
+
+	grpcServer := grpc.NewServer(grpcOpts...)
+	tunnelService := grpcserver.NewTunnelService(tunnelManager, tokenService)
+	tunnelv1.RegisterTunnelServiceServer(grpcServer, tunnelService)
+
+	return grpcServer
+}
+
+// createHTTPServers creates HTTP/HTTPS/API servers.
+func createHTTPServers(
+	cfg *config.Config,
+	tlsMgr *tlsmanager.Manager,
+	httpProxy http.Handler,
+	database *gorm.DB,
+	tokenService *auth.TokenService,
+	tunnelManager *tunnel.Manager,
+	webhookRouter *proxy.WebhookRouter,
+) (*http.Server, *http.Server, *http.Server) {
+	// Create HTTP handler
+	httpHandler := httpProxy
+	if tlsMgr != nil && tlsMgr.GetHTTPHandler() != nil {
+		httpHandler = tlsMgr.GetHTTPHandler().HTTPHandler(httpProxy)
+	}
+
+	httpServer := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Server.HTTPPort),
+		Handler:      httpHandler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+
+	var httpsServer *http.Server
+	if tlsMgr != nil && tlsMgr.IsEnabled() {
+		httpsServer = &http.Server{
+			Addr:         fmt.Sprintf(":%d", cfg.Server.HTTPSPort),
+			Handler:      httpProxy,
+			TLSConfig:    tlsMgr.GetTLSConfig(),
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 30 * time.Second,
+		}
+	}
+
+	// Setup Dashboard API server
+	apiMux := http.NewServeMux()
+	apiHandler := api.NewHandler(database, tokenService, tunnelManager, webhookRouter, cfg)
+	apiHandler.RegisterRoutes(apiMux)
+
+	if dashboardFS, err := web.GetFileSystem(); err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to load dashboard files")
+	} else {
+		apiMux.Handle("/", http.FileServer(dashboardFS))
+	}
+
+	apiServer := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Server.APIPort),
+		Handler:      apiHandler.CORSMiddleware(apiMux),
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+	}
+
+	return httpServer, httpsServer, apiServer
+}
+
+// startServers starts all HTTP/HTTPS/API servers in background goroutines.
+func startServers(httpServer, httpsServer, apiServer *http.Server) {
+	go func() {
+		logger.InfoEvent().Str("addr", httpServer.Addr).Msg("HTTP proxy server listening")
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal(fmt.Sprintf("HTTP server error: %v", err))
+		}
+	}()
+
+	if httpsServer != nil {
+		go func() {
+			logger.InfoEvent().Str("addr", httpsServer.Addr).Msg("HTTPS proxy server listening")
+			if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				logger.Fatal(fmt.Sprintf("HTTPS server error: %v", err))
+			}
+		}()
+	}
+
+	go func() {
+		logger.InfoEvent().Str("addr", apiServer.Addr).Msg("Dashboard API server listening")
+		if err := apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal(fmt.Sprintf("API server error: %v", err))
+		}
+	}()
+}
+
+// setupGracefulShutdown configures graceful shutdown handler.
+func setupGracefulShutdown(httpServer, httpsServer, apiServer *http.Server, tcpProxy *proxy.TCPProxy, grpcServer *grpc.Server) {
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		<-sigCh
+
+		logger.InfoEvent().Msg("Shutting down servers...")
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := httpServer.Shutdown(ctx); err != nil {
+			logger.ErrorEvent().Err(err).Msg("HTTP server shutdown error")
+		}
+
+		if httpsServer != nil {
+			if err := httpsServer.Shutdown(ctx); err != nil {
+				logger.ErrorEvent().Err(err).Msg("HTTPS server shutdown error")
+			}
+		}
+
+		if err := apiServer.Shutdown(ctx); err != nil {
+			logger.ErrorEvent().Err(err).Msg("API server shutdown error")
+		}
+
+		tcpProxy.Shutdown()
+		logger.InfoEvent().Msg("TCP proxy shut down")
+
+		grpcServer.GracefulStop()
+	}()
+}
+
 func runServer() error {
-	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Setup logger
 	if err := logger.Setup(logger.Config{
 		Level:  cfg.Logging.Level,
 		Format: cfg.Logging.Format,
@@ -125,12 +292,6 @@ func runServer() error {
 		Str("git_commit", gitCommit).
 		Msg("Starting Grok server")
 
-	// Connect to database
-	logger.InfoEvent().
-		Str("driver", cfg.Database.Driver).
-		Str("database", cfg.Database.Database).
-		Msg("Connecting to database")
-
 	database, err := db.Connect(db.Config{
 		Driver:   cfg.Database.Driver,
 		Host:     cfg.Database.Host,
@@ -144,236 +305,50 @@ func runServer() error {
 		logger.Fatal(fmt.Sprintf("Failed to connect to database: %v", err))
 	}
 
-	logger.InfoEvent().Msg("Connected to database")
-
-	// Run auto migrations
 	if err := db.AutoMigrate(database); err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to run migrations: %v", err))
 	}
 
-	logger.InfoEvent().Msg("Database migrations completed")
-
-	// Initialize admin user from config
 	if err := initAdminUser(database, cfg); err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to initialize admin user: %v", err))
 	}
 
-	// Setup TLS if enabled
-	var tlsMgr *tlsmanager.Manager
-	if cfg.TLS.AutoCert || (cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "") {
-		tlsMgr, err = tlsmanager.NewManager(tlsmanager.Config{
-			AutoCert: cfg.TLS.AutoCert,
-			CertDir:  cfg.TLS.CertDir,
-			Domain:   cfg.Server.Domain,
-			CertFile: cfg.TLS.CertFile,
-			KeyFile:  cfg.TLS.KeyFile,
-		})
-		if err != nil {
-			logger.Fatal(fmt.Sprintf("Failed to setup TLS: %v", err))
-		}
-
-		if tlsMgr.IsEnabled() {
-			logger.InfoEvent().
-				Bool("auto_cert", cfg.TLS.AutoCert).
-				Str("domain", cfg.Server.Domain).
-				Msg("TLS enabled")
-		}
+	tlsMgr, err := setupTLS(cfg)
+	if err != nil {
+		logger.Fatal(fmt.Sprintf("Failed to setup TLS: %v", err))
 	}
 
-	// Initialize services
 	tokenService := auth.NewTokenService(database)
-
-	// Determine if TLS is enabled
 	tlsEnabled := tlsMgr != nil && tlsMgr.IsEnabled()
 
 	tunnelManager := tunnel.NewManager(
-		database,
-		cfg.Server.Domain,
-		cfg.Tunnels.MaxPerUser,
-		tlsEnabled,
-		cfg.Server.HTTPPort,
-		cfg.Server.HTTPSPort,
-		cfg.Server.TCPPortStart,
-		cfg.Server.TCPPortEnd,
+		database, cfg.Server.Domain, cfg.Tunnels.MaxPerUser,
+		tlsEnabled, cfg.Server.HTTPPort, cfg.Server.HTTPSPort,
+		cfg.Server.TCPPortStart, cfg.Server.TCPPortEnd,
 	)
 
-	// Create and set TCP proxy for TCP tunnel support
 	tcpProxy := proxy.NewTCPProxy(tunnelManager)
 	tunnelManager.SetTCPProxy(tcpProxy)
 
-	// Create gRPC server with interceptors
-	var grpcOpts []grpc.ServerOption
-	grpcOpts = append(grpcOpts,
-		grpc.ChainUnaryInterceptor(
-			interceptors.LoggingInterceptor(),
-			// Note: CreateTunnel doesn't use auth interceptor since it has auth in request
-		),
-		grpc.ChainStreamInterceptor(
-			interceptors.StreamLoggingInterceptor(),
-			// Note: ProxyStream will handle auth differently
-		),
-		// Keepalive enforcement policy to match client keepalive
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             30 * time.Second, // Minimum time between pings
-			PermitWithoutStream: true,             // Allow pings even when no active streams
-		}),
-		// Keepalive server parameters
-		grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time:    60 * time.Second, // Send keepalive ping every 60s
-			Timeout: 20 * time.Second, // Wait 20s for ping ack before closing
-		}),
-		// Increase max message size for large payloads
-		grpc.MaxRecvMsgSize(64<<20), // 64MB
-		grpc.MaxSendMsgSize(64<<20), // 64MB
-	)
+	grpcServer := createGRPCServer(tlsMgr, tunnelManager, tokenService)
 
-	// Add TLS credentials for gRPC if enabled
-	if tlsMgr != nil && tlsMgr.IsEnabled() {
-		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsMgr.GetTLSConfig())))
-	}
-
-	grpcServer := grpc.NewServer(grpcOpts...)
-
-	// Register services
-	tunnelService := grpcserver.NewTunnelService(tunnelManager, tokenService)
-	tunnelv1.RegisterTunnelServiceServer(grpcServer, tunnelService)
-
-	// Setup HTTP reverse proxy
 	router := proxy.NewRouter(tunnelManager, cfg.Server.Domain)
 	webhookRouter := proxy.NewWebhookRouter(database, tunnelManager, cfg.Server.Domain)
 	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager, database)
 
-	// Create HTTP handler (with autocert support if enabled)
-	var httpHandler http.Handler = httpProxy
-	if tlsMgr != nil && tlsMgr.GetHTTPHandler() != nil {
-		// Wrap with autocert HTTP-01 challenge handler
-		httpHandler = tlsMgr.GetHTTPHandler().HTTPHandler(httpProxy)
-	}
+	httpServer, httpsServer, apiServer := createHTTPServers(cfg, tlsMgr, httpProxy, database, tokenService, tunnelManager, webhookRouter)
 
-	// Create HTTP server
-	httpServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Server.HTTPPort),
-		Handler:      httpHandler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
-
-	// Create HTTPS server if TLS is enabled
-	var httpsServer *http.Server
-	if tlsMgr != nil && tlsMgr.IsEnabled() {
-		httpsServer = &http.Server{
-			Addr:         fmt.Sprintf(":%d", cfg.Server.HTTPSPort),
-			Handler:      httpProxy,
-			TLSConfig:    tlsMgr.GetTLSConfig(),
-			ReadTimeout:  30 * time.Second,
-			WriteTimeout: 30 * time.Second,
-		}
-	}
-
-	// Setup Dashboard API server
-	apiMux := http.NewServeMux()
-
-	// Register API handlers (pass webhookRouter for SSE event broadcasting)
-	apiHandler := api.NewHandler(database, tokenService, tunnelManager, webhookRouter, cfg)
-	apiHandler.RegisterRoutes(apiMux)
-
-	// Serve embedded dashboard
-	dashboardFS, err := web.GetFileSystem()
-	if err != nil {
-		logger.ErrorEvent().Err(err).Msg("Failed to load dashboard files")
-	} else {
-		apiMux.Handle("/", http.FileServer(dashboardFS))
-	}
-
-	apiServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Server.APIPort),
-		Handler:      api.CORSMiddleware(apiMux), // Wrap with CORS middleware
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-	}
-
-	// Start gRPC server
 	grpcAddr := fmt.Sprintf(":%d", cfg.Server.GRPCPort)
 	grpcListener, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to listen on %s: %v", grpcAddr, err))
 	}
 
-	logger.InfoEvent().
-		Str("addr", grpcAddr).
-		Msg("gRPC server listening")
+	logger.InfoEvent().Str("addr", grpcAddr).Msg("gRPC server listening")
 
-	// Start HTTP proxy server in goroutine
-	go func() {
-		logger.InfoEvent().
-			Str("addr", httpServer.Addr).
-			Msg("HTTP proxy server listening")
+	startServers(httpServer, httpsServer, apiServer)
+	setupGracefulShutdown(httpServer, httpsServer, apiServer, tcpProxy, grpcServer)
 
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal(fmt.Sprintf("HTTP server error: %v", err))
-		}
-	}()
-
-	// Start HTTPS proxy server if TLS is enabled
-	if httpsServer != nil {
-		go func() {
-			logger.InfoEvent().
-				Str("addr", httpsServer.Addr).
-				Msg("HTTPS proxy server listening")
-
-			if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
-				logger.Fatal(fmt.Sprintf("HTTPS server error: %v", err))
-			}
-		}()
-	}
-
-	// Start Dashboard API server
-	go func() {
-		logger.InfoEvent().
-			Str("addr", apiServer.Addr).
-			Msg("Dashboard API server listening")
-
-		if err := apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal(fmt.Sprintf("API server error: %v", err))
-		}
-	}()
-
-	// Handle graceful shutdown
-	go func() {
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-		<-sigCh
-
-		logger.InfoEvent().Msg("Shutting down servers...")
-
-		// Shutdown HTTP server
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := httpServer.Shutdown(ctx); err != nil {
-			logger.ErrorEvent().Err(err).Msg("HTTP server shutdown error")
-		}
-
-		// Shutdown HTTPS server if running
-		if httpsServer != nil {
-			if err := httpsServer.Shutdown(ctx); err != nil {
-				logger.ErrorEvent().Err(err).Msg("HTTPS server shutdown error")
-			}
-		}
-
-		// Shutdown API server
-		if err := apiServer.Shutdown(ctx); err != nil {
-			logger.ErrorEvent().Err(err).Msg("API server shutdown error")
-		}
-
-		// Shutdown TCP proxy (stop all TCP listeners)
-		tcpProxy.Shutdown()
-		logger.InfoEvent().Msg("TCP proxy shut down")
-
-		// Stop gRPC server
-		grpcServer.GracefulStop()
-	}()
-
-	// Start serving gRPC
 	if err := grpcServer.Serve(grpcListener); err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to serve gRPC: %v", err))
 	}

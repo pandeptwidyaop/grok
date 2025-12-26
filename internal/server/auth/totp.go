@@ -8,6 +8,8 @@ import (
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
+
+	"github.com/pandeptwidyaop/grok/pkg/utils"
 )
 
 // TOTPService handles two-factor authentication using TOTP.
@@ -61,17 +63,19 @@ func (s *TOTPService) ValidateCodeWithWindow(secret, code string, window int) bo
 		return true
 	}
 
-	// Try previous and next windows
+	// Try previous and next windows using constant-time comparison
 	for i := 1; i <= window; i++ {
 		// Try past
 		pastTime := now.Add(time.Duration(-i*30) * time.Second)
-		if code == generateCodeAtTime(secret, pastTime) {
+		pastCode := generateCodeAtTime(secret, pastTime)
+		if utils.SecureCompareStrings(code, pastCode) {
 			return true
 		}
 
 		// Try future
 		futureTime := now.Add(time.Duration(i*30) * time.Second)
-		if code == generateCodeAtTime(secret, futureTime) {
+		futureCode := generateCodeAtTime(secret, futureTime)
+		if utils.SecureCompareStrings(code, futureCode) {
 			return true
 		}
 	}

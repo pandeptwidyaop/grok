@@ -295,121 +295,39 @@ func (wr *WebhookRouter) RefreshCache(orgSubdomain, appName string) (*WebhookRou
 	return cache, nil
 }
 
-// Returns the first successful response.
-func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookRouteCache, userPath string, request *RequestData) (*BroadcastResult, error) {
-	cache.mu.RLock()
-	defer cache.mu.RUnlock()
-
-	// Filter enabled and healthy routes
-	var enabledRoutes []*WebhookRouteCacheEntry
-	for _, route := range cache.Routes {
-		if route.IsEnabled && route.HealthStatus != "unhealthy" {
-			enabledRoutes = append(enabledRoutes, route)
-		}
-	}
-
-	if len(enabledRoutes) == 0 {
-		return &BroadcastResult{
-			TunnelCount:  0,
-			SuccessCount: 0,
-			ErrorMessage: "no enabled tunnels available",
-		}, ErrNoHealthyTunnels
-	}
-
-	// Track broadcast start time for duration calculation
-	broadcastStart := time.Now()
-
-	// Create context with timeout
-	broadcastCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	// Channel to collect responses
-	responseCh := make(chan *TunnelResponse, len(enabledRoutes))
-	var wg sync.WaitGroup
-
-	// Broadcast to all enabled tunnels concurrently
-	for _, route := range enabledRoutes {
-		wg.Add(1)
-		go func(r *WebhookRouteCacheEntry) {
-			defer wg.Done()
-
-			start := time.Now()
-
-			// Get tunnel from manager
-			tun, ok := wr.tunnelManager.GetTunnelByID(r.TunnelID)
-			if !ok {
-				responseCh <- &TunnelResponse{
-					TunnelID:     r.TunnelID,
-					Success:      false,
-					ErrorMessage: "tunnel not found in manager",
-				}
-				return
-			}
-
-			// Check if tunnel is active
-			if tun.GetStatus() != "active" {
-				responseCh <- &TunnelResponse{
-					TunnelID:     r.TunnelID,
-					Success:      false,
-					ErrorMessage: "tunnel not active",
-				}
-				return
-			}
-
-			// Send request to tunnel
-			// Note: This would use the existing proxy logic
-			// For now, we'll simulate the response structure
-			response := wr.sendToTunnel(broadcastCtx, tun, userPath, request)
-			response.TunnelID = r.TunnelID
-			response.DurationMs = time.Since(start).Milliseconds()
-
-			responseCh <- response
-		}(route)
-	}
-
-	// Wait for all goroutines to complete
-	go func() {
-		wg.Wait()
-		close(responseCh)
-	}()
-
-	// Collect responses
+// collectResponses collects responses from all tunnels.
+func collectResponses(responseCh chan *TunnelResponse, tunnelCount int) *BroadcastResult {
 	result := &BroadcastResult{
-		TunnelCount: len(enabledRoutes),
-		Responses:   make([]*TunnelResponse, 0, len(enabledRoutes)),
+		TunnelCount: tunnelCount,
+		Responses:   make([]*TunnelResponse, 0, tunnelCount),
 	}
 
 	for response := range responseCh {
 		result.Responses = append(result.Responses, response)
-
 		if response.Success {
 			result.SuccessCount++
-			// Store first successful response
 			if result.FirstSuccess == nil {
 				result.FirstSuccess = response
 			}
 		}
 	}
 
-	// Determine status code from first successful response
+	return result
+}
+
+// emitWebhookEvent emits a webhook processing event.
+func (wr *WebhookRouter) emitWebhookEvent(cache *WebhookRouteCache, userPath string, request *RequestData, result *BroadcastResult, durationMs int64) {
 	statusCode := 0
 	if result.FirstSuccess != nil {
 		statusCode = result.FirstSuccess.StatusCode
 	}
 
-	// Calculate total broadcast duration
-	durationMs := time.Since(broadcastStart).Milliseconds()
-
-	// Calculate bytes in from request body
 	bytesIn := int64(len(request.Body))
-
-	// Calculate bytes out from first successful response
 	var bytesOut int64
 	if result.FirstSuccess != nil {
 		bytesOut = int64(len(result.FirstSuccess.Body))
 	}
 
-	// Extract client IP from headers
 	clientIP := ""
 	if xForwardedFor := request.Headers["X-Forwarded-For"]; len(xForwardedFor) > 0 {
 		clientIP = xForwardedFor[0]
@@ -417,7 +335,6 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 		clientIP = xRealIP[0]
 	}
 
-	// Emit webhook event
 	eventType := EventWebhookSuccess
 	if result.SuccessCount == 0 {
 		eventType = EventWebhookFailed
@@ -437,8 +354,83 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 		SuccessCount: result.SuccessCount,
 		ErrorMessage: result.ErrorMessage,
 	})
+}
 
-	// If no successful responses, aggregate error messages
+// broadcastToSingleTunnel broadcasts request to a single tunnel.
+func (wr *WebhookRouter) broadcastToSingleTunnel(ctx context.Context, route *WebhookRouteCacheEntry, userPath string, request *RequestData, responseCh chan *TunnelResponse) {
+	start := time.Now()
+
+	tun, ok := wr.tunnelManager.GetTunnelByID(route.TunnelID)
+	if !ok {
+		responseCh <- &TunnelResponse{
+			TunnelID:     route.TunnelID,
+			Success:      false,
+			ErrorMessage: "tunnel not found in manager",
+		}
+		return
+	}
+
+	if tun.GetStatus() != "active" {
+		responseCh <- &TunnelResponse{
+			TunnelID:     route.TunnelID,
+			Success:      false,
+			ErrorMessage: "tunnel not active",
+		}
+		return
+	}
+
+	response := wr.sendToTunnel(ctx, tun, userPath, request)
+	response.TunnelID = route.TunnelID
+	response.DurationMs = time.Since(start).Milliseconds()
+
+	responseCh <- response
+}
+
+// Returns the first successful response.
+func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookRouteCache, userPath string, request *RequestData) (*BroadcastResult, error) {
+	cache.mu.RLock()
+	defer cache.mu.RUnlock()
+
+	var enabledRoutes []*WebhookRouteCacheEntry
+	for _, route := range cache.Routes {
+		if route.IsEnabled && route.HealthStatus != "unhealthy" {
+			enabledRoutes = append(enabledRoutes, route)
+		}
+	}
+
+	if len(enabledRoutes) == 0 {
+		return &BroadcastResult{
+			TunnelCount:  0,
+			SuccessCount: 0,
+			ErrorMessage: "no enabled tunnels available",
+		}, ErrNoHealthyTunnels
+	}
+
+	broadcastStart := time.Now()
+	broadcastCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	responseCh := make(chan *TunnelResponse, len(enabledRoutes))
+	var wg sync.WaitGroup
+
+	for _, route := range enabledRoutes {
+		wg.Add(1)
+		go func(r *WebhookRouteCacheEntry) {
+			defer wg.Done()
+			wr.broadcastToSingleTunnel(broadcastCtx, r, userPath, request, responseCh)
+		}(route)
+	}
+
+	go func() {
+		wg.Wait()
+		close(responseCh)
+	}()
+
+	result := collectResponses(responseCh, len(enabledRoutes))
+	durationMs := time.Since(broadcastStart).Milliseconds()
+
+	wr.emitWebhookEvent(cache, userPath, request, result, durationMs)
+
 	if result.SuccessCount == 0 {
 		var errMsgs []string
 		for _, resp := range result.Responses {

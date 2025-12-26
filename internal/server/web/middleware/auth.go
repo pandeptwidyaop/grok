@@ -36,26 +36,32 @@ func NewAuthMiddleware(jwtSecret string) *AuthMiddleware {
 }
 
 // Protect wraps a handler with JWT authentication
+// Supports both cookie-based (httpOnly) and header-based (Authorization) authentication
 func (m *AuthMiddleware) Protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var tokenString string
 
-		// Try to get token from Authorization header first
-		authHeader := r.Header.Get("Authorization")
-		if authHeader != "" {
-			// Extract token from header
-			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || parts[0] != "Bearer" {
-				http.Error(w, "Invalid authorization header", http.StatusUnauthorized)
-				return
-			}
-			tokenString = parts[1]
+		// Try to get token from httpOnly cookie first (most secure)
+		if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" {
+			tokenString = cookie.Value
 		} else {
-			// Fall back to query parameter (for SSE connections)
-			tokenString = r.URL.Query().Get("token")
-			if tokenString == "" {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
+			// Fall back to Authorization header (for API clients)
+			authHeader := r.Header.Get("Authorization")
+			if authHeader != "" {
+				// Extract token from header
+				parts := strings.Split(authHeader, " ")
+				if len(parts) != 2 || parts[0] != "Bearer" {
+					http.Error(w, "Invalid authorization header", http.StatusUnauthorized)
+					return
+				}
+				tokenString = parts[1]
+			} else {
+				// Final fallback to query parameter (for SSE connections)
+				tokenString = r.URL.Query().Get("token")
+				if tokenString == "" {
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
 			}
 		}
 

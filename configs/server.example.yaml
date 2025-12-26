@@ -12,6 +12,14 @@ server:
   tcp_port_start: 10000  # Start of port range (default: 10000)
   tcp_port_end: 20000    # End of port range (default: 20000, allows 10,001 TCP tunnels)
 
+  # SECURITY: CORS allowed origins
+  # Only requests from these origins will be allowed
+  # For production, specify your exact domain(s)
+  allowed_origins:
+    - "http://localhost:5173"   # Vite dev server
+    - "http://localhost:4040"   # Dashboard API
+    # - "https://dashboard.yourdomain.com"  # Production dashboard
+
 database:
   # Driver: "sqlite" or "postgres"
   driver: "sqlite"
@@ -58,7 +66,16 @@ tls:
   #   grok-server gencert --cert /path/to/server.crt --key /path/to/server.key
 
 auth:
-  jwt_secret: "change-this-to-a-secure-random-string"
+  # SECURITY: JWT secret for signing authentication tokens
+  # REQUIRED: Must be at least 32 characters long
+  # RECOMMENDED: Use environment variable instead of hardcoding
+  #
+  # Generate a secure secret with: openssl rand -base64 32
+  # Set via environment variable: export GROK_AUTH_JWT_SECRET="your-secret-here"
+  # Environment variables override this config file value
+  #
+  # For development only (NOT for production):
+  jwt_secret: "change-this-to-a-secure-random-string-min-32-chars-long"
 
 tunnels:
   max_per_user: 5
