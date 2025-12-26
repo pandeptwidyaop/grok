@@ -1,3 +1,10 @@
+## [1.0.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.1...v1.0.0-alpha.2) (2025-12-26)
+
+### Bug Fixes
+
+* **ci:** add proto generation to all test workflows ([b4bbbc0](https://github.com/pandeptwidyaop/grok/commit/b4bbbc039abb3bfa9d15db5fae36a4871bd6d68c))
+* **docker:** include scripts directory in build context ([1d1ee4e](https://github.com/pandeptwidyaop/grok/commit/1d1ee4ee06a26e33e8aaefe95d7c72d8f452b9d7))
+
 ## 1.0.0-alpha.1 (2025-12-26)
 
 ### Features
