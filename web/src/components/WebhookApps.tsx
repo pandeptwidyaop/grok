@@ -229,9 +229,19 @@ export function WebhookApps({}: WebhookAppsProps) {
                         </Box>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" color="text.secondary">
-                          {app.organization_name || '—'}
-                        </Typography>
+                        {app.organization_name ? (
+                          <Chip
+                            label={app.organization_name}
+                            color="secondary"
+                            variant="outlined"
+                            size="small"
+                            sx={{ fontWeight: 500 }}
+                          />
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            —
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Box>
