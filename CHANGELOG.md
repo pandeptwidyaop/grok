@@ -1,3 +1,20 @@
+## [1.0.0-alpha.5](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.4...v1.0.0-alpha.5) (2025-12-26)
+
+### Bug Fixes
+
+* Add error checking for type assertions and function calls ([781fb01](https://github.com/pandeptwidyaop/grok/commit/781fb0135d0801115620858e6fa5a5f46dc941e8))
+* Add error checking in tunnel_service.go ([884cd2c](https://github.com/pandeptwidyaop/grok/commit/884cd2c249e6b9df6b3b30349f21fd7ec9d03410))
+* **build:** copy frontend dist to embed location ([18d242c](https://github.com/pandeptwidyaop/grok/commit/18d242c7c5d6c6abffa7a39b8ec0127d289a328f))
+* **build:** remove unnecessary dist copy steps ([aca0efc](https://github.com/pandeptwidyaop/grok/commit/aca0efc6d8dd9c01ac034da964c9aace015e19cd))
+* **ci:** add build output verification ([54fd96c](https://github.com/pandeptwidyaop/grok/commit/54fd96c75a8ad3263a1de59860e3b8a32e76417e))
+* **ci:** build frontend before linting ([1c0bc8e](https://github.com/pandeptwidyaop/grok/commit/1c0bc8edba008eaf0fc8eef282cc6c17a0c5de00))
+* **ci:** ensure parent directory exists before copy ([9a233be](https://github.com/pandeptwidyaop/grok/commit/9a233be1f66cab967f2035aaf75ea312f2a04316))
+* **ci:** install golangci-lint from source for Go 1.25 support ([0bed9a3](https://github.com/pandeptwidyaop/grok/commit/0bed9a3144fb016f1c6408fc89af90daafbcc92a))
+* **ci:** update Go version to 1.25 and fix golangci-lint config ([2ba50de](https://github.com/pandeptwidyaop/grok/commit/2ba50de7e022e7c7243d5052207bd6962f882f69))
+* Complete errcheck linting fixes ([8235f43](https://github.com/pandeptwidyaop/grok/commit/8235f43a71803691cb976a078103f43a4d931a0d))
+* resolve all critical linter warnings ([c642c90](https://github.com/pandeptwidyaop/grok/commit/c642c90a5ec4f3450ee4ed8a18c3fecabe7a2ef0))
+* Update golangci-lint config for v1.64.8 ([53799be](https://github.com/pandeptwidyaop/grok/commit/53799beab49586ce22aaae038ceaf8acbe5f7a3a))
+
 ## [1.0.0-alpha.4](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.3...v1.0.0-alpha.4) (2025-12-26)
 
 ### Bug Fixes
