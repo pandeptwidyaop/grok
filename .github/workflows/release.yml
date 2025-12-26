@@ -75,6 +75,26 @@ jobs:
             goarch: arm
             output: grok-server-linux-arm
 
+          # macOS
+          - target: server
+            goos: darwin
+            goarch: amd64
+            output: grok-server-darwin-amd64
+          - target: server
+            goos: darwin
+            goarch: arm64
+            output: grok-server-darwin-arm64
+
+          # Windows
+          - target: server
+            goos: windows
+            goarch: amd64
+            output: grok-server-windows-amd64.exe
+          - target: server
+            goos: windows
+            goarch: arm64
+            output: grok-server-windows-arm64.exe
+
           # Client binaries (Pure Go - no CGO required)
           # Linux
           - target: client
@@ -226,15 +246,23 @@ jobs:
               if [[ "$binary" == grok-server-* ]]; then
                 # Server: grok-server-linux-amd64 -> grok-server_v1.0.0_linux_x86_64.tar.gz
                 os=$(echo $binary | cut -d- -f3)
-                arch=$(echo $binary | cut -d- -f4)
+                arch=$(echo $binary | cut -d- -f4 | sed 's/\.exe$//')
                 # Convert arch names
                 if [ "$arch" = "amd64" ]; then arch="x86_64"; fi
                 if [ "$arch" = "arm64" ]; then arch="aarch64"; fi
+                if [ "$arch" = "arm" ]; then arch="armv7"; fi
                 archive_name="grok-server_${{ needs.version.outputs.new_release_version }}_${os}_${arch}.tar.gz"
                 # Copy binary to canonical name, create archive, then remove temp file
-                cp "$binary" grok-server
-                tar -czf ../release/$archive_name grok-server
-                rm grok-server
+                # Windows binaries keep .exe extension
+                if [[ "$binary" == *.exe ]]; then
+                  cp "$binary" grok-server.exe
+                  tar -czf ../release/$archive_name grok-server.exe
+                  rm grok-server.exe
+                else
+                  cp "$binary" grok-server
+                  tar -czf ../release/$archive_name grok-server
+                  rm grok-server
+                fi
               elif [[ "$binary" == grok-* ]]; then
                 # Client: grok-linux-amd64 -> grok_v1.0.0_linux_x86_64.tar.gz
                 os=$(echo $binary | cut -d- -f2)
@@ -242,12 +270,20 @@ jobs:
                 # Convert arch names
                 if [ "$arch" = "amd64" ]; then arch="x86_64"; fi
                 if [ "$arch" = "arm64" ]; then arch="aarch64"; fi
+                if [ "$arch" = "arm" ]; then arch="armv7"; fi
                 if [ "$arch" = "386" ]; then arch="i386"; fi
                 archive_name="grok_${{ needs.version.outputs.new_release_version }}_${os}_${arch}.tar.gz"
                 # Copy binary to canonical name, create archive, then remove temp file
-                cp "$binary" grok
-                tar -czf ../release/$archive_name grok
-                rm grok
+                # Windows binaries keep .exe extension
+                if [[ "$binary" == *.exe ]]; then
+                  cp "$binary" grok.exe
+                  tar -czf ../release/$archive_name grok.exe
+                  rm grok.exe
+                else
+                  cp "$binary" grok
+                  tar -czf ../release/$archive_name grok
+                  rm grok
+                fi
               fi
             fi
           done
