@@ -44,20 +44,7 @@ jobs:
 
       - name: Build web dashboard
         working-directory: web
-        run: |
-          npm run build
-          ls -la
-          echo "Checking if dist exists..."
-          if [ ! -d "dist" ]; then
-            echo "ERROR: dist directory not created!"
-            exit 1
-          fi
-
-      - name: Copy dashboard to embed location
-        run: |
-          rm -rf internal/server/web/dist
-          mkdir -p internal/server/web
-          cp -r web/dist internal/server/web/dist
+        run: npm run build
 
       - name: Run tests
         run: go test -v -race ./...
@@ -94,18 +81,6 @@ jobs:
         run: |
           npm ci
           npm run build
-          ls -la
-          echo "Checking if dist exists..."
-          if [ ! -d "dist" ]; then
-            echo "ERROR: dist directory not created!"
-            exit 1
-          fi
-
-      - name: Copy dashboard to embed location
-        run: |
-          rm -rf internal/server/web/dist
-          mkdir -p internal/server/web
-          cp -r web/dist internal/server/web/dist
 
       - name: Install golangci-lint
         run: |

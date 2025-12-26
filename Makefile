@@ -23,9 +23,6 @@ proto:
 build-dashboard:
 	@echo "Building dashboard..."
 	@cd web && npm install && npm run build
-	@echo "Copying dashboard to internal/server/web/dist..."
-	@rm -rf internal/server/web/dist
-	@cp -r web/dist internal/server/web/dist
 
 build-server: proto
 	@echo "Building server..."
