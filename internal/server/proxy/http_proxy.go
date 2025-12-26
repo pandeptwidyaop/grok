@@ -10,10 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
+	"gorm.io/gorm"
 )
 
 const (
@@ -26,14 +28,16 @@ type HTTPProxy struct {
 	router        *Router
 	webhookRouter *WebhookRouter
 	tunnelManager *tunnel.Manager
+	db            *gorm.DB
 }
 
 // NewHTTPProxy creates a new HTTP proxy
-func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager) *HTTPProxy {
+func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager, db *gorm.DB) *HTTPProxy {
 	return &HTTPProxy{
 		router:        router,
 		webhookRouter: webhookRouter,
 		tunnelManager: tunnelManager,
+		db:            db,
 	}
 }
 
@@ -109,6 +113,9 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Int64("bytes_in", reqBytes).
 		Int64("bytes_out", respBytes).
 		Msg("Request proxied")
+
+	// Save request log to database (async)
+	go p.saveRequestLog(tun.ID, r, int(resp.StatusCode), duration, reqBytes, respBytes)
 }
 
 // proxyRequest proxies an HTTP request through a tunnel
@@ -343,6 +350,37 @@ func (p *HTTPProxy) logWebhookEvent(appID uuid.UUID, r *http.Request, result *Br
 		Int("success_count", result.SuccessCount).
 		Dur("duration", duration).
 		Msg("Webhook event logged")
+}
+
+// saveRequestLog saves HTTP request log to database
+func (p *HTTPProxy) saveRequestLog(tunnelID uuid.UUID, r *http.Request, statusCode int, duration time.Duration, bytesIn, bytesOut int64) {
+	if p.db == nil {
+		return
+	}
+
+	// Build full path with query parameters
+	fullPath := r.URL.Path
+	if r.URL.RawQuery != "" {
+		fullPath = r.URL.Path + "?" + r.URL.RawQuery
+	}
+
+	requestLog := &models.RequestLog{
+		TunnelID:   tunnelID,
+		Method:     r.Method,
+		Path:       fullPath,
+		StatusCode: statusCode,
+		DurationMs: int(duration.Milliseconds()),
+		BytesIn:    int(bytesIn),
+		BytesOut:   int(bytesOut),
+		ClientIP:   r.RemoteAddr,
+	}
+
+	if err := p.db.Create(requestLog).Error; err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("tunnel_id", tunnelID.String()).
+			Msg("Failed to save request log")
+	}
 }
 
 // HealthCheckHandler returns a simple health check handler

@@ -13,6 +13,7 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/server/auth"
 	grpcserver "github.com/pandeptwidyaop/grok/internal/server/grpc"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
+	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,7 +62,7 @@ func setupTestServer(t *testing.T) (*grpc.Server, *gorm.DB, *tunnel.Manager, *au
 
 	// Create services
 	tokenService := auth.NewTokenService(database)
-	tunnelManager := tunnel.NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
+	tunnelManager := tunnel.NewManager(database, "localhost", 10, true, 80, 443, 10000, 20000) // TLS enabled, standard ports
 
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
@@ -163,15 +164,15 @@ func TestCompleteTunnelFlow(t *testing.T) {
 	_, exists = tunnelManager.GetTunnelBySubdomain(testSubdomain)
 	assert.False(t, exists, "Tunnel should be removed from memory after disconnect")
 
-	// Verify domain reservation is cleaned up
+	// Verify domain reservation is KEPT (persistent tunnels keep domains)
 	var domainCount int64
 	database.Model(&models.Domain{}).Where("subdomain = ?", testSubdomain).Count(&domainCount)
-	assert.Equal(t, int64(0), domainCount, "Domain reservation should be deleted after disconnect")
+	assert.Equal(t, int64(1), domainCount, "Domain reservation should be kept for persistent tunnels")
 
-	// Verify tunnel status is updated in database
+	// Verify tunnel status is updated to offline in database
 	err = database.Where("subdomain = ?", testSubdomain).First(&dbTunnel).Error
 	require.NoError(t, err)
-	assert.Equal(t, "disconnected", dbTunnel.Status, "Status should be updated to disconnected")
+	assert.Equal(t, "offline", dbTunnel.Status, "Status should be updated to offline")
 }
 
 // TestSubdomainAllocation tests subdomain allocation and validation
@@ -226,8 +227,8 @@ func TestSubdomainAllocation(t *testing.T) {
 	})
 }
 
-// TestDomainCleanupOnDisconnect specifically tests the cleanup bug fix
-func TestDomainCleanupOnDisconnect(t *testing.T) {
+// TestDomainPersistenceOnDisconnect tests that domains are kept reserved for persistent tunnels
+func TestDomainPersistenceOnDisconnect(t *testing.T) {
 	_, database, tunnelManager, _, _ := setupTestServer(t)
 
 	ctx := context.Background()
@@ -235,7 +236,7 @@ func TestDomainCleanupOnDisconnect(t *testing.T) {
 	tokenID := uuid.New()
 
 	// Create and register a tunnel
-	subdomain, _, err := tunnelManager.AllocateSubdomain(ctx, userID, nil, "cleanup-test")
+	subdomain, _, err := tunnelManager.AllocateSubdomain(ctx, userID, nil, "persistent-test")
 	require.NoError(t, err)
 
 	tun := tunnel.NewTunnel(
@@ -245,7 +246,7 @@ func TestDomainCleanupOnDisconnect(t *testing.T) {
 		subdomain,
 		tunnelv1.TunnelProtocol_HTTP,
 		"localhost:3000",
-		"https://cleanup-test.localhost",
+		"https://persistent-test.localhost",
 		nil,
 	)
 
@@ -261,14 +262,14 @@ func TestDomainCleanupOnDisconnect(t *testing.T) {
 	err = tunnelManager.UnregisterTunnel(ctx, tun.ID)
 	require.NoError(t, err)
 
-	// Verify domain is deleted (THIS WAS THE BUG!)
+	// Verify domain is still reserved (persistent tunnels keep their domains)
 	database.Model(&models.Domain{}).Where("subdomain = ?", subdomain).Count(&domainCount)
-	assert.Equal(t, int64(0), domainCount, "Domain should be deleted after unregister")
+	assert.Equal(t, int64(1), domainCount, "Domain should still be reserved after unregister")
 
-	// Verify we can reuse the subdomain immediately
-	subdomain2, _, err := tunnelManager.AllocateSubdomain(ctx, userID, nil, "cleanup-test")
-	require.NoError(t, err, "Should be able to reuse subdomain after cleanup")
-	assert.Equal(t, "cleanup-test", subdomain2)
+	// Verify we CANNOT reuse the subdomain (it's still reserved)
+	_, _, err = tunnelManager.AllocateSubdomain(ctx, userID, nil, "persistent-test")
+	assert.Error(t, err, "Should not be able to reuse reserved subdomain")
+	assert.Equal(t, pkgerrors.ErrSubdomainTaken, err, "Should return ErrSubdomainTaken")
 }
 
 // TestOrganizationSubdomainAllocation tests subdomain allocation with organizations

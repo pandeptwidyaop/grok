@@ -9,21 +9,21 @@ import (
 
 // RequestLog represents a logged HTTP request
 type RequestLog struct {
-	ID         uuid.UUID `gorm:"type:uuid;primaryKey"`
-	TunnelID   uuid.UUID `gorm:"type:uuid;not null;index:idx_tunnel_created"`
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	TunnelID   uuid.UUID `gorm:"type:uuid;not null;index:idx_tunnel_created" json:"tunnel_id"`
 
-	Method     string
-	Path       string
-	StatusCode int
-	DurationMs int
-	BytesIn    int
-	BytesOut   int
+	Method     string    `json:"method"`
+	Path       string    `json:"path"`
+	StatusCode int       `json:"status_code"`
+	DurationMs int       `json:"duration_ms"`
+	BytesIn    int       `json:"bytes_in"`
+	BytesOut   int       `json:"bytes_out"`
 
-	ClientIP  string
-	CreatedAt time.Time `gorm:"index:idx_tunnel_created"`
+	ClientIP  string    `json:"client_ip"`
+	CreatedAt time.Time `gorm:"index:idx_tunnel_created" json:"created_at"`
 
 	// Relationships
-	Tunnel Tunnel `gorm:"foreignKey:TunnelID"`
+	Tunnel Tunnel `gorm:"foreignKey:TunnelID" json:"-"`
 }
 
 // BeforeCreate hook to set UUID

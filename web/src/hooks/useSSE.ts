@@ -66,3 +66,9 @@ export function useSSE(url: string, onMessage?: SSEEventHandler) {
 export function useTunnelEvents(onTunnelEvent: SSEEventHandler) {
   return useSSE('/api/sse', onTunnelEvent);
 }
+
+// Hook for all real-time events (tunnels, webhooks, etc.)
+// Use this when you need to listen to all event types
+export function useAllEvents(onEvent: SSEEventHandler) {
+  return useSSE('/api/sse', onEvent);
+}

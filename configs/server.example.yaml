@@ -5,6 +5,13 @@ server:
   api_port: 4040
   domain: "grok.io"
 
+  # TCP tunnel port allocation range
+  # Allocates ports for TCP tunnels dynamically from this range
+  # Each TCP tunnel gets a unique port (e.g., tcp://domain:12345)
+  # Range size determines max concurrent TCP tunnels
+  tcp_port_start: 10000  # Start of port range (default: 10000)
+  tcp_port_end: 20000    # End of port range (default: 20000, allows 10,001 TCP tunnels)
+
 database:
   # Driver: "sqlite" or "postgres"
   driver: "sqlite"

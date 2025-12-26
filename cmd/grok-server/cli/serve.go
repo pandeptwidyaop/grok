@@ -192,7 +192,13 @@ func runServer() error {
 		tlsEnabled,
 		cfg.Server.HTTPPort,
 		cfg.Server.HTTPSPort,
+		cfg.Server.TCPPortStart,
+		cfg.Server.TCPPortEnd,
 	)
+
+	// Create and set TCP proxy for TCP tunnel support
+	tcpProxy := proxy.NewTCPProxy(tunnelManager)
+	tunnelManager.SetTCPProxy(tcpProxy)
 
 	// Create gRPC server with interceptors
 	var grpcOpts []grpc.ServerOption
@@ -234,7 +240,7 @@ func runServer() error {
 	// Setup HTTP reverse proxy
 	router := proxy.NewRouter(tunnelManager, cfg.Server.Domain)
 	webhookRouter := proxy.NewWebhookRouter(database, tunnelManager, cfg.Server.Domain)
-	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager)
+	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager, database)
 
 	// Create HTTP handler (with autocert support if enabled)
 	var httpHandler http.Handler = httpProxy
@@ -357,6 +363,10 @@ func runServer() error {
 		if err := apiServer.Shutdown(ctx); err != nil {
 			logger.ErrorEvent().Err(err).Msg("API server shutdown error")
 		}
+
+		// Shutdown TCP proxy (stop all TCP listeners)
+		tcpProxy.Shutdown()
+		logger.InfoEvent().Msg("TCP proxy shut down")
 
 		// Stop gRPC server
 		grpcServer.GracefulStop()

@@ -118,9 +118,21 @@ func (s *TunnelService) CreateTunnel(
 	}
 
 	// Build public URL with full subdomain
-	protocol := "https"
-	if req.Protocol == tunnelv1.TunnelProtocol_TCP {
+	var protocol string
+	switch req.Protocol {
+	case tunnelv1.TunnelProtocol_HTTP:
+		protocol = "http"
+	case tunnelv1.TunnelProtocol_HTTPS:
+		protocol = "https"
+	case tunnelv1.TunnelProtocol_TCP:
 		protocol = "tcp"
+	default:
+		// Default to https if TLS enabled, http otherwise
+		if s.tunnelManager.IsTLSEnabled() {
+			protocol = "https"
+		} else {
+			protocol = "http"
+		}
 	}
 	publicURL := s.tunnelManager.BuildPublicURL(fullSubdomain, protocol)
 
@@ -310,7 +322,27 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 				logger.InfoEvent().
 					Str("tunnel_id", tun.ID.String()).
 					Str("subdomain", subdomain).
+					Str("public_url", tun.PublicURL).
 					Msg("Tunnel registered successfully")
+
+				// Send updated public URL to client (important for TCP tunnels with allocated ports)
+				updateMsg := &tunnelv1.ProxyMessage{
+					Message: &tunnelv1.ProxyMessage_Control{
+						Control: &tunnelv1.ControlMessage{
+							Type:     tunnelv1.ControlMessage_UNKNOWN, // Use UNKNOWN type for URL update
+							TunnelId: tun.ID.String(),
+							Metadata: map[string]string{
+								"public_url": tun.PublicURL,
+							},
+						},
+					},
+				}
+				if err := stream.Send(updateMsg); err != nil {
+					logger.ErrorEvent().
+						Err(err).
+						Str("tunnel_id", tun.ID.String()).
+						Msg("Failed to send public URL update to client")
+				}
 
 				// Start processing requests for this tunnel
 				go s.processRequests(ctx, currentTunnel)

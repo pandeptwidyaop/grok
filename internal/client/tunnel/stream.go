@@ -153,7 +153,7 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 	start := time.Now()
 
 	// Forward request to local service
-	httpResp, err := c.forwarder.Forward(ctx, httpReq)
+	httpResp, err := c.httpForwarder.Forward(ctx, httpReq)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -202,15 +202,59 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 
 // handleTCPRequest forwards TCP data to local service
 func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData *tunnelv1.TCPData) {
-	// Log TCP data received
-	logger.InfoEvent().
+	logger.DebugEvent().
 		Str("request_id", requestID).
 		Int("bytes", len(tcpData.Data)).
 		Int64("sequence", tcpData.Sequence).
 		Msg("TCP data received")
 
-	// TODO: Implement TCP forwarding
-	logger.WarnEvent().Msg("TCP forwarding not yet implemented")
+	// Create response sender function
+	sendResponse := func(respData *tunnelv1.TCPData) error {
+		response := &tunnelv1.ProxyResponse{
+			RequestId: requestID,
+			TunnelId:  c.tunnelID,
+			Payload: &tunnelv1.ProxyResponse_Tcp{
+				Tcp: respData,
+			},
+		}
+
+		msg := &tunnelv1.ProxyMessage{
+			Message: &tunnelv1.ProxyMessage_Response{
+				Response: response,
+			},
+		}
+
+		c.mu.RLock()
+		stream := c.stream
+		c.mu.RUnlock()
+
+		if stream == nil {
+			return fmt.Errorf("stream not available")
+		}
+
+		return stream.Send(msg)
+	}
+
+	// Forward to local service
+	startReadLoop, err := c.tcpForwarder.Forward(ctx, requestID, tcpData, sendResponse)
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("request_id", requestID).
+			Msg("Failed to forward TCP data")
+
+		// Send error response (close signal)
+		sendResponse(&tunnelv1.TCPData{
+			Data:     []byte{},
+			Sequence: 0,
+		})
+		return
+	}
+
+	// Start read loop for new connections
+	if startReadLoop {
+		go c.tcpForwarder.StartReadLoop(ctx, requestID, sendResponse)
+	}
 }
 
 // handleControlMessage handles control messages from server
@@ -219,6 +263,26 @@ func (c *Client) handleControlMessage(ctrl *tunnelv1.ControlMessage) {
 		Str("type", ctrl.Type.String()).
 		Str("tunnel_id", ctrl.TunnelId).
 		Msg("Received control message")
+
+	// Check for public_url update in metadata
+	if ctrl.Metadata != nil {
+		if publicURL, ok := ctrl.Metadata["public_url"]; ok && publicURL != "" {
+			c.mu.Lock()
+			oldURL := c.publicURL
+			c.publicURL = publicURL
+			c.mu.Unlock()
+
+			if oldURL != publicURL {
+				logger.InfoEvent().
+					Str("old_url", oldURL).
+					Str("new_url", publicURL).
+					Msg("Public URL updated")
+
+				// Print updated URL to console
+				fmt.Printf("\n✓ Public URL updated: %s\n", publicURL)
+			}
+		}
+	}
 
 	switch ctrl.Type {
 	case tunnelv1.ControlMessage_TUNNEL_CLOSED:
@@ -234,6 +298,10 @@ func (c *Client) handleControlMessage(ctrl *tunnelv1.ControlMessage) {
 		if c.stream != nil {
 			c.stream.CloseSend()
 		}
+
+	case tunnelv1.ControlMessage_UNKNOWN:
+		// Unknown type - likely a URL update (already handled above via metadata)
+		logger.DebugEvent().Msg("Received control message with unknown type")
 	}
 }
 

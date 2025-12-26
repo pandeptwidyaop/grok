@@ -126,7 +126,7 @@ func (wh *WebhookHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, response)
 }
 
-// ListApps lists all webhook apps for the user's organization
+// ListApps lists all webhook apps for the user's organization (or all orgs for super_admin)
 func (wh *WebhookHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 	claims := middleware.GetClaimsFromContext(r.Context())
 	if claims == nil {
@@ -134,21 +134,28 @@ func (wh *WebhookHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user's organization ID
-	if claims.OrganizationID == nil {
-		respondJSON(w, http.StatusOK, []models.WebhookApp{})
-		return
-	}
-
-	orgID, err := uuid.Parse(*claims.OrganizationID)
-	if err != nil {
-		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid organization ID"})
-		return
-	}
-
 	// Query webhook apps with organization and user
 	var apps []models.WebhookApp
-	if err := wh.db.Where("organization_id = ?", orgID).
+	query := wh.db.Model(&models.WebhookApp{})
+
+	// Super admin can see all webhook apps from all organizations
+	if claims.Role != "super_admin" {
+		// For non-super-admin, filter by organization
+		if claims.OrganizationID == nil {
+			respondJSON(w, http.StatusOK, []models.WebhookApp{})
+			return
+		}
+
+		orgID, err := uuid.Parse(*claims.OrganizationID)
+		if err != nil {
+			respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid organization ID"})
+			return
+		}
+
+		query = query.Where("organization_id = ?", orgID)
+	}
+
+	if err := query.
 		Preload("Routes").
 		Preload("Organization").
 		Preload("User").
@@ -209,10 +216,12 @@ func (wh *WebhookHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify organization membership
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	// Verify organization membership (super_admin can access all apps)
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Build webhook URL
@@ -265,10 +274,12 @@ func (wh *WebhookHandler) UpdateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify organization membership
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	// Verify organization membership (super_admin can access all apps)
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Update fields
@@ -311,10 +322,12 @@ func (wh *WebhookHandler) DeleteApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify organization membership
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	// Verify organization membership (super_admin can access all apps)
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Check permissions: org_admin or app creator can delete
@@ -367,10 +380,12 @@ func (wh *WebhookHandler) ToggleApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify organization membership
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	// Verify organization membership (super_admin can access all apps)
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Toggle status
@@ -404,7 +419,7 @@ func (wh *WebhookHandler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify app belongs to user's organization
+	// Verify app belongs to user's organization (super_admin can access all)
 	var app models.WebhookApp
 	if err := wh.db.First(&app, appID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -415,9 +430,11 @@ func (wh *WebhookHandler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Query routes
@@ -465,7 +482,7 @@ func (wh *WebhookHandler) AddRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify app belongs to user's organization
+	// Verify app belongs to user's organization (super_admin can access all)
 	var app models.WebhookApp
 	if err := wh.db.First(&app, appID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -476,9 +493,11 @@ func (wh *WebhookHandler) AddRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Verify tunnel exists and belongs to same organization
@@ -567,16 +586,18 @@ func (wh *WebhookHandler) UpdateRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify ownership
+	// Verify ownership (super_admin can access all)
 	var app models.WebhookApp
 	if err := wh.db.First(&app, appID).Error; err != nil {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "webhook app not found"})
 		return
 	}
 
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Get route
@@ -625,16 +646,18 @@ func (wh *WebhookHandler) ToggleRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify ownership
+	// Verify ownership (super_admin can access all)
 	var app models.WebhookApp
 	if err := wh.db.First(&app, appID).Error; err != nil {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "webhook app not found"})
 		return
 	}
 
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Get route
@@ -681,16 +704,18 @@ func (wh *WebhookHandler) DeleteRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify ownership
+	// Verify ownership (super_admin can access all)
 	var app models.WebhookApp
 	if err := wh.db.First(&app, appID).Error; err != nil {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "webhook app not found"})
 		return
 	}
 
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Delete route
@@ -733,16 +758,18 @@ func (wh *WebhookHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify ownership
+	// Verify ownership (super_admin can access all)
 	var app models.WebhookApp
 	if err := wh.db.First(&app, appID).Error; err != nil {
 		respondJSON(w, http.StatusNotFound, map[string]string{"error": "webhook app not found"})
 		return
 	}
 
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Get limit from query params (default 100)

@@ -25,7 +25,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 
 func TestAllocateSubdomain(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
+	manager := NewManager(database, "localhost", 10, true, 80, 443, 10000, 20000) // TLS enabled, standard ports
 	ctx := context.Background()
 	userID := uuid.New()
 
@@ -57,7 +57,7 @@ func TestAllocateSubdomain(t *testing.T) {
 
 func TestRegisterTunnel(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
+	manager := NewManager(database, "localhost", 10, true, 80, 443, 10000, 20000) // TLS enabled, standard ports
 	ctx := context.Background()
 
 	userID := uuid.New()
@@ -111,7 +111,7 @@ func TestRegisterTunnel(t *testing.T) {
 
 func TestGetUserTunnels(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
+	manager := NewManager(database, "localhost", 10, true, 80, 443, 10000, 20000) // TLS enabled, standard ports
 	ctx := context.Background()
 
 	userID := uuid.New()
@@ -150,7 +150,7 @@ func TestGetUserTunnels(t *testing.T) {
 
 func TestCountActiveTunnels(t *testing.T) {
 	database := setupTestDB(t)
-	manager := NewManager(database, "localhost", 10, true, 80, 443) // TLS enabled, standard ports
+	manager := NewManager(database, "localhost", 10, true, 80, 443, 10000, 20000) // TLS enabled, standard ports
 	ctx := context.Background()
 
 	assert.Equal(t, 0, manager.CountActiveTunnels())
@@ -197,13 +197,34 @@ func TestBuildPublicURL(t *testing.T) {
 		{"HTTPS custom port", true, 80, 8443, "myapp", "https", "https://myapp.example.com:8443"},
 		{"HTTP default port", false, 80, 443, "myapp", "http", "http://myapp.example.com"},
 		{"HTTP custom port", false, 8080, 443, "myapp", "http", "http://myapp.example.com:8080"},
-		{"TCP", true, 80, 443, "database", "tcp", "tcp://database.example.com"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			manager := NewManager(database, "example.com", 10, tt.tlsEnabled, tt.httpPort, tt.httpsPort)
+			manager := NewManager(database, "example.com", 10, tt.tlsEnabled, tt.httpPort, tt.httpsPort, 10000, 20000)
 			url := manager.BuildPublicURL(tt.subdomain, tt.protocol)
+			assert.Equal(t, tt.expected, url)
+		})
+	}
+}
+
+func TestBuildTCPPublicURL(t *testing.T) {
+	database := setupTestDB(t)
+	manager := NewManager(database, "example.com", 10, true, 80, 443, 10000, 20000)
+
+	tests := []struct {
+		name     string
+		port     int
+		expected string
+	}{
+		{"Standard port", 12345, "tcp://example.com:12345"},
+		{"Low port", 10000, "tcp://example.com:10000"},
+		{"High port", 20000, "tcp://example.com:20000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := manager.BuildTCPPublicURL(tt.port)
 			assert.Equal(t, tt.expected, url)
 		})
 	}

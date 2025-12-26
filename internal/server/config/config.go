@@ -23,6 +23,8 @@ type ServerConfig struct {
 	HTTPSPort     int    `mapstructure:"https_port"`
 	APIPort       int    `mapstructure:"api_port"`
 	Domain        string `mapstructure:"domain"`
+	TCPPortStart  int    `mapstructure:"tcp_port_start"`
+	TCPPortEnd    int    `mapstructure:"tcp_port_end"`
 }
 
 // DatabaseConfig holds database settings
@@ -95,6 +97,8 @@ func setDefaults() {
 	viper.SetDefault("server.https_port", 443)
 	viper.SetDefault("server.api_port", 4040)
 	viper.SetDefault("server.domain", "grok.io")
+	viper.SetDefault("server.tcp_port_start", 10000)
+	viper.SetDefault("server.tcp_port_end", 20000)
 
 	// Database defaults (SQLite for easier local development)
 	viper.SetDefault("database.driver", "sqlite")

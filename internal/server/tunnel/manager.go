@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
+	"github.com/pandeptwidyaop/grok/internal/server/tcp"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
@@ -36,6 +37,12 @@ type TunnelEvent struct {
 // TunnelEventHandler is a callback for tunnel events
 type TunnelEventHandler func(TunnelEvent)
 
+// TCPProxy interface for TCP proxy operations
+type TCPProxy interface {
+	StartListener(port int, tunnelID uuid.UUID) error
+	StopListener(port int) error
+}
+
 // Manager manages active tunnels
 type Manager struct {
 	db             *gorm.DB
@@ -46,13 +53,15 @@ type Manager struct {
 	tlsEnabled     bool   // Whether TLS is enabled
 	httpPort       int    // HTTP port (default 80)
 	httpsPort      int    // HTTPS port (default 443)
+	portPool       *tcp.PortPool // TCP port pool for TCP tunnels
+	tcpProxy       TCPProxy       // TCP proxy for starting/stopping listeners
 	mu             sync.RWMutex
 	eventHandlers  []TunnelEventHandler
 	eventMu        sync.RWMutex
 }
 
 // NewManager creates a new tunnel manager
-func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int, tlsEnabled bool, httpPort, httpsPort int) *Manager {
+func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int, tlsEnabled bool, httpPort, httpsPort, tcpPortStart, tcpPortEnd int) *Manager {
 	m := &Manager{
 		db:             db,
 		baseDomain:     baseDomain,
@@ -61,6 +70,19 @@ func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int, tlsEnable
 		httpPort:       httpPort,
 		httpsPort:      httpsPort,
 	}
+
+	// Initialize TCP port pool for TCP tunnels
+	portPool, err := tcp.NewPortPool(db, tcpPortStart, tcpPortEnd)
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Int("tcp_port_start", tcpPortStart).
+			Int("tcp_port_end", tcpPortEnd).
+			Msg("Failed to initialize TCP port pool")
+		// Continue without TCP support
+		portPool = nil
+	}
+	m.portPool = portPool
 
 	// Cleanup stale tunnels from previous server runs
 	if err := m.CleanupStaleTunnels(context.Background()); err != nil {
@@ -73,6 +95,11 @@ func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int, tlsEnable
 	go m.startPeriodicStatsUpdater()
 
 	return m
+}
+
+// SetTCPProxy sets the TCP proxy for starting/stopping TCP listeners
+func (m *Manager) SetTCPProxy(proxy TCPProxy) {
+	m.tcpProxy = proxy
 }
 
 // CleanupStaleTunnels cleans up tunnels that are marked as active but have no active connection
@@ -212,6 +239,49 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 		return err
 	}
 
+	// For TCP tunnels, allocate a port
+	var allocatedPort *int
+	if tunnel.Protocol == tunnelv1.TunnelProtocol_TCP {
+		if m.portPool == nil {
+			return pkgerrors.NewAppError("TCP_NOT_SUPPORTED", "TCP tunnels not supported (port pool not initialized)", nil)
+		}
+
+		port, err := m.portPool.AllocatePort(tunnel.ID)
+		if err != nil {
+			logger.ErrorEvent().
+				Err(err).
+				Str("tunnel_id", tunnel.ID.String()).
+				Msg("Failed to allocate TCP port")
+			return err
+		}
+
+		allocatedPort = &port
+		tunnel.RemotePort = &port
+
+		// Update public URL with allocated port
+		tunnel.PublicURL = m.BuildTCPPublicURL(port)
+
+		logger.InfoEvent().
+			Int("port", port).
+			Str("tunnel_id", tunnel.ID.String()).
+			Str("public_url", tunnel.PublicURL).
+			Msg("Allocated TCP port for tunnel")
+
+		// Start TCP listener if TCP proxy is available
+		if m.tcpProxy != nil {
+			if err := m.tcpProxy.StartListener(port, tunnel.ID); err != nil {
+				// Release the port if listener fails to start
+				m.portPool.ReleasePort(port, false)
+				logger.ErrorEvent().
+					Err(err).
+					Int("port", port).
+					Str("tunnel_id", tunnel.ID.String()).
+					Msg("Failed to start TCP listener")
+				return pkgerrors.Wrap(err, "failed to start TCP listener")
+			}
+		}
+	}
+
 	// Store in memory
 	m.tunnels.Store(tunnel.Subdomain, tunnel)
 	m.tunnelsByID.Store(tunnel.ID, tunnel)
@@ -224,6 +294,7 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 		OrganizationID: tunnel.OrganizationID,
 		TunnelType:     tunnel.Protocol.String(),
 		Subdomain:      tunnel.Subdomain,
+		RemotePort:     allocatedPort, // Store allocated TCP port
 		LocalAddr:      tunnel.LocalAddr,
 		PublicURL:      tunnel.PublicURL,
 		ClientID:       tunnel.ID.String(), // Use tunnel ID as unique client ID
@@ -236,6 +307,12 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 		// Cleanup memory if DB insert fails
 		m.tunnels.Delete(tunnel.Subdomain)
 		m.tunnelsByID.Delete(tunnel.ID)
+
+		// Release allocated port if TCP
+		if allocatedPort != nil {
+			m.portPool.ReleasePort(*allocatedPort, false)
+		}
+
 		return pkgerrors.Wrap(err, "failed to register tunnel in database")
 	}
 
@@ -243,6 +320,7 @@ func (m *Manager) RegisterTunnel(ctx context.Context, tunnel *Tunnel) error {
 		Str("tunnel_id", tunnel.ID.String()).
 		Str("subdomain", tunnel.Subdomain).
 		Str("user_id", tunnel.UserID.String()).
+		Str("protocol", tunnel.Protocol.String()).
 		Msg("Tunnel registered")
 
 	// Emit tunnel connected event
@@ -277,6 +355,44 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 	var dbTunnel models.Tunnel
 	if err := m.db.WithContext(ctx).Where("id = ?", tunnelID).First(&dbTunnel).Error; err != nil {
 		return pkgerrors.Wrap(err, "failed to fetch tunnel from database")
+	}
+
+	// Handle TCP port release/reservation
+	if dbTunnel.RemotePort != nil && m.portPool != nil {
+		isPersistent := dbTunnel.IsPersistent
+
+		// Stop TCP listener
+		if m.tcpProxy != nil {
+			if err := m.tcpProxy.StopListener(*dbTunnel.RemotePort); err != nil {
+				logger.WarnEvent().
+					Err(err).
+					Int("port", *dbTunnel.RemotePort).
+					Str("tunnel_id", tunnelID.String()).
+					Msg("Failed to stop TCP listener")
+			}
+		}
+
+		// Release or keep port based on persistence
+		if err := m.portPool.ReleasePort(*dbTunnel.RemotePort, isPersistent); err != nil {
+			logger.WarnEvent().
+				Err(err).
+				Int("port", *dbTunnel.RemotePort).
+				Str("tunnel_id", tunnelID.String()).
+				Bool("persistent", isPersistent).
+				Msg("Failed to release TCP port")
+		}
+
+		if isPersistent {
+			logger.InfoEvent().
+				Int("port", *dbTunnel.RemotePort).
+				Str("tunnel_id", tunnelID.String()).
+				Msg("TCP port kept reserved for persistent tunnel")
+		} else {
+			logger.InfoEvent().
+				Int("port", *dbTunnel.RemotePort).
+				Str("tunnel_id", tunnelID.String()).
+				Msg("TCP port released")
+		}
 	}
 
 	// Mark tunnel as offline, KEEP domain reservation
@@ -414,15 +530,18 @@ func (m *Manager) checkUserTunnelLimit(ctx context.Context, userID uuid.UUID) er
 // BuildPublicURL builds the public URL for a tunnel
 func (m *Manager) BuildPublicURL(subdomain string, protocol string) string {
 	if protocol == "tcp" {
-		return fmt.Sprintf("tcp://%s.%s", subdomain, m.baseDomain)
+		// TCP tunnels use port-based routing, not subdomain
+		// Return placeholder - actual URL set after port allocation
+		return "tcp://pending-allocation"
 	}
 
-	// Determine scheme and port based on TLS configuration
+	// Determine scheme and port based on requested protocol
 	var scheme string
 	var port int
 	var defaultPort int
 
-	if m.tlsEnabled {
+	// Use requested protocol (http/https), fallback to TLS config
+	if protocol == "https" || (protocol != "http" && m.tlsEnabled) {
 		scheme = "https"
 		port = m.httpsPort
 		defaultPort = 443
@@ -438,6 +557,31 @@ func (m *Manager) BuildPublicURL(subdomain string, protocol string) string {
 		return fmt.Sprintf("%s://%s:%d", scheme, host, port)
 	}
 	return fmt.Sprintf("%s://%s", scheme, host)
+}
+
+// BuildTCPPublicURL builds the public URL for a TCP tunnel with allocated port
+func (m *Manager) BuildTCPPublicURL(port int) string {
+	return fmt.Sprintf("tcp://%s:%d", m.baseDomain, port)
+}
+
+// IsTLSEnabled returns whether TLS is enabled on the server
+func (m *Manager) IsTLSEnabled() bool {
+	return m.tlsEnabled
+}
+
+// GetHTTPPort returns the HTTP port
+func (m *Manager) GetHTTPPort() int {
+	return m.httpPort
+}
+
+// GetHTTPSPort returns the HTTPS port
+func (m *Manager) GetHTTPSPort() int {
+	return m.httpsPort
+}
+
+// GetBaseDomain returns the base domain
+func (m *Manager) GetBaseDomain() string {
+	return m.baseDomain
 }
 
 // isDuplicateError checks if the error is a duplicate key error
@@ -496,8 +640,51 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 		protocol = "tcp"
 	}
 
-	// Regenerate public URL with current TLS and port configuration
-	publicURL := m.BuildPublicURL(offlineTunnel.Subdomain, protocol)
+	// Handle TCP port reallocation for persistent tunnels
+	var publicURL string
+	var remotePort *int
+	if protocol == "tcp" && offlineTunnel.RemotePort != nil {
+		// Reallocate the same port for persistent TCP tunnel
+		if m.portPool == nil {
+			return nil, pkgerrors.NewAppError("TCP_NOT_SUPPORTED", "TCP tunnels not supported (port pool not initialized)", nil)
+		}
+
+		port, err := m.portPool.ReallocatePortForTunnel(offlineTunnel.ID, *offlineTunnel.RemotePort)
+		if err != nil {
+			logger.ErrorEvent().
+				Err(err).
+				Int("previous_port", *offlineTunnel.RemotePort).
+				Str("tunnel_id", offlineTunnel.ID.String()).
+				Msg("Failed to reallocate TCP port")
+			return nil, pkgerrors.Wrap(err, "failed to reallocate TCP port")
+		}
+
+		remotePort = &port
+		publicURL = m.BuildTCPPublicURL(port)
+
+		logger.InfoEvent().
+			Int("port", port).
+			Str("tunnel_id", offlineTunnel.ID.String()).
+			Str("public_url", publicURL).
+			Msg("Reallocated TCP port for persistent tunnel")
+
+		// Start TCP listener if TCP proxy is available
+		if m.tcpProxy != nil {
+			if err := m.tcpProxy.StartListener(port, offlineTunnel.ID); err != nil {
+				// Release the port if listener fails to start
+				m.portPool.ReleasePort(port, false)
+				logger.ErrorEvent().
+					Err(err).
+					Int("port", port).
+					Str("tunnel_id", offlineTunnel.ID.String()).
+					Msg("Failed to start TCP listener for reactivated tunnel")
+				return nil, pkgerrors.Wrap(err, "failed to start TCP listener")
+			}
+		}
+	} else {
+		// Regenerate public URL with current TLS and port configuration for HTTP/HTTPS
+		publicURL = m.BuildPublicURL(offlineTunnel.Subdomain, protocol)
+	}
 
 	// Update database with new public URL, local address, and active status
 	err := m.db.WithContext(ctx).
@@ -517,6 +704,7 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 	}
 
 	// Create in-memory tunnel object with the same ID and subdomain
+	// IMPORTANT: Initialize stats from database to preserve cumulative stats across reconnects
 	tunnel := &Tunnel{
 		ID:             offlineTunnel.ID,
 		UserID:         offlineTunnel.UserID,
@@ -524,6 +712,7 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 		OrganizationID: offlineTunnel.OrganizationID,
 		Subdomain:      offlineTunnel.Subdomain,
 		Protocol:       tunnelv1.TunnelProtocol(tunnelv1.TunnelProtocol_value[offlineTunnel.TunnelType]),
+		RemotePort:     remotePort,   // Store remote port for TCP tunnels
 		LocalAddr:      newLocalAddr, // Use new local address
 		PublicURL:      publicURL,    // Use regenerated URL
 		SavedName:      offlineTunnel.SavedName,
@@ -533,6 +722,10 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 		Status:         "active",
 		ConnectedAt:    time.Now(),
 		LastActivity:   time.Now(),
+		// Preserve cumulative stats from database
+		BytesIn:       offlineTunnel.BytesIn,
+		BytesOut:      offlineTunnel.BytesOut,
+		RequestsCount: offlineTunnel.RequestsCount,
 	}
 
 	// Store in memory maps

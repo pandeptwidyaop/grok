@@ -39,31 +39,38 @@ type ClientConfig struct {
 
 // Client represents a tunnel client
 type Client struct {
-	cfg         ClientConfig
-	conn        *grpc.ClientConn
-	tunnelSvc   tunnelv1.TunnelServiceClient
-	tunnelID    string
-	publicURL   string
-	stream      tunnelv1.TunnelService_ProxyStreamClient
-	forwarder   *proxy.HTTPForwarder
-	mu          sync.RWMutex
-	connected   bool
-	stopCh      chan struct{}
-	stopped     bool
+	cfg            ClientConfig
+	conn           *grpc.ClientConn
+	tunnelSvc      tunnelv1.TunnelServiceClient
+	tunnelID       string
+	publicURL      string
+	stream         tunnelv1.TunnelService_ProxyStreamClient
+	httpForwarder  *proxy.HTTPForwarder
+	tcpForwarder   *proxy.TCPForwarder
+	mu             sync.RWMutex
+	connected      bool
+	stopCh         chan struct{}
+	stopped        bool
 }
 
 // NewClient creates a new tunnel client
 func NewClient(cfg ClientConfig) (*Client, error) {
 	// Create forwarder based on protocol
-	var forwarder *proxy.HTTPForwarder
-	if cfg.Protocol == "http" || cfg.Protocol == "https" {
-		forwarder = proxy.NewHTTPForwarder(cfg.LocalAddr)
+	var httpForwarder *proxy.HTTPForwarder
+	var tcpForwarder *proxy.TCPForwarder
+
+	switch cfg.Protocol {
+	case "http", "https":
+		httpForwarder = proxy.NewHTTPForwarder(cfg.LocalAddr)
+	case "tcp":
+		tcpForwarder = proxy.NewTCPForwarder(cfg.LocalAddr)
 	}
 
 	return &Client{
-		cfg:       cfg,
-		forwarder: forwarder,
-		stopCh:    make(chan struct{}),
+		cfg:           cfg,
+		httpForwarder: httpForwarder,
+		tcpForwarder:  tcpForwarder,
+		stopCh:        make(chan struct{}),
 	}, nil
 }
 

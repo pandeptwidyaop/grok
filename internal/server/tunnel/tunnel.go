@@ -17,6 +17,7 @@ type Tunnel struct {
 	OrganizationID *uuid.UUID // Organization ID (nullable)
 	Subdomain      string
 	Protocol       tunnelv1.TunnelProtocol
+	RemotePort     *int       // Allocated port for TCP tunnels
 	LocalAddr      string
 	PublicURL      string
 	Stream         grpc.ServerStream

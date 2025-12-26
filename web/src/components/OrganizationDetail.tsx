@@ -305,7 +305,7 @@ export default function OrganizationDetail() {
               </Typography>
             </Box>
             <Box>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
                 Full Domain
               </Typography>
               <Chip
@@ -313,7 +313,7 @@ export default function OrganizationDetail() {
                 color="secondary"
                 variant="outlined"
                 size="small"
-                sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 500, mt: 0.5 }}
+                sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 500 }}
               />
             </Box>
             <Box>
