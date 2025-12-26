@@ -113,9 +113,6 @@ func (c *Client) connect(ctx context.Context) error {
 		return fmt.Errorf("failed to start proxy stream: %w", err)
 	}
 
-	// Start heartbeat
-	go c.startHeartbeat(ctx)
-
 	c.mu.Lock()
 	c.connected = true
 	c.mu.Unlock()
@@ -134,8 +131,19 @@ func (c *Client) connect(ctx context.Context) error {
 	fmt.Printf("╚═════════════════════════════════════════════════════════╝\n")
 	fmt.Printf("\n")
 
-	// Block until context is cancelled
-	<-ctx.Done()
+	// Create connection monitor channel
+	connLostCh := make(chan struct{}, 1)
+
+	// Start heartbeat with connection monitor
+	go c.startHeartbeat(ctx, connLostCh)
+
+	// Block until context is cancelled or connection lost
+	select {
+	case <-ctx.Done():
+		logger.InfoEvent().Msg("Context cancelled, closing tunnel")
+	case <-connLostCh:
+		logger.WarnEvent().Msg("Connection lost, will reconnect")
+	}
 
 	c.mu.Lock()
 	c.connected = false
@@ -149,8 +157,14 @@ func (c *Client) connect(ctx context.Context) error {
 		c.conn.Close()
 	}
 
-	logger.InfoEvent().Msg("Tunnel closed")
-	return nil
+	// If connection was lost (not context cancelled), return error to trigger reconnect
+	select {
+	case <-connLostCh:
+		return fmt.Errorf("connection lost")
+	default:
+		logger.InfoEvent().Msg("Tunnel closed gracefully")
+		return nil
+	}
 }
 
 // createTunnel creates a tunnel on the server

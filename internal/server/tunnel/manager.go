@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
@@ -25,11 +26,68 @@ type Manager struct {
 
 // NewManager creates a new tunnel manager
 func NewManager(db *gorm.DB, baseDomain string, maxTunnelsPerUser int) *Manager {
-	return &Manager{
+	m := &Manager{
 		db:             db,
 		baseDomain:     baseDomain,
 		maxTunnelsPerUser: maxTunnelsPerUser,
 	}
+
+	// Cleanup stale tunnels from previous server runs
+	if err := m.CleanupStaleTunnels(context.Background()); err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Msg("Failed to cleanup stale tunnels on startup")
+	}
+
+	return m
+}
+
+// CleanupStaleTunnels cleans up tunnels that are marked as active but have no active connection
+// This happens when server restarts and old tunnel records remain in database
+func (m *Manager) CleanupStaleTunnels(ctx context.Context) error {
+	logger.InfoEvent().Msg("Cleaning up stale tunnels from previous sessions...")
+
+	// Update all active/connected tunnels to disconnected
+	result := m.db.WithContext(ctx).
+		Model(&models.Tunnel{}).
+		Where("status IN (?)", []string{"active", "connected"}).
+		Updates(map[string]interface{}{
+			"status":          "disconnected",
+			"disconnected_at": time.Now(),
+		})
+
+	if result.Error != nil {
+		return pkgerrors.Wrap(result.Error, "failed to cleanup stale tunnels")
+	}
+
+	if result.RowsAffected > 0 {
+		logger.InfoEvent().
+			Int64("count", result.RowsAffected).
+			Msg("Cleaned up stale tunnels")
+	}
+
+	// Also cleanup orphaned domain reservations
+	// (domains without any active tunnel using them)
+	subResult := m.db.WithContext(ctx).Exec(`
+		DELETE FROM domains
+		WHERE id NOT IN (
+			SELECT domain_id FROM tunnels
+			WHERE domain_id IS NOT NULL
+			AND status = 'active'
+		)
+	`)
+
+	if subResult.Error != nil {
+		logger.WarnEvent().
+			Err(subResult.Error).
+			Msg("Failed to cleanup orphaned domains")
+	} else if subResult.RowsAffected > 0 {
+		logger.InfoEvent().
+			Int64("count", subResult.RowsAffected).
+			Msg("Cleaned up orphaned domain reservations")
+	}
+
+	return nil
 }
 
 // AllocateSubdomain allocates a subdomain (custom or random)
@@ -147,13 +205,14 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 	m.tunnels.Delete(tunnel.Subdomain)
 	m.tunnelsByID.Delete(tunnelID)
 
-	// Update database
+	// Update database - clear domain_id to break FK reference
 	err := m.db.WithContext(ctx).
 		Model(&models.Tunnel{}).
 		Where("id = ?", tunnelID).
 		Updates(map[string]interface{}{
 			"status":          "disconnected",
 			"disconnected_at": "NOW()",
+			"domain_id":       nil, // Clear domain reference before deleting domain
 		}).Error
 
 	if err != nil {
@@ -161,13 +220,24 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 	}
 
 	// Delete domain reservation to allow reuse
-	if err := m.db.WithContext(ctx).
+	logger.InfoEvent().
+		Str("subdomain", tunnel.Subdomain).
+		Msg("Attempting to delete domain reservation")
+
+	result := m.db.WithContext(ctx).
 		Where("subdomain = ?", tunnel.Subdomain).
-		Delete(&models.Domain{}).Error; err != nil {
+		Delete(&models.Domain{})
+
+	if result.Error != nil {
 		logger.WarnEvent().
-			Err(err).
+			Err(result.Error).
 			Str("subdomain", tunnel.Subdomain).
 			Msg("Failed to delete domain reservation")
+	} else {
+		logger.InfoEvent().
+			Str("subdomain", tunnel.Subdomain).
+			Int64("rows_affected", result.RowsAffected).
+			Msg("Domain reservation deleted successfully")
 	}
 
 	logger.InfoEvent().
@@ -194,6 +264,41 @@ func (m *Manager) GetTunnelByID(tunnelID uuid.UUID) (*Tunnel, bool) {
 		return nil, false
 	}
 	return value.(*Tunnel), true
+}
+
+// SaveTunnelStats saves tunnel statistics to database
+func (m *Manager) SaveTunnelStats(ctx context.Context, tunnelID uuid.UUID) error {
+	tunnel, ok := m.GetTunnelByID(tunnelID)
+	if !ok {
+		return pkgerrors.ErrTunnelNotFound
+	}
+
+	// Get current stats
+	bytesIn, bytesOut, requestsCount := tunnel.GetStats()
+
+	// Update database
+	err := m.db.WithContext(ctx).
+		Model(&models.Tunnel{}).
+		Where("id = ?", tunnelID).
+		Updates(map[string]interface{}{
+			"bytes_in":         bytesIn,
+			"bytes_out":        bytesOut,
+			"requests_count":   requestsCount,
+			"last_activity_at": time.Now(),
+		}).Error
+
+	if err != nil {
+		return pkgerrors.Wrap(err, "failed to save tunnel stats")
+	}
+
+	logger.DebugEvent().
+		Str("tunnel_id", tunnelID.String()).
+		Int64("bytes_in", bytesIn).
+		Int64("bytes_out", bytesOut).
+		Int64("requests_count", requestsCount).
+		Msg("Tunnel stats saved")
+
+	return nil
 }
 
 // GetUserTunnels returns all active tunnels for a user

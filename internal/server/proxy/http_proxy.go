@@ -22,13 +22,15 @@ const (
 
 // HTTPProxy handles HTTP reverse proxying
 type HTTPProxy struct {
-	router *Router
+	router        *Router
+	tunnelManager *tunnel.Manager
 }
 
 // NewHTTPProxy creates a new HTTP proxy
-func NewHTTPProxy(router *Router) *HTTPProxy {
+func NewHTTPProxy(router *Router, tunnelManager *tunnel.Manager) *HTTPProxy {
 	return &HTTPProxy{
-		router: router,
+		router:        router,
+		tunnelManager: tunnelManager,
 	}
 }
 
@@ -57,7 +59,7 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tun.UpdateActivity()
 
 	// Proxy request through tunnel
-	resp, err := p.proxyRequest(r, tun)
+	resp, reqBytes, err := p.proxyRequest(r, tun)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -71,7 +73,20 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write response
-	p.writeResponse(w, resp)
+	respBytes := p.writeResponse(w, resp)
+
+	// Update tunnel statistics
+	tun.UpdateStats(reqBytes, respBytes)
+
+	// Save stats to database (async to avoid blocking)
+	go func() {
+		if err := p.tunnelManager.SaveTunnelStats(context.Background(), tun.ID); err != nil {
+			logger.WarnEvent().
+				Err(err).
+				Str("tunnel_id", tun.ID.String()).
+				Msg("Failed to save tunnel stats")
+		}
+	}()
 
 	// Log request
 	duration := time.Since(start)
@@ -82,20 +97,32 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Str("path", r.URL.Path).
 		Int("status", int(resp.StatusCode)).
 		Dur("duration", duration).
+		Int64("bytes_in", reqBytes).
+		Int64("bytes_out", respBytes).
 		Msg("Request proxied")
 }
 
 // proxyRequest proxies an HTTP request through a tunnel
-func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, error) {
+// Returns: (response, requestBytes, error)
+func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, int64, error) {
 	// Generate request ID
 	requestID := utils.GenerateRequestID()
 
 	// Read request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, pkgerrors.Wrap(err, "failed to read request body")
+		return nil, 0, pkgerrors.Wrap(err, "failed to read request body")
 	}
 	defer r.Body.Close()
+
+	// Calculate request size (headers + body)
+	requestBytes := int64(len(body))
+	for key, values := range r.Header {
+		for _, val := range values {
+			requestBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+		}
+	}
+	requestBytes += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20) // Method, path, query, protocol
 
 	// Convert HTTP headers to proto format
 	headers := make(map[string]*tunnelv1.HeaderValues)
@@ -134,7 +161,7 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 	}
 
 	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
-		return nil, pkgerrors.Wrap(err, "failed to send request to tunnel")
+		return nil, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
 	}
 
 	// Wait for response with timeout
@@ -145,17 +172,27 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 	case proxyResp := <-responseCh:
 		// Got response
 		if httpResp := proxyResp.GetHttp(); httpResp != nil {
-			return httpResp, nil
+			return httpResp, requestBytes, nil
 		}
-		return nil, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
+		return nil, 0, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
 
 	case <-ctx.Done():
-		return nil, pkgerrors.ErrRequestTimeout
+		return nil, 0, pkgerrors.ErrRequestTimeout
 	}
 }
 
 // writeResponse writes a proto HTTP response to http.ResponseWriter
-func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) {
+// Returns: bytes written
+func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) int64 {
+	// Calculate response size (headers + body)
+	responseBytes := int64(len(resp.Body))
+	for key, headerVals := range resp.Headers {
+		for _, val := range headerVals.Values {
+			responseBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+		}
+	}
+	responseBytes += 20 // Status line overhead
+
 	// Write headers
 	for key, headerVals := range resp.Headers {
 		for _, val := range headerVals.Values {
@@ -174,6 +211,8 @@ func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResp
 				Msg("Failed to write response body")
 		}
 	}
+
+	return responseBytes
 }
 
 // HealthCheckHandler returns a simple health check handler

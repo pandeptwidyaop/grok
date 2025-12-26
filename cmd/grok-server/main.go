@@ -222,7 +222,7 @@ func main() {
 
 	// Setup HTTP reverse proxy
 	router := proxy.NewRouter(tunnelManager, cfg.Server.Domain)
-	httpProxy := proxy.NewHTTPProxy(router)
+	httpProxy := proxy.NewHTTPProxy(router, tunnelManager)
 
 	// Create HTTP handler (with autocert support if enabled)
 	var httpHandler http.Handler = httpProxy

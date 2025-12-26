@@ -149,12 +149,17 @@ func (c *Client) handleProxyRequest(ctx context.Context, req *tunnelv1.ProxyRequ
 
 // handleHTTPRequest forwards HTTP request to local service
 func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpReq *tunnelv1.HTTPRequest) {
+	start := time.Now()
+
 	// Forward request to local service
 	httpResp, err := c.forwarder.Forward(ctx, httpReq)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
 			Str("request_id", requestID).
+			Str("method", httpReq.Method).
+			Str("path", httpReq.Path).
+			Str("remote_addr", httpReq.RemoteAddr).
 			Msg("Failed to forward HTTP request")
 
 		// Send error response
@@ -181,14 +186,28 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 			Msg("Failed to send response")
 	}
 
-	logger.DebugEvent().
-		Str("request_id", requestID).
+	// Log access with details
+	duration := time.Since(start)
+	logger.InfoEvent().
+		Str("method", httpReq.Method).
+		Str("path", httpReq.Path).
+		Str("remote_addr", httpReq.RemoteAddr).
 		Int32("status", httpResp.StatusCode).
-		Msg("HTTP request handled")
+		Int("bytes_in", len(httpReq.Body)).
+		Int("bytes_out", len(httpResp.Body)).
+		Dur("duration", duration).
+		Msg("HTTP request processed")
 }
 
 // handleTCPRequest forwards TCP data to local service
 func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData *tunnelv1.TCPData) {
+	// Log TCP data received
+	logger.InfoEvent().
+		Str("request_id", requestID).
+		Int("bytes", len(tcpData.Data)).
+		Int64("sequence", tcpData.Sequence).
+		Msg("TCP data received")
+
 	// TODO: Implement TCP forwarding
 	logger.WarnEvent().Msg("TCP forwarding not yet implemented")
 }
@@ -238,7 +257,7 @@ func (c *Client) sendError(requestID string, code tunnelv1.ErrorCode, message st
 }
 
 // startHeartbeat starts sending heartbeat messages to server
-func (c *Client) startHeartbeat(ctx context.Context) {
+func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -248,22 +267,32 @@ func (c *Client) startHeartbeat(ctx context.Context) {
 		logger.ErrorEvent().
 			Err(err).
 			Msg("Failed to create heartbeat stream")
+		// Signal connection lost
+		select {
+		case connLostCh <- struct{}{}:
+		default:
+		}
 		return
 	}
 
 	logger.DebugEvent().Msg("Heartbeat stream established")
+
+	// Create channel to signal heartbeat receive errors
+	heartbeatErrCh := make(chan error, 1)
 
 	// Start receiving heartbeat responses
 	go func() {
 		for {
 			_, err := heartbeatStream.Recv()
 			if err == io.EOF {
+				heartbeatErrCh <- io.EOF
 				return
 			}
 			if err != nil {
-				logger.DebugEvent().
+				logger.WarnEvent().
 					Err(err).
-					Msg("Heartbeat stream error")
+					Msg("Heartbeat receive error")
+				heartbeatErrCh <- err
 				return
 			}
 			// Heartbeat received, tunnel is healthy
@@ -276,6 +305,19 @@ func (c *Client) startHeartbeat(ctx context.Context) {
 		case <-ctx.Done():
 			heartbeatStream.CloseSend()
 			return
+
+		case err := <-heartbeatErrCh:
+			// Heartbeat receive failed, signal connection lost
+			logger.WarnEvent().
+				Err(err).
+				Msg("Heartbeat failed, signaling connection lost")
+			heartbeatStream.CloseSend()
+			select {
+			case connLostCh <- struct{}{}:
+			default:
+			}
+			return
+
 		case <-ticker.C:
 			req := &tunnelv1.HeartbeatRequest{
 				TunnelId:  c.tunnelID,
@@ -287,6 +329,11 @@ func (c *Client) startHeartbeat(ctx context.Context) {
 					Err(err).
 					Msg("Failed to send heartbeat")
 				heartbeatStream.CloseSend()
+				// Signal connection lost
+				select {
+				case connLostCh <- struct{}{}:
+				default:
+				}
 				return
 			}
 

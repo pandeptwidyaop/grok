@@ -24,6 +24,12 @@ type Tunnel struct {
 	Status        string
 	ConnectedAt   time.Time
 	LastActivity  time.Time
+
+	// Statistics (in-memory counters)
+	BytesIn       int64
+	BytesOut      int64
+	RequestsCount int64
+
 	mu            sync.RWMutex
 }
 
@@ -80,6 +86,23 @@ func (t *Tunnel) SetStatus(status string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.Status = status
+}
+
+// UpdateStats updates tunnel statistics (thread-safe)
+func (t *Tunnel) UpdateStats(bytesIn, bytesOut int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.BytesIn += bytesIn
+	t.BytesOut += bytesOut
+	t.RequestsCount++
+	t.LastActivity = time.Now()
+}
+
+// GetStats returns current statistics (thread-safe)
+func (t *Tunnel) GetStats() (bytesIn, bytesOut, requestsCount int64) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.BytesIn, t.BytesOut, t.RequestsCount
 }
 
 // Close closes the tunnel and cleans up resources
