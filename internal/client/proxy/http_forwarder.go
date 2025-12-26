@@ -20,10 +20,21 @@ type HTTPForwarder struct {
 
 // NewHTTPForwarder creates a new HTTP forwarder
 func NewHTTPForwarder(localAddr string) *HTTPForwarder {
+	// Create custom transport with optimized settings
+	transport := &http.Transport{
+		MaxIdleConns:        100,              // Reuse connections
+		MaxIdleConnsPerHost: 10,               // Keep connections to local service alive
+		IdleConnTimeout:     90 * time.Second, // Keep idle connections longer
+		DisableCompression:  false,            // Allow compression if server supports it
+		WriteBufferSize:     32 * 1024,        // 32KB write buffer (default is 4KB)
+		ReadBufferSize:      32 * 1024,        // 32KB read buffer (default is 4KB)
+	}
+
 	return &HTTPForwarder{
 		localAddr: localAddr,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: transport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				// Don't follow redirects
 				return http.ErrUseLastResponse

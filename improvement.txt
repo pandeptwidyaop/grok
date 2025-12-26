@@ -1,0 +1,170 @@
+🔌 1. Gunakan 1 koneksi gRPC persisten (jangan sering reconnect)
+
+Pastikan semua traffic di-multiplex lewat 1 long-lived HTTP/2 connection.
+Gunakan gRPC streaming (bi-directional) untuk data tunnel, bukan unary call berulang-ulang.
+
+Keuntungannya:
+
+tidak ada TLS handshake berulang
+
+tidak ada TCP slow-start berulang
+
+latency jauh lebih stabil
+
+🚀 2. Pakai gRPC streaming untuk data tunnel
+
+Yang paling cepat adalah bidirectional streaming:
+
+client → server: data dari local port
+
+server → client: data dari remote side
+
+Ini menghindari overhead request/response gRPC biasa.
+
+⚙️ 3. Set keepalive & flow control gRPC
+
+Supaya koneksi tetap hidup dan tidak ditutup idle timeout provider / firewall:
+
+grpc.Dial(
+    addr,
+    grpc.WithInsecure(),
+    grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(64<<20)),
+    grpc.WithKeepaliveParams(keepalive.ClientParameters{
+        Time:                30 * time.Second,
+        Timeout:             10 * time.Second,
+        PermitWithoutStream: true,
+    }),
+)
+
+🔄 4. Nonaktifkan compression gRPC untuk payload kecil
+
+Compression itu mahal CPU-nya — cocok hanya untuk payload >10KB.
+Kalau traffic kamu kecil & sering → disable compression.
+
+📦 5. Minimalkan overhead protobuf
+
+gunakan bytes untuk payload raw
+
+hindari nested struct dalam-dalam
+
+hindari repeated kecil-kecil → lebih baik buffer
+
+Setiap serialize/deserialize itu cost.
+
+🛜 6. Optimalkan TCP layer
+Aktifkan TCP_NODELAY
+
+Supaya tidak nunggu Nagle’s Algorithm (delay packet kecil):
+
+conn, _ := net.Dial(...)
+tcpConn := conn.(*net.TCPConn)
+tcpConn.SetNoDelay(true)
+
+
+Ini mengurangi latency request kecil (misal HTTP header proxy).
+
+📶 7. Pastikan koneksi stabil (MTU, packet loss, RTT)
+
+Tunnel sangat sensitif pada:
+
+✔ RTT tinggi
+✔ Packet loss kecil
+✔ MTU mismatch (ICMP blocked → fragmentation → lambat)
+
+Jika bisa, pakai:
+
+server dekat user (region tepat)
+
+gunakan Anycast/CDN ingress bila skala besar
+
+🧠 8. Gunakan buffering & batching
+
+Jangan kirim byte per byte.
+Kirim minimal 4–16 KB per write.
+
+Manfaat:
+
+lebih sedikit syscalls
+
+throughput naik
+
+Di Go, gunakan bufio.Reader/Writer.
+
+🧪 9. Pilih protokol yang pas
+
+gRPC = HTTP/2 di atas TCP (bagus tapi ada overhead).
+Untuk trafik murni tunnel, alternatif:
+
+Opsi	Kapan dipakai
+gRPC bidirectional streaming	paling mudah + tetap cepat
+HTTP/2 raw stream	overhead sedikit lebih rendah
+QUIC / HTTP/3	jaringan high-loss / mobile
+custom mux (yamux/smux)	performa maksimal
+
+Kalau mau tetap gRPC tapi lebih tahan loss → coba gRPC over HTTP/3 (QUIC).
+
+🔐 10. TLS cipher & session tuning
+
+TLS itu mahal. Optimasi:
+
+aktifkan session resumption
+
+gunakan cipher modern (AES-GCM / ChaCha20)
+
+hindari renegotiation
+
+Kalau jalur internal → kadang TLS termination di edge load balancer.
+
+🐧 11. Tuning OS (Linux)
+
+Di server, aktifkan:
+
+sysctl -w net.core.rmem_max=2500000
+sysctl -w net.core.wmem_max=2500000
+sysctl -w net.ipv4.tcp_congestion_control=bbr
+
+
+BBR sangat membantu throughput di latency tinggi.
+
+📊 12. Monitoring dulu, optimasi kemudian
+
+Pasang metrics:
+
+latency per hop
+
+packet per stream
+
+reconnect count
+
+CPU encode/decode protobuf
+
+TLS handshake time
+
+Grafana + Prometheus cocok (sepertinya kamu sudah pakai 🙂)
+
+🧯 13. Hindari hal-hal ini (biasanya bikin lambat)
+
+❌ unary gRPC untuk setiap request
+❌ reconnect tiap traffic masuk
+❌ kirim payload super kecil tanpa buffering
+❌ compression on untuk payload kecil
+❌ proxy berlapis-lapis (Nginx → H2 → gRPC → tunnel)
+❌ logging terlalu verbose
+
+🧩 14. Arsitektur mirip ngrok (best-practice)
+
+Biasanya:
+
+Client
+
+1 control connection (metadata)
+
+1 data tunnel connection (multiplexed)
+
+Server
+
+listener → router stream per tunnel
+
+keepalive + health check
+
+auto-reconnect client bila link down

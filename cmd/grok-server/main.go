@@ -27,6 +27,7 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"gorm.io/gorm"
 )
 
@@ -207,6 +208,19 @@ func main() {
 			interceptors.StreamLoggingInterceptor(),
 			// Note: ProxyStream will handle auth differently
 		),
+		// Keepalive enforcement policy to match client keepalive
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime:             30 * time.Second, // Minimum time between pings
+			PermitWithoutStream: true,             // Allow pings even when no active streams
+		}),
+		// Keepalive server parameters
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    60 * time.Second, // Send keepalive ping every 60s
+			Timeout: 20 * time.Second, // Wait 20s for ping ack before closing
+		}),
+		// Increase max message size for large payloads
+		grpc.MaxRecvMsgSize(64 << 20), // 64MB
+		grpc.MaxSendMsgSize(64 << 20), // 64MB
 	)
 
 	// Add TLS credentials for gRPC if enabled

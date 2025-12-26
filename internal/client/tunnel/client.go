@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net"
 	"sync"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 )
 
 // ClientConfig holds tunnel client configuration
@@ -72,12 +74,52 @@ func (c *Client) Start(ctx context.Context) error {
 	return c.connect(ctx)
 }
 
+// tcpDialer creates a TCP connection with TCP_NODELAY enabled
+func tcpDialer(ctx context.Context, addr string) (net.Conn, error) {
+	d := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set TCP_NODELAY to disable Nagle's algorithm
+	// This reduces latency for small packets (HTTP headers, etc.)
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		if err := tcpConn.SetNoDelay(true); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to set TCP_NODELAY")
+		}
+	}
+
+	return conn, nil
+}
+
 // connect establishes connection to server and creates tunnel
 func (c *Client) connect(ctx context.Context) error {
-	// Create gRPC connection
+	// Create gRPC connection with keepalive parameters and TCP optimizations
 	opts := []grpc.DialOption{
 		grpc.WithBlock(),
 		grpc.WithTimeout(10 * time.Second),
+		// Use custom dialer with TCP_NODELAY
+		grpc.WithContextDialer(tcpDialer),
+		// Keepalive parameters to prevent connection timeout
+		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+			Time:                30 * time.Second, // Send keepalive ping every 30s
+			Timeout:             10 * time.Second, // Wait 10s for ping ack before closing
+			PermitWithoutStream: true,             // Send pings even when no active streams
+		}),
+		// Increase max message size for large payloads
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(64 << 20), // 64MB
+			grpc.MaxCallSendMsgSize(64 << 20), // 64MB
+			// Disable compression for better performance on small payloads
+			// Most tunnel traffic is <10KB (HTTP headers, API requests)
+			// Compression overhead > benefit for small messages
+			grpc.UseCompressor(""),
+		),
 	}
 
 	if c.cfg.TLS {
