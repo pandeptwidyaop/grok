@@ -1,3 +1,9 @@
+## [1.0.0-alpha.6](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.5...v1.0.0-alpha.6) (2025-12-26)
+
+### Bug Fixes
+
+* **ci:** generate proto files before linting ([a516510](https://github.com/pandeptwidyaop/grok/commit/a516510109881f4949f92ffb36f90b2c5030d30f))
+
 ## [1.0.0-alpha.5](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.4...v1.0.0-alpha.5) (2025-12-26)
 
 ### Bug Fixes
