@@ -13,10 +13,10 @@ services:
     container_name: grok-server
     restart: unless-stopped
     ports:
-      - "4443:4443"   # gRPC
-      - "3080:80"     # HTTP
-      - "8443:443"    # HTTPS
-      - "4040:4040"   # API/Dashboard
+      - "80:80"       # HTTP (Tunnel)
+      - "443:443"     # HTTPS (Tunnel)
+      - "4040:4040"   # gRPC (Client Connection)
+      - "4080:4080"   # Web Panel / API
       - "10000-10100:10000-10100"  # TCP tunnel ports (100 ports)
     volumes:
       # Config
@@ -31,7 +31,7 @@ services:
       - GROK_CONFIG=/etc/grok/server.yaml
       - TZ=UTC
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4040/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4080/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -60,11 +60,11 @@ COPY --from=builder /build/configs/server.example.yaml /etc/grok/server.yaml
 USER grok
 
 # Expose ports
-EXPOSE 4443 80 443 4040
+EXPOSE 80 443 4040 4080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:4040/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:4080/health || exit 1
 
 # Set environment variables
 ENV GROK_CONFIG=/etc/grok/server.yaml
