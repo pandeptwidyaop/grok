@@ -1,6 +1,9 @@
 # Multi-stage build for Grok server
 # Stage 1: Build the application
-FROM golang:1.23-alpine AS builder
+FROM golang:alpine AS builder
+
+# Set Go toolchain to auto-download required version
+ENV GOTOOLCHAIN=auto
 
 # Install build dependencies
 RUN apk add --no-cache git make protobuf-dev
