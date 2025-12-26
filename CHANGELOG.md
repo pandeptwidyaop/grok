@@ -1,3 +1,17 @@
+## [1.0.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.2...v1.0.0-alpha.3) (2025-12-26)
+
+### Bug Fixes
+
+* **ci:** build web dashboard before running tests ([be873ca](https://github.com/pandeptwidyaop/grok/commit/be873cadd51c0f9f288fdbdcdf3e2974ded6eb6c))
+* **ci:** enable CGO for server builds to support SQLite ([947f4b5](https://github.com/pandeptwidyaop/grok/commit/947f4b5c1ce3bd81c1fa76609f2c646aa20c8e9f))
+* **ci:** remove ARM architecture builds to avoid CGO cross-compilation issues ([8aefb38](https://github.com/pandeptwidyaop/grok/commit/8aefb38f4a0a7a217c616f45d416b131346bef38))
+* **docker:** enable CGO for SQLite support ([c9551d2](https://github.com/pandeptwidyaop/grok/commit/c9551d2a408e7deac18fec639bd2bf4f41d4c468))
+* use HTTPS for public URLs when TLS is enabled and remove redundant test jobs ([c277864](https://github.com/pandeptwidyaop/grok/commit/c2778640b3e56f8fdc0c406fbd59b4b6cc765553))
+
+### Code Refactoring
+
+* **ci:** simplify test workflow ([335ce46](https://github.com/pandeptwidyaop/grok/commit/335ce46315c74543452f9576ba0d633add56d188))
+
 ## [1.0.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.1...v1.0.0-alpha.2) (2025-12-26)
 
 ### Bug Fixes
