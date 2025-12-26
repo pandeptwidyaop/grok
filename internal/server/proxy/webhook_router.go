@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
+	"github.com/pandeptwidyaop/grok/pkg/utils"
 	"gorm.io/gorm"
 )
 
@@ -42,6 +44,10 @@ type WebhookEvent struct {
 	RequestPath  string
 	Method       string
 	StatusCode   int
+	DurationMs   int64
+	BytesIn      int64
+	BytesOut     int64
+	ClientIP     string
 	TunnelCount  int
 	SuccessCount int
 	ErrorMessage string
@@ -138,8 +144,8 @@ func (wr *WebhookRouter) emitEvent(event WebhookEvent) {
 }
 
 // IsWebhookRequest checks if the request matches webhook subdomain pattern
-// Pattern: {org}-webhook.{baseDomain}
-// Example: trofeo-webhook.grok.io
+// Pattern: {app_name}-{org}-webhook.{baseDomain}
+// Example: payment-app-trofeo-webhook.grok.io
 func (wr *WebhookRouter) IsWebhookRequest(host string) bool {
 	// Remove port if present
 	if idx := strings.Index(host, ":"); idx != -1 {
@@ -160,7 +166,7 @@ func (wr *WebhookRouter) IsWebhookRequest(host string) bool {
 }
 
 // ExtractWebhookComponents extracts organization subdomain, app name, and user path from request
-// Example URL: trofeo-webhook.grok.io/payment-app/stripe/callback
+// Example URL: payment-app-trofeo-webhook.grok.io/stripe/callback
 // Returns: orgSubdomain="trofeo", appName="payment-app", userPath="/stripe/callback"
 func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdomain, appName, userPath string, err error) {
 	// Remove port from host
@@ -176,34 +182,53 @@ func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdoma
 
 	webhookSubdomain := strings.TrimSuffix(host, suffix)
 
-	// Extract org subdomain by removing "-webhook" suffix
+	// Extract components by removing "-webhook" suffix
+	// Pattern: {app_name}-{org}-webhook
 	if !strings.HasSuffix(webhookSubdomain, "-webhook") {
 		return "", "", "", ErrInvalidWebhookURL
 	}
-	orgSubdomain = strings.TrimSuffix(webhookSubdomain, "-webhook")
+	webhookPart := strings.TrimSuffix(webhookSubdomain, "-webhook")
 
-	// Parse path: /{app_name}/{user_webhook_path}
-	// Ensure path starts with /
-	if !strings.HasPrefix(path, "/") {
-		return "", "", "", fmt.Errorf("webhook path must start with /")
+	// Split by hyphens and try different combinations to find valid org+app
+	// Both app_name and org can contain hyphens, so we need to query database
+	parts := strings.Split(webhookPart, "-")
+	if len(parts) < 2 {
+		return "", "", "", fmt.Errorf("invalid webhook subdomain format: must be {app_name}-{org}-webhook")
 	}
 
-	// Split path into parts
-	parts := strings.SplitN(path, "/", 3) // ["", "app_name", "user_path"]
-	if len(parts) < 2 || parts[1] == "" {
-		return "", "", "", fmt.Errorf("webhook path must include app name: /{app_name}/...")
+	// Try different split points (greedy matching from left for app_name)
+	var foundOrg models.Organization
+	var foundApp models.WebhookApp
+	var validAppName, validOrgSubdomain string
+
+	for i := 1; i < len(parts); i++ {
+		potentialAppName := strings.Join(parts[:i], "-")
+		potentialOrgSubdomain := strings.Join(parts[i:], "-")
+
+		// Query database to check if this organization exists
+		if err := wr.db.Where("subdomain = ?", potentialOrgSubdomain).First(&foundOrg).Error; err == nil {
+			// Found org, now check if app exists under this org
+			if err := wr.db.Where("organization_id = ? AND name = ?", foundOrg.ID, potentialAppName).First(&foundApp).Error; err == nil {
+				// Found valid combination!
+				validAppName = potentialAppName
+				validOrgSubdomain = potentialOrgSubdomain
+				break
+			}
+		}
 	}
 
-	appName = parts[1]
+	if validAppName == "" || validOrgSubdomain == "" {
+		return "", "", "", ErrWebhookAppNotFound
+	}
 
-	// User path is everything after app name
-	if len(parts) >= 3 {
-		userPath = "/" + parts[2]
-	} else {
+	// Path is the user webhook path (no app_name in path anymore)
+	if path == "" || path == "/" {
 		userPath = "/"
+	} else {
+		userPath = path
 	}
 
-	return orgSubdomain, appName, userPath, nil
+	return validOrgSubdomain, validAppName, userPath, nil
 }
 
 // GetWebhookRoutes retrieves webhook routes from cache or database
@@ -311,6 +336,9 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 		}, ErrNoHealthyTunnels
 	}
 
+	// Track broadcast start time for duration calculation
+	broadcastStart := time.Now()
+
 	// Create context with timeout
 	broadcastCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -389,6 +417,26 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 		statusCode = result.FirstSuccess.StatusCode
 	}
 
+	// Calculate total broadcast duration
+	durationMs := time.Since(broadcastStart).Milliseconds()
+
+	// Calculate bytes in from request body
+	bytesIn := int64(len(request.Body))
+
+	// Calculate bytes out from first successful response
+	var bytesOut int64
+	if result.FirstSuccess != nil {
+		bytesOut = int64(len(result.FirstSuccess.Body))
+	}
+
+	// Extract client IP from headers
+	clientIP := ""
+	if xForwardedFor := request.Headers["X-Forwarded-For"]; len(xForwardedFor) > 0 {
+		clientIP = xForwardedFor[0]
+	} else if xRealIP := request.Headers["X-Real-Ip"]; len(xRealIP) > 0 {
+		clientIP = xRealIP[0]
+	}
+
 	// Emit webhook event
 	eventType := EventWebhookSuccess
 	if result.SuccessCount == 0 {
@@ -401,6 +449,10 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 		RequestPath:  userPath,
 		Method:       request.Method,
 		StatusCode:   statusCode,
+		DurationMs:   durationMs,
+		BytesIn:      bytesIn,
+		BytesOut:     bytesOut,
+		ClientIP:     clientIP,
 		TunnelCount:  result.TunnelCount,
 		SuccessCount: result.SuccessCount,
 		ErrorMessage: result.ErrorMessage,
@@ -421,14 +473,85 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 	return result, nil
 }
 
-// sendToTunnel sends request to a single tunnel (placeholder for actual implementation)
+// sendToTunnel sends request to a single tunnel via gRPC stream
 func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, userPath string, request *ProxyRequestData) *TunnelResponse {
-	// TODO: Implement actual tunnel proxying logic
-	// This will be integrated with the existing HTTP proxy mechanism
-	// For now, return a placeholder response
-	return &TunnelResponse{
-		StatusCode: 200,
-		Success:    true,
+	// Generate request ID
+	requestID := utils.GenerateRequestID()
+
+	// Convert headers to proto format
+	headers := make(map[string]*tunnelv1.HeaderValues)
+	for key, values := range request.Headers {
+		headers[key] = &tunnelv1.HeaderValues{
+			Values: values,
+		}
+	}
+
+	// Create proxy request
+	proxyReq := &tunnelv1.ProxyRequest{
+		RequestId: requestID,
+		TunnelId:  tun.ID.String(),
+		Payload: &tunnelv1.ProxyRequest_Http{
+			Http: &tunnelv1.HTTPRequest{
+				Method:      request.Method,
+				Path:        userPath,
+				Headers:     headers,
+				Body:        request.Body,
+				QueryString: "",
+				RemoteAddr:  "", // Will be populated by handleWebhookRequest
+			},
+		},
+	}
+
+	// Create response channel
+	responseCh := make(chan *tunnelv1.ProxyResponse, 1)
+	tun.ResponseMap.Store(requestID, responseCh)
+	defer tun.ResponseMap.Delete(requestID)
+
+	// Send request to tunnel via gRPC stream
+	proxyMsg := &tunnelv1.ProxyMessage{
+		Message: &tunnelv1.ProxyMessage_Request{
+			Request: proxyReq,
+		},
+	}
+
+	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
+		return &TunnelResponse{
+			Success:      false,
+			ErrorMessage: fmt.Sprintf("failed to send to tunnel: %v", err),
+		}
+	}
+
+	// Wait for response with timeout
+	timeoutCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	select {
+	case proxyResp := <-responseCh:
+		// Got response from tunnel
+		if httpResp := proxyResp.GetHttp(); httpResp != nil {
+			// Convert proto headers back to map
+			respHeaders := make(map[string][]string)
+			for key, headerVals := range httpResp.Headers {
+				respHeaders[key] = headerVals.Values
+			}
+
+			return &TunnelResponse{
+				StatusCode: int(httpResp.StatusCode),
+				Body:       httpResp.Body,
+				Headers:    respHeaders,
+				Success:    true,
+			}
+		}
+		return &TunnelResponse{
+			Success:      false,
+			ErrorMessage: "invalid response type from tunnel",
+		}
+
+	case <-timeoutCtx.Done():
+		return &TunnelResponse{
+			Success:      false,
+			ErrorMessage: "tunnel response timeout (30s)",
+		}
 	}
 }
 

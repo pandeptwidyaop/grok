@@ -43,6 +43,9 @@ export interface AuthToken {
   expires_at?: string;
   is_active: boolean;
   created_at: string;
+  owner_email?: string;
+  owner_name?: string;
+  organization_name?: string;
 }
 
 export interface Tunnel {
@@ -61,6 +64,9 @@ export interface Tunnel {
   connected_at: string;
   disconnected_at?: string;
   last_activity_at: string;
+  owner_email?: string;
+  owner_name?: string;
+  organization_name?: string;
 }
 
 export interface RequestLog {
@@ -74,6 +80,14 @@ export interface RequestLog {
   bytes_out: number;
   client_ip: string;
   created_at: string;
+}
+
+export interface PaginatedLogs {
+  logs: RequestLog[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
 }
 
 export interface Stats {
@@ -135,6 +149,7 @@ export interface WebhookApp {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  webhook_url?: string;
   routes?: WebhookRoute[];
 }
 
@@ -203,10 +218,15 @@ export const api = {
   tunnels: {
     list: () => apiClient.get<Tunnel[]>('/tunnels'),
     get: (id: string) => apiClient.get<Tunnel>(`/tunnels/${id}`),
-    logs: (id: string, limit = 100) =>
-      apiClient.get<RequestLog[]>(`/tunnels/${id}/logs`, {
-        params: { limit },
+    logs: (id: string, params?: { page?: number; limit?: number; path?: string }) =>
+      apiClient.get<PaginatedLogs>(`/tunnels/${id}/logs`, {
+        params: {
+          page: params?.page || 1,
+          limit: params?.limit || 50,
+          ...(params?.path && { path: params.path }),
+        },
       }),
+    delete: (id: string) => apiClient.delete(`/tunnels/${id}`),
   },
 
   // Stats

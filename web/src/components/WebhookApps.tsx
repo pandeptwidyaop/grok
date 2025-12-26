@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -13,30 +14,45 @@ import {
   TextField,
   CircularProgress,
   Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
 } from '@mui/material';
-import { Webhook, Plus } from 'lucide-react';
+import { Webhook, Plus, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import type { WebhookApp } from '@/lib/api';
-import { WebhookAppDetail } from './WebhookAppDetail';
+import { useAllEvents } from '@/hooks/useSSE';
+import { formatRelativeTime } from '@/lib/utils';
 
 interface WebhookAppsProps {}
 
 export function WebhookApps({}: WebhookAppsProps) {
-  const [selectedApp, setSelectedApp] = useState<WebhookApp | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newAppName, setNewAppName] = useState('');
   const [newAppDescription, setNewAppDescription] = useState('');
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Fetch webhook apps
+  // Subscribe to real-time events via SSE
+  useAllEvents((event) => {
+    // Handle webhook-related events
+    if (event.type.startsWith('webhook_')) {
+      queryClient.refetchQueries({ queryKey: ['webhook-apps'] });
+    }
+  });
+
+  // Fetch webhook apps - real-time updates via SSE, no polling needed
   const { data: apps, isLoading } = useQuery({
     queryKey: ['webhook-apps'],
     queryFn: async () => {
       const response = await api.webhooks.listApps();
       return response.data;
     },
-    refetchInterval: 5000,
   });
 
   // Create webhook app mutation
@@ -65,12 +81,6 @@ export function WebhookApps({}: WebhookAppsProps) {
     });
   };
 
-  // If an app is selected, show detail view
-  if (selectedApp) {
-    return <WebhookAppDetail app={selectedApp} onBack={() => setSelectedApp(null)} />;
-  }
-
-  // List view
   return (
     <Box>
       {/* Header */}
@@ -142,118 +152,123 @@ export function WebhookApps({}: WebhookAppsProps) {
         </DialogActions>
       </Dialog>
 
-      {/* Apps Grid */}
-      {isLoading ? (
-        <Box sx={{ textAlign: 'center', py: 12 }}>
-          <CircularProgress />
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Loading webhook apps...
-          </Typography>
-        </Box>
-      ) : !apps || apps.length === 0 ? (
-        <Card>
-          <CardContent
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              py: 16,
-            }}
-          >
-            <Webhook size={64} style={{ color: '#9e9e9e', opacity: 0.5, marginBottom: 16 }} />
-            <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-              No Webhook Apps
+      {/* Apps Table */}
+      <Card>
+        <CardContent sx={{ py: 4 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Webhook Applications
             </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ textAlign: 'center', mb: 3, maxWidth: 400 }}
-            >
-              Create your first webhook app to start broadcasting events to multiple tunnels
+            <Typography variant="body2" color="text.secondary">
+              {apps?.length || 0} app{apps?.length !== 1 ? 's' : ''} configured
             </Typography>
-            <Button
-              variant="contained"
-              startIcon={<Plus size={16} />}
-              onClick={() => setCreateDialogOpen(true)}
-              sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5568d3' } }}
-            >
-              Create Your First App
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: {
-              xs: '1fr',
-              md: 'repeat(2, 1fr)',
-              lg: 'repeat(3, 1fr)',
-            },
-            gap: 3,
-          }}
-        >
-          {apps.map((app) => (
-            <Card
-              key={app.id}
+          </Box>
+
+          {isLoading ? (
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <CircularProgress />
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Loading webhook apps...
+              </Typography>
+            </Box>
+          ) : !apps || apps.length === 0 ? (
+            <Box
               sx={{
-                cursor: 'pointer',
-                transition: 'box-shadow 0.3s',
-                '&:hover': {
-                  boxShadow: 6,
-                },
+                textAlign: 'center',
+                py: 8,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
               }}
-              onClick={() => setSelectedApp(app)}
             >
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                  <Webhook size={32} style={{ color: '#667eea' }} />
-                  <Chip
-                    label={app.is_active ? 'Active' : 'Inactive'}
-                    color={app.is_active ? 'success' : 'default'}
-                    size="small"
-                  />
-                </Box>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                  {app.name}
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{
-                    mb: 3,
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {app.description || 'No description'}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Routes:
-                    </Typography>
-                    <Typography variant="body2" fontWeight={500}>
-                      {app.routes?.length || 0}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Created:
-                    </Typography>
-                    <Typography variant="body2" fontWeight={500}>
-                      {new Date(app.created_at).toLocaleDateString()}
-                    </Typography>
-                  </Box>
-                </Box>
-              </CardContent>
-            </Card>
-          ))}
-        </Box>
-      )}
+              <Webhook size={64} style={{ color: '#9e9e9e', opacity: 0.5 }} />
+              <Typography variant="h6" color="text.secondary">
+                No webhook apps
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Create a webhook app to start broadcasting events to multiple tunnels
+              </Typography>
+            </Box>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Description</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Routes</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Created</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600 }}>
+                      Actions
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {apps.map((app) => (
+                    <TableRow
+                      key={app.id}
+                      hover
+                      sx={{
+                        cursor: 'pointer',
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        },
+                      }}
+                      onClick={() => navigate(`/webhooks/${app.id}`)}
+                    >
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Webhook size={16} style={{ color: '#667eea' }} />
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {app.name}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 300 }}>
+                          {app.description || '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {app.routes?.length || 0}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatRelativeTime(app.created_at)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={app.is_active ? 'Active' : 'Inactive'}
+                          color={app.is_active ? 'success' : 'default'}
+                          variant="outlined"
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/webhooks/${app.id}`);
+                          }}
+                          color="primary"
+                        >
+                          <Eye size={18} />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
     </Box>
   );
 }

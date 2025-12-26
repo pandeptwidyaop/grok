@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -52,11 +53,42 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 		})
 	})
 
-	// Subscribe to webhook events and broadcast via SSE
+	// Subscribe to webhook events and broadcast via SSE + save to database
 	if webhookRouter != nil {
 		webhookRouter.OnWebhookEvent(func(event interface{}) {
 			// Type assert to WebhookEvent
 			if webhookEvent, ok := event.(proxy.WebhookEvent); ok {
+				// Determine routing status
+				routingStatus := "success"
+				if webhookEvent.SuccessCount == 0 {
+					routingStatus = "failed"
+				} else if webhookEvent.SuccessCount < webhookEvent.TunnelCount {
+					routingStatus = "partial"
+				}
+
+				// Save webhook event to database
+				dbEvent := &models.WebhookEvent{
+					WebhookAppID:  webhookEvent.AppID,
+					RequestPath:   webhookEvent.RequestPath,
+					Method:        webhookEvent.Method,
+					StatusCode:    webhookEvent.StatusCode,
+					DurationMs:    webhookEvent.DurationMs,
+					BytesIn:       webhookEvent.BytesIn,
+					BytesOut:      webhookEvent.BytesOut,
+					ClientIP:      webhookEvent.ClientIP,
+					RoutingStatus: routingStatus,
+					TunnelCount:   webhookEvent.TunnelCount,
+					SuccessCount:  webhookEvent.SuccessCount,
+					ErrorMessage:  webhookEvent.ErrorMessage,
+				}
+
+				if err := h.db.Create(dbEvent).Error; err != nil {
+					logger.ErrorEvent().
+						Err(err).
+						Str("app_id", webhookEvent.AppID.String()).
+						Msg("Failed to save webhook event to database")
+				}
+
 				// Broadcast webhook event via SSE
 				h.sseBroker.Broadcast(SSEEvent{
 					Type: string(webhookEvent.Type),
@@ -118,6 +150,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /api/tunnels", h.authMW.Protect(http.HandlerFunc(h.listTunnels)))
 	mux.Handle("GET /api/tunnels/{id}", h.authMW.Protect(http.HandlerFunc(h.getTunnel)))
 	mux.Handle("GET /api/tunnels/{id}/logs", h.authMW.Protect(http.HandlerFunc(h.getTunnelLogs)))
+	mux.Handle("DELETE /api/tunnels/{id}", h.authMW.Protect(http.HandlerFunc(h.deleteTunnel)))
 
 	mux.Handle("GET /api/stats", h.authMW.Protect(http.HandlerFunc(h.getStats)))
 	mux.Handle("GET /api/config", h.authMW.Protect(http.HandlerFunc(h.getConfig)))
@@ -212,7 +245,8 @@ func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var tokens []models.AuthToken
-	query := h.db.Preload("User")
+	// Preload User and their Organization
+	query := h.db.Preload("User.Organization")
 
 	// Filter by organization for non-super-admins
 	if claims.Role != string(models.RoleSuperAdmin) {
@@ -236,7 +270,28 @@ func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, tokens)
+	// Transform to include user info and organization name
+	type TokenResponse struct {
+		models.AuthToken
+		OwnerEmail       string  `json:"owner_email"`
+		OwnerName        string  `json:"owner_name"`
+		OrganizationName *string `json:"organization_name,omitempty"`
+	}
+
+	response := make([]TokenResponse, len(tokens))
+	for i, token := range tokens {
+		resp := TokenResponse{
+			AuthToken:  token,
+			OwnerEmail: token.User.Email,
+			OwnerName:  token.User.Name,
+		}
+		if token.User.Organization != nil {
+			resp.OrganizationName = &token.User.Organization.Name
+		}
+		response[i] = resp
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 type createTokenRequest struct {
@@ -343,7 +398,9 @@ func (h *Handler) listTunnels(w http.ResponseWriter, r *http.Request) {
 
 	var tunnels []models.Tunnel
 	// Show both active and offline tunnels (all persistent tunnels)
-	query := h.db.Where("status IN (?)", []string{"active", "offline"}).
+	// Preload User and Organization to include owner and org info in response
+	query := h.db.Preload("User").Preload("Organization").
+		Where("status IN (?)", []string{"active", "offline"}).
 		Order("status ASC, connected_at DESC") // Active first, then by recent activity
 
 	// Filter by organization for non-super-admins
@@ -363,7 +420,28 @@ func (h *Handler) listTunnels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, tunnels)
+	// Transform to include organization and owner info
+	type TunnelResponse struct {
+		models.Tunnel
+		OwnerEmail       string  `json:"owner_email"`
+		OwnerName        string  `json:"owner_name"`
+		OrganizationName *string `json:"organization_name,omitempty"`
+	}
+
+	response := make([]TunnelResponse, len(tunnels))
+	for i, tun := range tunnels {
+		resp := TunnelResponse{
+			Tunnel:     tun,
+			OwnerEmail: tun.User.Email,
+			OwnerName:  tun.User.Name,
+		}
+		if tun.Organization != nil {
+			resp.OrganizationName = &tun.Organization.Name
+		}
+		response[i] = resp
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 func (h *Handler) getTunnel(w http.ResponseWriter, r *http.Request) {
@@ -389,24 +467,152 @@ func (h *Handler) getTunnelLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 100
+	// Parse pagination parameters
+	page := 1
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	limit := 50
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 1000 {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
 			limit = l
 		}
 	}
 
+	offset := (page - 1) * limit
+
+	// Parse optional path filter
+	pathFilter := r.URL.Query().Get("path")
+
+	// Build query
+	query := h.db.Where("tunnel_id = ?", tunnelID)
+	if pathFilter != "" {
+		query = query.Where("path LIKE ?", "%"+pathFilter+"%")
+	}
+
+	// Get total count
+	var total int64
+	if err := query.Model(&models.RequestLog{}).Count(&total).Error; err != nil {
+		logger.ErrorEvent().Err(err).Str("tunnel_id", tunnelID).Msg("Failed to count tunnel logs")
+		respondError(w, http.StatusInternalServerError, "Failed to count tunnel logs")
+		return
+	}
+
+	// Get paginated logs
 	var logs []models.RequestLog
-	if err := h.db.Where("tunnel_id = ?", tunnelID).
+	if err := query.
 		Order("created_at DESC").
 		Limit(limit).
+		Offset(offset).
 		Find(&logs).Error; err != nil {
 		logger.ErrorEvent().Err(err).Str("tunnel_id", tunnelID).Msg("Failed to get tunnel logs")
 		respondError(w, http.StatusInternalServerError, "Failed to get tunnel logs")
 		return
 	}
 
-	respondJSON(w, http.StatusOK, logs)
+	// Calculate pagination metadata
+	totalPages := int((total + int64(limit) - 1) / int64(limit))
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"logs":        logs,
+		"total":       total,
+		"page":        page,
+		"limit":       limit,
+		"total_pages": totalPages,
+	})
+}
+
+// deleteTunnel forcefully disconnects and deletes a tunnel
+func (h *Handler) deleteTunnel(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// Parse tunnel ID
+	tunnelIDStr := r.PathValue("id")
+	if tunnelIDStr == "" {
+		respondError(w, http.StatusBadRequest, "Tunnel ID is required")
+		return
+	}
+
+	tunnelID, err := uuid.Parse(tunnelIDStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid tunnel ID")
+		return
+	}
+
+	// Get tunnel from database
+	var tun models.Tunnel
+	if err := h.db.First(&tun, tunnelID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondError(w, http.StatusNotFound, "Tunnel not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "Failed to get tunnel")
+		return
+	}
+
+	// Check permissions: only tunnel owner, org admin, or super admin can delete
+	isOwner := tun.UserID.String() == claims.UserID
+	isOrgAdmin := claims.Role == string(models.RoleOrgAdmin) || claims.Role == string(models.RoleSuperAdmin)
+
+	// Check org membership if tunnel belongs to an org
+	sameOrg := true
+	if tun.OrganizationID != nil {
+		if claims.OrganizationID == nil {
+			sameOrg = false
+		} else {
+			sameOrg = tun.OrganizationID.String() == *claims.OrganizationID
+		}
+	}
+
+	if !isOwner && !isOrgAdmin {
+		respondError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+
+	if !sameOrg {
+		respondError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+
+	// Disconnect tunnel from tunnel manager if active
+	if err := h.tunnelManager.UnregisterTunnel(r.Context(), tunnelID); err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("tunnel_id", tunnelID.String()).
+			Msg("Failed to unregister tunnel (may already be offline)")
+	}
+
+	// Delete domain reservation for this subdomain
+	if err := h.db.Where("subdomain = ?", tun.Subdomain).Delete(&models.Domain{}).Error; err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("subdomain", tun.Subdomain).
+			Msg("Failed to delete domain reservation (may not exist)")
+	}
+
+	// Delete tunnel from database (cascade will delete logs)
+	if err := h.db.Delete(&tun).Error; err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("tunnel_id", tunnelID.String()).
+			Msg("Failed to delete tunnel")
+		respondError(w, http.StatusInternalServerError, "Failed to delete tunnel")
+		return
+	}
+
+	logger.InfoEvent().
+		Str("tunnel_id", tunnelID.String()).
+		Str("user_id", claims.UserID).
+		Msg("Tunnel deleted")
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Tunnel deleted successfully"})
 }
 
 // Stats handler

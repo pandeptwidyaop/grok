@@ -18,6 +18,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   TextField,
   Select,
@@ -35,17 +36,15 @@ import {
   Trash2,
   ToggleLeft,
   ToggleRight,
-  Activity,
-  TrendingUp,
-  Clock,
   CheckCircle2,
   XCircle,
-  AlertCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import type { WebhookApp, WebhookRoute, WebhookEvent, Tunnel } from '@/lib/api';
 import { WebhookNetworkDiagram } from './WebhookNetworkDiagram';
+import { useAllEvents } from '@/hooks/useSSE';
+import { formatRelativeTime } from '@/lib/utils';
 
 interface WebhookAppDetailProps {
   app: WebhookApp;
@@ -54,10 +53,26 @@ interface WebhookAppDetailProps {
 
 export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
   const [addRouteDialogOpen, setAddRouteDialogOpen] = useState(false);
+  const [deleteRouteDialogOpen, setDeleteRouteDialogOpen] = useState(false);
+  const [deleteAppDialogOpen, setDeleteAppDialogOpen] = useState(false);
+  const [routeToDelete, setRouteToDelete] = useState<WebhookRoute | null>(null);
   const [selectedTunnelId, setSelectedTunnelId] = useState('');
   const [routePriority, setRoutePriority] = useState('100');
   const [activeTab, setActiveTab] = useState(0);
   const queryClient = useQueryClient();
+
+  // Subscribe to real-time events via SSE
+  useAllEvents((event) => {
+    // Handle webhook events for this specific app
+    if (event.type.startsWith('webhook_') && event.data?.app_id === app.id) {
+      queryClient.refetchQueries({ queryKey: ['webhook-routes', app.id] });
+      queryClient.refetchQueries({ queryKey: ['webhook-events', app.id] });
+    }
+    // Handle tunnel events (for route management)
+    if (event.type.startsWith('tunnel_')) {
+      queryClient.refetchQueries({ queryKey: ['tunnels'] });
+    }
+  });
 
   // Fetch domain config for webhook URL
   const { data: config } = useQuery({
@@ -68,44 +83,31 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
     },
   });
 
-  // Fetch routes for this app
+  // Fetch routes for this app - real-time updates via SSE
   const { data: routes, isLoading: routesLoading } = useQuery({
     queryKey: ['webhook-routes', app.id],
     queryFn: async () => {
       const response = await api.webhooks.listRoutes(app.id);
       return response.data;
     },
-    refetchInterval: 5000,
   });
 
-  // Fetch available tunnels
+  // Fetch available tunnels - real-time updates via SSE
   const { data: tunnels } = useQuery({
     queryKey: ['tunnels'],
     queryFn: async () => {
       const response = await api.tunnels.list();
       return response.data;
     },
-    refetchInterval: 5000,
   });
 
-  // Fetch webhook events
+  // Fetch webhook events - real-time updates via SSE
   const { data: events } = useQuery({
     queryKey: ['webhook-events', app.id],
     queryFn: async () => {
       const response = await api.webhooks.getEvents(app.id, 50);
       return response.data;
     },
-    refetchInterval: 10000,
-  });
-
-  // Fetch webhook stats
-  const { data: stats } = useQuery({
-    queryKey: ['webhook-stats', app.id],
-    queryFn: async () => {
-      const response = await api.webhooks.getStats(app.id);
-      return response.data;
-    },
-    refetchInterval: 10000,
   });
 
   // Add route mutation
@@ -161,6 +163,19 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
     },
   });
 
+  // Delete app mutation
+  const deleteAppMutation = useMutation({
+    mutationFn: () => api.webhooks.deleteApp(app.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['webhook-apps'] });
+      toast.success('Webhook app deleted successfully');
+      onBack(); // Navigate back to list
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to delete webhook app');
+    },
+  });
+
   const handleAddRoute = () => {
     if (!selectedTunnelId) {
       toast.error('Please select a tunnel');
@@ -174,10 +189,32 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
     addRouteMutation.mutate({ tunnel_id: selectedTunnelId, priority });
   };
 
-  // Get org subdomain from user context (you may need to fetch this from auth context)
-  const orgSubdomain = 'trofeo'; // TODO: Get from auth context
-  const baseDomain = config?.domain || 'grok.io';
-  const webhookUrl = `${orgSubdomain}-webhook.${baseDomain}/${app.name}/*`;
+  // Use webhook URL from backend (includes proper protocol and port)
+  const webhookUrl = app.webhook_url || '';
+
+  // Extract org subdomain and base domain for network diagram
+  // Parse from webhook_url if available, otherwise use config/defaults
+  const baseDomain = config?.domain || 'localhost';
+  let orgSubdomain = 'org';
+  if (webhookUrl) {
+    // Extract org subdomain from new webhook URL format
+    // Pattern: http://{app_name}-{org}-webhook.{domain}/*
+    // Example: "http://payment-app-trofeo-webhook.localhost:8080/*" → "trofeo"
+    const match = webhookUrl.match(/\/\/(.+?)-webhook\./);
+    if (match) {
+      // Extract full subdomain part: "payment-app-trofeo"
+      const fullSubdomain = match[1];
+      // Remove app name prefix to get org subdomain
+      // Since app.name is "payment-app", we get "trofeo"
+      if (fullSubdomain.startsWith(app.name + '-')) {
+        orgSubdomain = fullSubdomain.substring(app.name.length + 1);
+      } else {
+        // Fallback: use the last segment before -webhook
+        const parts = fullSubdomain.split('-');
+        orgSubdomain = parts[parts.length - 1];
+      }
+    }
+  }
 
   // Filter available tunnels (exclude already added ones)
   const availableTunnels =
@@ -185,61 +222,26 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
       (tunnel: Tunnel) => !routes?.some((route: WebhookRoute) => route.tunnel_id === tunnel.id)
     ) || [];
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'healthy':
-        return <CheckCircle2 size={16} style={{ color: '#10b981' }} />;
-      case 'unhealthy':
-        return <XCircle size={16} style={{ color: '#ef4444' }} />;
-      default:
-        return <AlertCircle size={16} style={{ color: '#6b7280' }} />;
-    }
+  // Get health status from tunnel's online/offline status
+  const getTunnelHealth = (route: WebhookRoute) => {
+    return route.tunnel?.status === 'active' ? 'online' : 'offline';
   };
 
-  const getStatusChip = (status: string) => {
-    switch (status) {
-      case 'healthy':
-        return <Chip label="Healthy" color="success" size="small" />;
-      case 'unhealthy':
-        return <Chip label="Unhealthy" color="error" size="small" />;
-      default:
-        return <Chip label="Unknown" color="default" size="small" />;
+  const getStatusIcon = (route: WebhookRoute) => {
+    const health = getTunnelHealth(route);
+    if (health === 'online') {
+      return <CheckCircle2 size={16} style={{ color: '#10b981' }} />;
     }
+    return <XCircle size={16} style={{ color: '#ef4444' }} />;
   };
 
-  const statsCards = [
-    {
-      title: 'Total Events',
-      value: stats?.total_events || 0,
-      icon: Activity,
-    },
-    {
-      title: 'Success Rate',
-      value: stats?.total_events
-        ? `${Math.round((stats.success_count / stats.total_events) * 100)}%`
-        : '0%',
-      subtitle: `${stats?.success_count || 0} / ${stats?.total_events || 0} successful`,
-      icon: TrendingUp,
-    },
-    {
-      title: 'Avg Duration',
-      value: `${stats?.average_duration_ms ? Math.round(stats.average_duration_ms) : 0}ms`,
-      icon: Clock,
-    },
-    {
-      title: 'Total Bytes In',
-      value: `${stats?.total_bytes_in ? (stats.total_bytes_in / 1024).toFixed(2) : 0} KB`,
-    },
-    {
-      title: 'Total Bytes Out',
-      value: `${stats?.total_bytes_out ? (stats.total_bytes_out / 1024).toFixed(2) : 0} KB`,
-    },
-    {
-      title: 'Failed Events',
-      value: stats?.failure_count || 0,
-      icon: XCircle,
-    },
-  ];
+  const getStatusChip = (route: WebhookRoute) => {
+    const health = getTunnelHealth(route);
+    if (health === 'online') {
+      return <Chip label="Online" color="success" variant="outlined" size="small" />;
+    }
+    return <Chip label="Offline" color="error" variant="outlined" size="small" />;
+  };
 
   return (
     <Box>
@@ -258,10 +260,21 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
             </Typography>
           </Box>
         </Box>
-        <Chip
-          label={app.is_active ? 'Active' : 'Inactive'}
-          color={app.is_active ? 'success' : 'default'}
-        />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Chip
+            label={app.is_active ? 'Active' : 'Inactive'}
+            color={app.is_active ? 'success' : 'default'}
+            variant="outlined"
+          />
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<Trash2 size={16} />}
+            onClick={() => setDeleteAppDialogOpen(true)}
+          >
+            Delete App
+          </Button>
+        </Box>
       </Box>
 
       {/* Webhook URL */}
@@ -303,7 +316,6 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
         <Tabs value={activeTab} onChange={(_, newValue) => setActiveTab(newValue)}>
           <Tab label="Routes" />
           <Tab label="Events" />
-          <Tab label="Statistics" />
         </Tabs>
       </Box>
 
@@ -363,7 +375,6 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                 </Box>
               ) : !routes || routes.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 8 }}>
-                  <Activity size={48} style={{ color: '#9e9e9e', opacity: 0.5, margin: '0 auto 8px' }} />
                   <Typography variant="body2" color="text.secondary">
                     No routes configured
                   </Typography>
@@ -416,8 +427,8 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                           </TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              {getStatusIcon(route.health_status)}
-                              {getStatusChip(route.health_status)}
+                              {getStatusIcon(route)}
+                              {getStatusChip(route)}
                             </Box>
                           </TableCell>
                           <TableCell>
@@ -441,9 +452,8 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                               size="small"
                               color="error"
                               onClick={() => {
-                                if (confirm('Are you sure you want to remove this route?')) {
-                                  deleteRouteMutation.mutate(route.id);
-                                }
+                                setRouteToDelete(route);
+                                setDeleteRouteDialogOpen(true);
                               }}
                               disabled={deleteRouteMutation.isPending}
                             >
@@ -474,7 +484,6 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
 
             {!events || events.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 8 }}>
-                <Clock size={48} style={{ color: '#9e9e9e', opacity: 0.5, margin: '0 auto 8px' }} />
                 <Typography variant="body2" color="text.secondary">
                   No events yet
                 </Typography>
@@ -500,8 +509,8 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                     {events.map((event: WebhookEvent) => (
                       <TableRow key={event.id}>
                         <TableCell>
-                          <Typography variant="body2">
-                            {new Date(event.created_at).toLocaleString()}
+                          <Typography variant="body2" color="text.secondary">
+                            {formatRelativeTime(event.created_at)}
                           </Typography>
                         </TableCell>
                         <TableCell>
@@ -522,6 +531,7 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                                 ? 'error'
                                 : 'warning'
                             }
+                            variant="outlined"
                             size="small"
                           />
                         </TableCell>
@@ -533,6 +543,7 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                           <Chip
                             label={`${event.success_count}/${event.tunnel_count}`}
                             color={event.success_count > 0 ? 'success' : 'error'}
+                            variant="outlined"
                             size="small"
                           />
                         </TableCell>
@@ -544,48 +555,6 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
             )}
           </CardContent>
         </Card>
-      )}
-
-      {/* Stats Tab */}
-      {activeTab === 2 && (
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)', lg: 'repeat(3, 1fr)' },
-            gap: 3,
-          }}
-        >
-          {statsCards.map((card, index) => {
-            const IconComponent = card.icon;
-            return (
-              <Card key={index}>
-                <CardContent>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      mb: 2,
-                    }}
-                  >
-                    <Typography variant="body2" color="text.secondary" fontWeight={500}>
-                      {card.title}
-                    </Typography>
-                    {IconComponent && <IconComponent size={16} style={{ color: '#9e9e9e' }} />}
-                  </Box>
-                  <Typography variant="h4" fontWeight={700} sx={{ mb: 0.5 }}>
-                    {card.value}
-                  </Typography>
-                  {card.subtitle && (
-                    <Typography variant="caption" color="text.secondary">
-                      {card.subtitle}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </Box>
       )}
 
       {/* Add Route Dialog */}
@@ -635,6 +604,92 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
             disabled={addRouteMutation.isPending || !selectedTunnelId}
           >
             {addRouteMutation.isPending ? 'Adding...' : 'Add Route'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Route Confirmation Dialog */}
+      <Dialog
+        open={deleteRouteDialogOpen}
+        onClose={() => setDeleteRouteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Remove Route</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            Are you sure you want to remove this route?
+            {routeToDelete?.tunnel && (
+              <Box sx={{ mt: 2 }}>
+                <strong>Tunnel:</strong> {routeToDelete.tunnel.saved_name || routeToDelete.tunnel.subdomain}
+                <br />
+                <strong>Priority:</strong> {routeToDelete.priority}
+              </Box>
+            )}
+            <Box sx={{ mt: 1 }}>
+              This action cannot be undone.
+            </Box>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteRouteDialogOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (routeToDelete) {
+                deleteRouteMutation.mutate(routeToDelete.id);
+                setDeleteRouteDialogOpen(false);
+                setRouteToDelete(null);
+              }
+            }}
+            color="error"
+            variant="contained"
+            disabled={deleteRouteMutation.isPending}
+          >
+            {deleteRouteMutation.isPending ? 'Removing...' : 'Remove'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete App Confirmation Dialog */}
+      <Dialog
+        open={deleteAppDialogOpen}
+        onClose={() => setDeleteAppDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Delete Webhook App</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            Are you sure you want to delete the webhook app <strong>{app.name}</strong>?
+            <Box sx={{ mt: 2, color: 'warning.main' }}>
+              ⚠️ This will permanently delete:
+            </Box>
+            <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+              <li>All routes associated with this app</li>
+              <li>All webhook event history</li>
+              <li>The webhook URL will become invalid</li>
+            </Box>
+            <Box sx={{ mt: 2 }}>
+              This action cannot be undone.
+            </Box>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteAppDialogOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              deleteAppMutation.mutate();
+              setDeleteAppDialogOpen(false);
+            }}
+            color="error"
+            variant="contained"
+            disabled={deleteAppMutation.isPending}
+          >
+            {deleteAppMutation.isPending ? 'Deleting...' : 'Delete App'}
           </Button>
         </DialogActions>
       </Dialog>

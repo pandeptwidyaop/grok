@@ -58,7 +58,7 @@ export function WebhookNetworkDiagram({
     });
 
     // Webhook App node
-    const webhookUrl = `${orgSubdomain}-webhook.${baseDomain}/${appName}/*`;
+    const webhookUrl = `${appName}-${orgSubdomain}-webhook.${baseDomain}/*`;
     nodesList.push({
       id: 'webhook-app',
       type: 'default',
@@ -123,26 +123,23 @@ export function WebhookNetworkDiagram({
 
     // Tunnel nodes
     const startY = 50;
-    const spacing = 140;
+    const spacing = 180;
 
     routes.forEach((route, idx) => {
       const tunnelId = `tunnel-${route.tunnel_id}`;
       const isEnabled = route.is_enabled;
-      const isHealthy = route.health_status === 'healthy';
+      const isTunnelOnline = route.tunnel?.status === 'active';
 
-      // Determine status color
+      // Determine status color based on tunnel online/offline status
       let statusColor = '#6b7280'; // gray (disabled)
       let statusBg = '#f3f4f6';
       if (isEnabled) {
-        if (isHealthy) {
-          statusColor = '#10b981'; // green (healthy)
+        if (isTunnelOnline) {
+          statusColor = '#10b981'; // green (online)
           statusBg = '#d1fae5';
-        } else if (route.health_status === 'unhealthy') {
-          statusColor = '#ef4444'; // red (unhealthy)
-          statusBg = '#fee2e2';
         } else {
-          statusColor = '#f59e0b'; // orange (unknown)
-          statusBg = '#fef3c7';
+          statusColor = '#ef4444'; // red (offline)
+          statusBg = '#fee2e2';
         }
       }
 
@@ -171,7 +168,7 @@ export function WebhookNetworkDiagram({
                     color: statusColor,
                   }}
                 >
-                  {isEnabled ? (isHealthy ? 'Healthy' : route.health_status) : 'Disabled'}
+                  {isEnabled ? (isTunnelOnline ? 'Online' : 'Offline') : 'Disabled'}
                 </div>
               </div>
               <div style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: 4 }}>
@@ -204,7 +201,7 @@ export function WebhookNetworkDiagram({
         source: 'webhook-app',
         target: tunnelId,
         label: isEnabled ? `P${route.priority}` : 'Disabled',
-        animated: isEnabled && isHealthy,
+        animated: isEnabled && isTunnelOnline,
         style: {
           stroke: statusColor,
           strokeWidth: isEnabled ? 2 : 1,

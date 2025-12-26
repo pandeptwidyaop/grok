@@ -102,13 +102,28 @@ func (wh *WebhookHandler) CreateApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Load organization for webhook URL building
+	wh.db.First(&app.Organization, app.OrganizationID)
+
 	logger.InfoEvent().
 		Str("app_id", app.ID.String()).
 		Str("app_name", app.Name).
 		Str("org_id", orgID.String()).
 		Msg("Webhook app created")
 
-	respondJSON(w, http.StatusCreated, app)
+	// Build webhook URL with proper protocol and port
+	webhookURL := wh.buildWebhookURL(&app)
+
+	// Return app with webhook URL
+	response := struct {
+		models.WebhookApp
+		WebhookURL string `json:"webhook_url"`
+	}{
+		WebhookApp: app,
+		WebhookURL: webhookURL,
+	}
+
+	respondJSON(w, http.StatusCreated, response)
 }
 
 // ListApps lists all webhook apps for the user's organization
@@ -131,10 +146,11 @@ func (wh *WebhookHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query webhook apps
+	// Query webhook apps with organization
 	var apps []models.WebhookApp
 	if err := wh.db.Where("organization_id = ?", orgID).
 		Preload("Routes").
+		Preload("Organization").
 		Order("created_at DESC").
 		Find(&apps).Error; err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to list webhook apps")
@@ -142,7 +158,21 @@ func (wh *WebhookHandler) ListApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, apps)
+	// Build response with webhook URLs
+	type AppResponse struct {
+		models.WebhookApp
+		WebhookURL string `json:"webhook_url"`
+	}
+
+	response := make([]AppResponse, len(apps))
+	for i, app := range apps {
+		response[i] = AppResponse{
+			WebhookApp: app,
+			WebhookURL: wh.buildWebhookURL(&app),
+		}
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 // GetApp retrieves a single webhook app by ID
@@ -162,7 +192,7 @@ func (wh *WebhookHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 
 	// Query app
 	var app models.WebhookApp
-	if err := wh.db.Preload("Routes.Tunnel").First(&app, appID).Error; err != nil {
+	if err := wh.db.Preload("Routes.Tunnel").Preload("Organization").First(&app, appID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondJSON(w, http.StatusNotFound, map[string]string{"error": "webhook app not found"})
 			return
@@ -178,7 +208,19 @@ func (wh *WebhookHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, app)
+	// Build webhook URL
+	webhookURL := wh.buildWebhookURL(&app)
+
+	// Return app with webhook URL
+	response := struct {
+		models.WebhookApp
+		WebhookURL string `json:"webhook_url"`
+	}{
+		WebhookApp: app,
+		WebhookURL: webhookURL,
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 // UpdateApp updates a webhook app
@@ -793,4 +835,48 @@ func parseInt(s string) (int, error) {
 	var result int
 	_, err := fmt.Sscanf(s, "%d", &result)
 	return result, err
+}
+
+// buildWebhookURL constructs the full webhook URL for an app
+func (wh *WebhookHandler) buildWebhookURL(app *models.WebhookApp) string {
+	// Load organization if not already loaded
+	if app.Organization.ID == uuid.Nil {
+		wh.db.First(&app.Organization, app.OrganizationID)
+	}
+
+	if app.Organization.ID == uuid.Nil {
+		return ""
+	}
+
+	// Build webhook subdomain: {app-name}-{org-subdomain}-webhook
+	webhookSubdomain := fmt.Sprintf("%s-%s-webhook", app.Name, app.Organization.Subdomain)
+
+	// Get server config from tunnel manager
+	var scheme string
+	var port int
+	var defaultPort int
+
+	if wh.tunnelManager.IsTLSEnabled() {
+		scheme = "https"
+		port = wh.tunnelManager.GetHTTPSPort()
+		defaultPort = 443
+	} else {
+		scheme = "http"
+		port = wh.tunnelManager.GetHTTPPort()
+		defaultPort = 80
+	}
+
+	// Build full host
+	host := fmt.Sprintf("%s.%s", webhookSubdomain, wh.tunnelManager.GetBaseDomain())
+
+	// Build URL with or without port
+	var baseURL string
+	if port != defaultPort && port != 0 {
+		baseURL = fmt.Sprintf("%s://%s:%d", scheme, host, port)
+	} else {
+		baseURL = fmt.Sprintf("%s://%s", scheme, host)
+	}
+
+	// Path is user's webhook path (no app name in path anymore)
+	return fmt.Sprintf("%s/*", baseURL)
 }
