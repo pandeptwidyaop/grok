@@ -135,6 +135,20 @@ jobs:
       - name: Generate gRPC code
         run: make proto
 
+      - name: Setup Node.js (for frontend build)
+        if: matrix.target == 'server'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Frontend Dashboard
+        if: matrix.target == 'server'
+        run: |
+          cd web
+          npm ci
+          npm run build
+          ls -la ../internal/server/web/dist/
+
       - name: Build ${{ matrix.target }} for ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
           GOOS: ${{ matrix.goos }}
@@ -144,10 +158,16 @@ jobs:
         run: |
           mkdir -p dist
           if [ "${{ matrix.target }}" = "server" ]; then
-            go build -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=$(git rev-parse --short HEAD)" \
+            go build -ldflags="-s -w \
+              -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
+              -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$(git rev-parse --short HEAD) \
+              -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               -o dist/${{ matrix.output }} ./cmd/grok-server
           else
-            go build -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=$(git rev-parse --short HEAD)" \
+            go build -ldflags="-s -w \
+              -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
+              -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$(git rev-parse --short HEAD) \
+              -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               -o dist/${{ matrix.output }} ./cmd/grok
           fi
 
@@ -182,16 +202,48 @@ jobs:
 
       - name: Prepare release assets
         run: |
-          mkdir -p dist
+          mkdir -p dist release
           find artifacts -type f -exec cp {} dist/ \;
           ls -lah dist/
 
       - name: Make binaries executable
         run: chmod +x dist/*
 
-      - name: Generate checksums
+      - name: Create tar.gz archives
         run: |
           cd dist
+          for binary in *; do
+            # Skip if it's a directory or already an archive
+            if [ -f "$binary" ] && [[ "$binary" != *.tar.gz ]] && [[ "$binary" != checksums.txt ]]; then
+              # Determine archive name based on binary name
+              if [[ "$binary" == grok-server-* ]]; then
+                # Server: grok-server-linux-amd64 -> grok-server_v1.0.0_linux_x86_64.tar.gz
+                os=$(echo $binary | cut -d- -f3)
+                arch=$(echo $binary | cut -d- -f4)
+                # Convert arch names
+                if [ "$arch" = "amd64" ]; then arch="x86_64"; fi
+                if [ "$arch" = "arm64" ]; then arch="aarch64"; fi
+                archive_name="grok-server_${{ needs.version.outputs.new_release_version }}_${os}_${arch}.tar.gz"
+                tar -czf ../release/$archive_name grok-server=$binary
+              elif [[ "$binary" == grok-* ]]; then
+                # Client: grok-linux-amd64 -> grok_v1.0.0_linux_x86_64.tar.gz
+                os=$(echo $binary | cut -d- -f2)
+                arch=$(echo $binary | cut -d- -f3 | sed 's/\.exe$//')
+                # Convert arch names
+                if [ "$arch" = "amd64" ]; then arch="x86_64"; fi
+                if [ "$arch" = "arm64" ]; then arch="aarch64"; fi
+                if [ "$arch" = "386" ]; then arch="i386"; fi
+                archive_name="grok_${{ needs.version.outputs.new_release_version }}_${os}_${arch}.tar.gz"
+                tar -czf ../release/$archive_name grok=$binary
+              fi
+            fi
+          done
+          cd ..
+          ls -lah release/
+
+      - name: Generate checksums
+        run: |
+          cd release
           sha256sum * > checksums.txt
           cat checksums.txt
 

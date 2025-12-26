@@ -109,6 +109,8 @@ func (u *Updater) getDownloadURL(version string) (string, error) {
 		arch = "x86_64"
 	} else if goarch == "arm64" {
 		arch = "aarch64"
+	} else if goarch == "386" {
+		arch = "i386"
 	}
 
 	// Normalize OS names
@@ -121,8 +123,10 @@ func (u *Updater) getDownloadURL(version string) (string, error) {
 		osName = "windows"
 	}
 
-	// Construct filename: grok_1.0.0_linux_x86_64.tar.gz
-	filename := fmt.Sprintf("grok_%s_%s_%s.tar.gz", version, osName, arch)
+	// Construct filename based on binary name
+	// Client: grok_1.0.0_linux_x86_64.tar.gz
+	// Server: grok-server_1.0.0_linux_x86_64.tar.gz
+	filename := fmt.Sprintf("%s_%s_%s_%s.tar.gz", u.binaryName, version, osName, arch)
 
 	// Construct full URL
 	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s",
