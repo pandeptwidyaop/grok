@@ -7,14 +7,20 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
+  isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [isLoading, setIsLoading] = useState(true);
+
   // Lazy initialization - read from localStorage immediately
   const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('auth_token');
+    const storedToken = localStorage.getItem('auth_token');
+    // Set loading to false after initial load
+    setTimeout(() => setIsLoading(false), 0);
+    return storedToken;
   });
   const [user, setUser] = useState<string | null>(() => {
     return localStorage.getItem('auth_user');
@@ -56,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         isAuthenticated: !!token,
+        isLoading,
       }}
     >
       {children}

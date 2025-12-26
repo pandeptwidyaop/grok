@@ -10,6 +10,15 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  server: {
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:4040',
+        changeOrigin: true,
+      },
+    },
+  },
   build: {
     outDir: '../internal/server/web/dist',
     emptyOutDir: true,
