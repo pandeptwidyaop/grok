@@ -234,7 +234,10 @@ func (wr *WebhookRouter) GetWebhookRoutes(orgSubdomain, appName string) (*Webhoo
 
 	// Check cache first
 	if cached, ok := wr.webhookCache.Load(cacheKey); ok {
-		cache := cached.(*WebhookRouteCache)
+		cache, ok := cached.(*WebhookRouteCache)
+		if !ok {
+			return nil, fmt.Errorf("invalid cache type")
+		}
 		cache.mu.RLock()
 		defer cache.mu.RUnlock()
 

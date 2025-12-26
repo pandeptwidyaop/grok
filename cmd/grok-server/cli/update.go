@@ -71,7 +71,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	if !updateYes {
 		fmt.Printf("\nDo you want to update to version %s? [y/N]: ", updateInfo.LatestVersion)
 		var response string
-		fmt.Scanln(&response)
+		_, _ = fmt.Scanln(&response) // Ignore error for CLI input
 
 		if response != "y" && response != "Y" && response != "yes" && response != "Yes" {
 			fmt.Println("Update canceled.")

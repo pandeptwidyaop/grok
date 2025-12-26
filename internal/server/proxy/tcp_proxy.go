@@ -100,7 +100,7 @@ func (tp *TCPProxy) acceptConnections(listener net.Listener, port int, tunnelID 
 
 		// Set a deadline for Accept to allow checking for shutdown
 		if tcpListener, ok := listener.(*net.TCPListener); ok {
-			tcpListener.SetDeadline(time.Now().Add(1 * time.Second))
+			_ = tcpListener.SetDeadline(time.Now().Add(1 * time.Second)) // Best effort
 		}
 
 		conn, err := listener.Accept()
@@ -199,7 +199,7 @@ func (tp *TCPProxy) connectionToStream(
 		}
 
 		// Set read deadline to allow periodic context checks
-		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second)) // Best effort
 
 		n, err := conn.Read(buffer)
 		if err != nil {
@@ -320,7 +320,7 @@ func (tp *TCPProxy) streamToConnection(
 
 			// Write response data to TCP connection
 			if len(tcpData.Data) > 0 {
-				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+				_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second)) // Best effort
 				n, err := conn.Write(tcpData.Data)
 				if err != nil {
 					logger.ErrorEvent().

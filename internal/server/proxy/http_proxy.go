@@ -320,7 +320,7 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 
 		// Write body
 		if len(result.FirstSuccess.Body) > 0 {
-			w.Write(result.FirstSuccess.Body)
+			_, _ = w.Write(result.FirstSuccess.Body) // Ignore error - handled by HTTP layer
 		}
 
 		logger.InfoEvent().

@@ -244,7 +244,9 @@ func (c *Client) connect(ctx context.Context) error {
 
 	// Close connection
 	if c.stream != nil {
-		c.stream.CloseSend()
+		if err := c.stream.CloseSend(); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to close stream")
+		}
 	}
 	if c.conn != nil {
 		c.conn.Close()

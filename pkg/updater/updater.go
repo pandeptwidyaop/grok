@@ -246,7 +246,9 @@ func (u *Updater) replaceBinary(newBinaryPath string) error {
 	// Copy new binary to current location
 	if err := copyFile(newBinaryPath, u.binaryPath); err != nil {
 		// Restore backup on failure
-		os.Rename(backupPath, u.binaryPath)
+		if restoreErr := os.Rename(backupPath, u.binaryPath); restoreErr != nil {
+			logger.WarnEvent().Err(restoreErr).Msg("Failed to restore backup after copy failure")
+		}
 		return fmt.Errorf("failed to copy new binary: %w", err)
 	}
 
@@ -254,7 +256,9 @@ func (u *Updater) replaceBinary(newBinaryPath string) error {
 	if err := os.Chmod(u.binaryPath, 0755); err != nil {
 		// Restore backup on failure
 		os.Remove(u.binaryPath)
-		os.Rename(backupPath, u.binaryPath)
+		if restoreErr := os.Rename(backupPath, u.binaryPath); restoreErr != nil {
+			logger.WarnEvent().Err(restoreErr).Msg("Failed to restore backup after chmod failure")
+		}
 		return fmt.Errorf("failed to make binary executable: %w", err)
 	}
 
