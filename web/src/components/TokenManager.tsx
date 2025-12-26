@@ -19,14 +19,23 @@ import {
   AlertTitle,
   Paper,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  DialogContentText,
 } from '@mui/material';
 import { Key, Trash2, Copy, Check } from 'lucide-react';
 import { api, type AuthToken } from '@/lib/api';
+import { toast } from 'sonner';
+import { formatRelativeTime } from '@/lib/utils';
 
 function TokenManager() {
   const [newTokenName, setNewTokenName] = useState('');
   const [createdToken, setCreatedToken] = useState<AuthToken | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [tokenToDelete, setTokenToDelete] = useState<AuthToken | null>(null);
   const queryClient = useQueryClient();
 
   const { data: tokens, isLoading } = useQuery({
@@ -63,10 +72,6 @@ function TokenManager() {
     await navigator.clipboard.writeText(token);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  const formatDate = (date: string) => {
-    return new Date(date).toLocaleString();
   };
 
   if (isLoading) {
@@ -215,7 +220,8 @@ function TokenManager() {
                 <TableHead>
                   <TableRow>
                     <TableCell>Name</TableCell>
-                    <TableCell>Scopes</TableCell>
+                    <TableCell>Owner</TableCell>
+                    <TableCell>Organization</TableCell>
                     <TableCell>Last Used</TableCell>
                     <TableCell>Created</TableCell>
                     <TableCell>Status</TableCell>
@@ -238,33 +244,40 @@ function TokenManager() {
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                          {token.scopes && token.scopes.length > 0 ? (
-                            token.scopes.map((scope) => (
-                              <Chip key={scope} label={scope} size="small" color="default" />
-                            ))
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">
-                              No scopes
-                            </Typography>
-                          )}
-                        </Box>
+                        <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                          {token.owner_name || token.owner_email || '—'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {token.organization_name ? (
+                          <Chip
+                            label={token.organization_name}
+                            color="secondary"
+                            variant="outlined"
+                            size="small"
+                            sx={{ fontWeight: 500 }}
+                          />
+                        ) : (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                            Personal
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" color="text.secondary">
-                          {token.last_used_at ? formatDate(token.last_used_at) : 'Never'}
+                          {token.last_used_at ? formatRelativeTime(token.last_used_at) : 'Never'}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" color="text.secondary">
-                          {formatDate(token.created_at)}
+                          {formatRelativeTime(token.created_at)}
                         </Typography>
                       </TableCell>
                       <TableCell>
                         {token.is_active ? (
-                          <Chip label="Active" color="success" size="small" />
+                          <Chip label="Active" color="success" variant="outlined" size="small" />
                         ) : (
-                          <Chip label="Inactive" color="default" size="small" />
+                          <Chip label="Inactive" color="default" variant="outlined" size="small" />
                         )}
                       </TableCell>
                       <TableCell align="right">
@@ -272,9 +285,8 @@ function TokenManager() {
                           size="small"
                           color="error"
                           onClick={() => {
-                            if (confirm('Are you sure you want to delete this token?')) {
-                              deleteMutation.mutate(token.id);
-                            }
+                            setTokenToDelete(token);
+                            setDeleteDialogOpen(true);
                           }}
                         >
                           <Trash2 size={16} />
@@ -288,6 +300,47 @@ function TokenManager() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Delete Token</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            Are you sure you want to delete the token <strong>{tokenToDelete?.name}</strong>?
+            <Box sx={{ mt: 2, color: 'error.main' }}>
+              ⚠️ Any applications using this token will lose access immediately.
+            </Box>
+            <Box sx={{ mt: 1 }}>
+              This action cannot be undone.
+            </Box>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (tokenToDelete) {
+                deleteMutation.mutate(tokenToDelete.id);
+                setDeleteDialogOpen(false);
+                setTokenToDelete(null);
+                toast.success('Token deleted successfully');
+              }
+            }}
+            color="error"
+            variant="contained"
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
