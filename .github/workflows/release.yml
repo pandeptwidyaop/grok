@@ -224,7 +224,10 @@ jobs:
                 if [ "$arch" = "amd64" ]; then arch="x86_64"; fi
                 if [ "$arch" = "arm64" ]; then arch="aarch64"; fi
                 archive_name="grok-server_${{ needs.version.outputs.new_release_version }}_${os}_${arch}.tar.gz"
-                tar -czf ../release/$archive_name grok-server=$binary
+                # Copy binary to canonical name, create archive, then remove temp file
+                cp "$binary" grok-server
+                tar -czf ../release/$archive_name grok-server
+                rm grok-server
               elif [[ "$binary" == grok-* ]]; then
                 # Client: grok-linux-amd64 -> grok_v1.0.0_linux_x86_64.tar.gz
                 os=$(echo $binary | cut -d- -f2)
@@ -234,7 +237,10 @@ jobs:
                 if [ "$arch" = "arm64" ]; then arch="aarch64"; fi
                 if [ "$arch" = "386" ]; then arch="i386"; fi
                 archive_name="grok_${{ needs.version.outputs.new_release_version }}_${os}_${arch}.tar.gz"
-                tar -czf ../release/$archive_name grok=$binary
+                # Copy binary to canonical name, create archive, then remove temp file
+                cp "$binary" grok
+                tar -czf ../release/$archive_name grok
+                rm grok
               fi
             fi
           done
