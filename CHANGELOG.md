@@ -1,3 +1,14 @@
+## [1.0.0-alpha.7](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.6...v1.0.0-alpha.7) (2025-12-26)
+
+### Bug Fixes
+
+* **test:** fix integration test failures ([a00813b](https://github.com/pandeptwidyaop/grok/commit/a00813bd5543493e3805ec8edc365e41e8ff05cf))
+* **webhook:** correct ExtractWebhookComponents to match plan format ([4669a3f](https://github.com/pandeptwidyaop/grok/commit/4669a3f650591751d300886b90b0c229e5857576))
+
+### Code Refactoring
+
+* fix linting issues and improve code quality ([d035b89](https://github.com/pandeptwidyaop/grok/commit/d035b896ceecafe53ccf47313adbdc9a460881e4))
+
 ## [1.0.0-alpha.6](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.5...v1.0.0-alpha.6) (2025-12-26)
 
 ### Bug Fixes
