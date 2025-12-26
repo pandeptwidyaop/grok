@@ -142,7 +142,7 @@ func (wr *WebhookRouter) emitEvent(event WebhookEvent) {
 	}
 }
 
-// Example: payment-app-trofeo-webhook.grok.io.
+// Example: trofeo-webhook.grok.io/payment-app/stripe/callback.
 func (wr *WebhookRouter) IsWebhookRequest(host string) bool {
 	// Remove port if present
 	if idx := strings.Index(host, ":"); idx != -1 {
@@ -177,53 +177,36 @@ func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdoma
 
 	webhookSubdomain := strings.TrimSuffix(host, suffix)
 
-	// Extract components by removing "-webhook" suffix
-	// Pattern: {app_name}-{org}-webhook
+	// Extract org subdomain by removing "-webhook" suffix
+	// Pattern: {org}-webhook.{domain}/{app_name}/{user_webhook_path}
 	if !strings.HasSuffix(webhookSubdomain, "-webhook") {
 		return "", "", "", ErrInvalidWebhookURL
 	}
-	webhookPart := strings.TrimSuffix(webhookSubdomain, "-webhook")
+	orgSubdomain = strings.TrimSuffix(webhookSubdomain, "-webhook")
 
-	// Split by hyphens and try different combinations to find valid org+app
-	// Both app_name and org can contain hyphens, so we need to query database
-	parts := strings.Split(webhookPart, "-")
-	if len(parts) < 2 {
-		return "", "", "", fmt.Errorf("invalid webhook subdomain format: must be {app_name}-{org}-webhook")
+	// Validate path format: must start with "/" and contain app name
+	if path == "" || !strings.HasPrefix(path, "/") {
+		return "", "", "", fmt.Errorf("invalid webhook path: must start with /")
 	}
 
-	// Try different split points (greedy matching from left for app_name)
-	var foundOrg models.Organization
-	var foundApp models.WebhookApp
-	var validAppName, validOrgSubdomain string
-
-	for i := 1; i < len(parts); i++ {
-		potentialAppName := strings.Join(parts[:i], "-")
-		potentialOrgSubdomain := strings.Join(parts[i:], "-")
-
-		// Query database to check if this organization exists
-		if err := wr.db.Where("subdomain = ?", potentialOrgSubdomain).First(&foundOrg).Error; err == nil {
-			// Found org, now check if app exists under this org
-			if err := wr.db.Where("organization_id = ? AND name = ?", foundOrg.ID, potentialAppName).First(&foundApp).Error; err == nil {
-				// Found valid combination!
-				validAppName = potentialAppName
-				validOrgSubdomain = potentialOrgSubdomain
-				break
-			}
-		}
+	// Extract app name from first path segment
+	// Example: "/payment-app/stripe/callback" -> ["", "payment-app", "stripe", "callback"]
+	pathParts := strings.Split(path, "/")
+	if len(pathParts) < 2 || pathParts[1] == "" {
+		return "", "", "", fmt.Errorf("invalid webhook path: missing app name")
 	}
 
-	if validAppName == "" || validOrgSubdomain == "" {
-		return "", "", "", ErrWebhookAppNotFound
-	}
+	appName = pathParts[1]
 
-	// Path is the user webhook path (no app_name in path anymore)
-	if path == "" || path == "/" {
-		userPath = "/"
+	// Extract user webhook path from remaining segments
+	// Example: "/payment-app/stripe/callback" -> "/stripe/callback"
+	if len(pathParts) > 2 {
+		userPath = "/" + strings.Join(pathParts[2:], "/")
 	} else {
-		userPath = path
+		userPath = "/"
 	}
 
-	return validOrgSubdomain, validAppName, userPath, nil
+	return orgSubdomain, appName, userPath, nil
 }
 
 // GetWebhookRoutes retrieves webhook routes from cache or database.
@@ -313,7 +296,7 @@ func (wr *WebhookRouter) RefreshCache(orgSubdomain, appName string) (*WebhookRou
 }
 
 // Returns the first successful response.
-func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookRouteCache, userPath string, request *ProxyRequestData) (*BroadcastResult, error) {
+func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookRouteCache, userPath string, request *RequestData) (*BroadcastResult, error) {
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
 
@@ -471,7 +454,7 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 }
 
 // sendToTunnel sends request to a single tunnel via gRPC stream.
-func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, userPath string, request *ProxyRequestData) *TunnelResponse {
+func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, userPath string, request *RequestData) *TunnelResponse {
 	// Generate request ID
 	requestID := utils.GenerateRequestID()
 
@@ -552,8 +535,8 @@ func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, u
 	}
 }
 
-// ProxyRequestData holds HTTP request data for proxying.
-type ProxyRequestData struct {
+// RequestData holds HTTP request data for proxying.
+type RequestData struct {
 	Method  string
 	Path    string
 	Headers map[string][]string
