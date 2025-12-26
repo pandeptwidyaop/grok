@@ -57,10 +57,20 @@
     ["@semantic-release/github", {
       "assets": [
         {"path": "release/grok-server_*_linux_x86_64.tar.gz", "label": "Server (Linux x86_64)"},
+        {"path": "release/grok-server_*_linux_aarch64.tar.gz", "label": "Server (Linux ARM64)"},
+        {"path": "release/grok-server_*_linux_armv7.tar.gz", "label": "Server (Linux ARMv7)"},
+        {"path": "release/grok-server_*_darwin_x86_64.tar.gz", "label": "Server (macOS Intel)"},
+        {"path": "release/grok-server_*_darwin_aarch64.tar.gz", "label": "Server (macOS Apple Silicon)"},
+        {"path": "release/grok-server_*_windows_x86_64.tar.gz", "label": "Server (Windows x64)"},
+        {"path": "release/grok-server_*_windows_aarch64.tar.gz", "label": "Server (Windows ARM64)"},
         {"path": "release/grok_*_linux_x86_64.tar.gz", "label": "Client (Linux x86_64)"},
+        {"path": "release/grok_*_linux_aarch64.tar.gz", "label": "Client (Linux ARM64)"},
+        {"path": "release/grok_*_linux_armv7.tar.gz", "label": "Client (Linux ARMv7)"},
         {"path": "release/grok_*_linux_i386.tar.gz", "label": "Client (Linux i386)"},
-        {"path": "release/grok_*_darwin_x86_64.tar.gz", "label": "Client (macOS x86_64)"},
-        {"path": "release/grok_*_windows_x86_64.tar.gz", "label": "Client (Windows x86_64)"},
+        {"path": "release/grok_*_darwin_x86_64.tar.gz", "label": "Client (macOS Intel)"},
+        {"path": "release/grok_*_darwin_aarch64.tar.gz", "label": "Client (macOS Apple Silicon)"},
+        {"path": "release/grok_*_windows_x86_64.tar.gz", "label": "Client (Windows x64)"},
+        {"path": "release/grok_*_windows_aarch64.tar.gz", "label": "Client (Windows ARM64)"},
         {"path": "release/grok_*_windows_i386.tar.gz", "label": "Client (Windows i386)"},
         {"path": "release/checksums.txt", "label": "SHA256 Checksums"}
       ]
