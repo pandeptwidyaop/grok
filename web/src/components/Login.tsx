@@ -13,7 +13,7 @@ import {
   Container,
   Paper,
 } from '@mui/material';
-import { Sparkles, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -87,15 +87,20 @@ export default function Login() {
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 64,
-              height: 64,
+              width: 80,
+              height: 80,
               borderRadius: 3,
-              bgcolor: 'rgba(255, 255, 255, 0.2)',
+              bgcolor: 'rgba(255, 255, 255, 0.15)',
               backdropFilter: 'blur(10px)',
               mb: 2,
+              p: 1.5,
             }}
           >
-            <Sparkles size={32} color="white" />
+            <img
+              src="/favicon.svg"
+              alt="Grok Logo"
+              style={{ width: '100%', height: '100%' }}
+            />
           </Paper>
           <Typography variant="h3" sx={{ color: 'white', fontWeight: 700, mb: 1 }}>
             Welcome Back

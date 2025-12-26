@@ -19,7 +19,6 @@ import {
   Globe,
   LogOut,
   User,
-  Sparkles,
   Building2,
   Settings,
   Users as UsersIcon,
@@ -155,17 +154,22 @@ function MainLayout() {
             <Paper
               elevation={0}
               sx={{
-                width: 40,
-                height: 40,
+                width: 48,
+                height: 48,
                 borderRadius: 2,
-                bgcolor: 'rgba(255, 255, 255, 0.2)',
+                bgcolor: 'rgba(255, 255, 255, 0.15)',
                 backdropFilter: 'blur(10px)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                p: 1,
               }}
             >
-              <Sparkles size={20} color="white" />
+              <img
+                src="/favicon.svg"
+                alt="Grok Logo"
+                style={{ width: '100%', height: '100%' }}
+              />
             </Paper>
             <Typography variant="h6" sx={{ fontWeight: 700, color: 'white' }}>
               Grok
