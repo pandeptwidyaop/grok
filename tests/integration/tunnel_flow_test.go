@@ -90,7 +90,8 @@ func TestCompleteTunnelFlow(t *testing.T) {
 
 	// Create client connection
 	ctx := context.Background()
-	conn, err := grpc.NewClient("bufnet",
+	//nolint:staticcheck // grpc.DialContext is deprecated but required for bufconn testing
+	conn, err := grpc.DialContext(ctx, "bufnet",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return lis.Dial()
 		}),

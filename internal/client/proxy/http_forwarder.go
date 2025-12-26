@@ -111,8 +111,9 @@ func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) 
 		Msg("Received response from local service")
 
 	// Build gRPC HTTP response
+	// StatusCode conversion is safe: HTTP status codes are 100-599, well within int32 range
 	return &tunnelv1.HTTPResponse{
-		StatusCode: int32(httpResp.StatusCode),
+		StatusCode: int32(httpResp.StatusCode), //nolint:gosec // Safe conversion: HTTP status codes are always 100-599
 		Headers:    headers,
 		Body:       respBody,
 	}, nil

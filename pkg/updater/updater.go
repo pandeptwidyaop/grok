@@ -3,6 +3,7 @@ package updater
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -141,7 +142,15 @@ func (u *Updater) downloadBinary(url string) (string, error) {
 		Timeout: downloadTimeout,
 	}
 
-	resp, err := client.Get(url)
+	ctx, cancel := context.WithTimeout(context.Background(), downloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to download: %w", err)
 	}

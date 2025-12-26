@@ -18,25 +18,30 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/utils"
 )
 
-// TunnelEventType represents the type of tunnel event.
-type TunnelEventType string
+// EventType represents the type of tunnel event.
+type EventType string
 
 const (
-	EventTunnelConnected    TunnelEventType = "tunnel_connected"
-	EventTunnelDisconnected TunnelEventType = "tunnel_disconnected"
-	EventTunnelUpdated      TunnelEventType = "tunnel_updated"
-	EventTunnelStatsUpdated TunnelEventType = "tunnel_stats_updated"
+	EventTunnelConnected    EventType = "tunnel_connected"
+	EventTunnelDisconnected EventType = "tunnel_disconnected"
+	EventTunnelUpdated      EventType = "tunnel_updated"
+	EventTunnelStatsUpdated EventType = "tunnel_stats_updated"
 )
 
-// TunnelEvent represents a tunnel state change event.
-type TunnelEvent struct {
-	Type     TunnelEventType
+const (
+	// ProtocolTCP represents the TCP protocol.
+	ProtocolTCP = "tcp"
+)
+
+// Event represents a tunnel state change event.
+type Event struct {
+	Type     EventType
 	TunnelID uuid.UUID
 	Tunnel   *models.Tunnel
 }
 
-// TunnelEventHandler is a callback for tunnel events.
-type TunnelEventHandler func(TunnelEvent)
+// EventHandler is a callback for tunnel events.
+type EventHandler func(Event)
 
 // TCPProxy interface for TCP proxy operations.
 type TCPProxy interface {
@@ -56,7 +61,7 @@ type Manager struct {
 	httpsPort         int           // HTTPS port (default 443)
 	portPool          *tcp.PortPool // TCP port pool for TCP tunnels
 	tcpProxy          TCPProxy      // TCP proxy for starting/stopping listeners
-	eventHandlers     []TunnelEventHandler
+	eventHandlers     []EventHandler
 	eventMu           sync.RWMutex
 }
 
@@ -129,14 +134,14 @@ func (m *Manager) CleanupStaleTunnels(ctx context.Context) error {
 }
 
 // OnTunnelEvent subscribes to tunnel events.
-func (m *Manager) OnTunnelEvent(handler TunnelEventHandler) {
+func (m *Manager) OnTunnelEvent(handler EventHandler) {
 	m.eventMu.Lock()
 	defer m.eventMu.Unlock()
 	m.eventHandlers = append(m.eventHandlers, handler)
 }
 
 // emitEvent emits a tunnel event to all subscribers.
-func (m *Manager) emitEvent(event TunnelEvent) {
+func (m *Manager) emitEvent(event Event) {
 	m.eventMu.RLock()
 	defer m.eventMu.RUnlock()
 
@@ -398,12 +403,13 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 	}
 
 	// Mark tunnel as offline, KEEP domain reservation
+	now := time.Now()
 	err := m.db.WithContext(ctx).
 		Model(&models.Tunnel{}).
 		Where("id = ?", tunnelID).
 		Updates(map[string]interface{}{
 			"status":          "offline",
-			"disconnected_at": "NOW()",
+			"disconnected_at": now,
 		}).Error
 
 	if err != nil {
@@ -542,10 +548,10 @@ func (m *Manager) checkUserTunnelLimit(ctx context.Context, userID uuid.UUID) er
 
 // BuildPublicURL builds the public URL for a tunnel.
 func (m *Manager) BuildPublicURL(subdomain string, protocol string) string {
-	if protocol == "tcp" {
+	if protocol == ProtocolTCP {
 		// TCP tunnels use port-based routing, not subdomain
 		// Return placeholder - actual URL set after port allocation
-		return "tcp://pending-allocation"
+		return ProtocolTCP + "://pending-allocation"
 	}
 
 	// Determine scheme and port based on TLS configuration
@@ -574,7 +580,7 @@ func (m *Manager) BuildPublicURL(subdomain string, protocol string) string {
 
 // BuildTCPPublicURL builds the public URL for a TCP tunnel with allocated port.
 func (m *Manager) BuildTCPPublicURL(port int) string {
-	return fmt.Sprintf("tcp://%s:%d", m.baseDomain, port)
+	return fmt.Sprintf("%s://%s:%d", ProtocolTCP, m.baseDomain, port)
 }
 
 // IsTLSEnabled returns whether TLS is enabled on the server.
@@ -649,13 +655,13 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 	if offlineTunnel.TunnelType == "HTTPS" {
 		protocol = "https"
 	} else if offlineTunnel.TunnelType == "TCP" {
-		protocol = "tcp"
+		protocol = ProtocolTCP
 	}
 
 	// Handle TCP port reallocation for persistent tunnels
 	var publicURL string
 	var remotePort *int
-	if protocol == "tcp" && offlineTunnel.RemotePort != nil {
+	if protocol == ProtocolTCP && offlineTunnel.RemotePort != nil {
 		// Reallocate the same port for persistent TCP tunnel
 		if m.portPool == nil {
 			return nil, pkgerrors.NewAppError("TCP_NOT_SUPPORTED", "TCP tunnels not supported (port pool not initialized)", nil)

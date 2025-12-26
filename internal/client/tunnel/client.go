@@ -2,10 +2,11 @@ package tunnel
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"net"
 	"os"
 	"sync"
@@ -21,6 +22,17 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/client/proxy"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
+
+// cryptoRandFloat64 generates a cryptographically secure random float64 in range [0, 1).
+func cryptoRandFloat64() float64 {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Fallback to 0.5 if crypto/rand fails (extremely unlikely)
+		return 0.5
+	}
+	// Convert to uint64 and normalize to [0, 1)
+	return float64(binary.BigEndian.Uint64(b[:])&0x1FFFFFFFFFFFFF) / float64(0x20000000000000)
+}
 
 // ClientConfig holds tunnel client configuration.
 type ClientConfig struct {
@@ -335,7 +347,7 @@ func (c *Client) maintainConnection(ctx context.Context) error {
 			Msg("Connection failed, retrying")
 
 		// Wait before retrying with exponential backoff and jitter
-		jitter := time.Duration(rand.Float64() * float64(delay) * 0.2)
+		jitter := time.Duration(cryptoRandFloat64() * float64(delay) * 0.2)
 		select {
 		case <-time.After(delay + jitter):
 			// Calculate next delay with exponential backoff
