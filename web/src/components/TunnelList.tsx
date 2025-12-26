@@ -143,6 +143,8 @@ function TunnelList() {
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>Tunnel</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Organization</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Owner</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Local Address</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Public URL</TableCell>
@@ -186,6 +188,33 @@ function TunnelList() {
                         color={tunnel.tunnel_type?.toLowerCase() === 'tcp' ? 'secondary' : 'primary'}
                         sx={{ fontWeight: 500 }}
                       />
+                    </TableCell>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      {tunnel.organization_name ? (
+                        <Chip
+                          label={tunnel.organization_name}
+                          color="secondary"
+                          variant="outlined"
+                          size="small"
+                          sx={{ fontWeight: 500 }}
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          —
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {tunnel.owner_name || '—'}
+                        </Typography>
+                        {tunnel.owner_email && (
+                          <Typography variant="caption" color="text.secondary">
+                            {tunnel.owner_email}
+                          </Typography>
+                        )}
+                      </Box>
                     </TableCell>
                     <TableCell onClick={() => handleViewDetails(tunnel.id)}>
                       <Chip
