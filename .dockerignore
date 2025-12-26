@@ -71,8 +71,5 @@ temp/
 *.bak
 *.bak2
 
-# Scripts (not needed in container)
-scripts/
-
 # Tests
 tests/
