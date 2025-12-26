@@ -48,7 +48,9 @@ jobs:
 
       - name: Copy dashboard to embed location
         run: |
+          ls -la web/
           rm -rf internal/server/web/dist
+          mkdir -p internal/server/web
           cp -r web/dist internal/server/web/dist
 
       - name: Run tests
@@ -89,7 +91,9 @@ jobs:
 
       - name: Copy dashboard to embed location
         run: |
+          ls -la web/
           rm -rf internal/server/web/dist
+          mkdir -p internal/server/web
           cp -r web/dist internal/server/web/dist
 
       - name: Install golangci-lint
