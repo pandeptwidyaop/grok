@@ -231,7 +231,12 @@ function MainLayout() {
               <ListItem key={item.id} disablePadding sx={{ mb: 1 }}>
                 <ListItemButton
                   selected={isActive}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => {
+                    navigate(item.path);
+                    if (isMobile) {
+                      setMobileOpen(false);
+                    }
+                  }}
                   sx={{
                     borderRadius: 2,
                     color: isActive ? 'white' : 'rgba(255, 255, 255, 0.7)',

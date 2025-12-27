@@ -18,6 +18,9 @@ import {
   Paper,
   TextField,
   Pagination,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   ArrowLeft,
@@ -44,6 +47,8 @@ function TunnelDetail() {
   const [page, setPage] = useState(1);
   const [pathFilter, setPathFilter] = useState('');
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Subscribe to real-time tunnel events via SSE
   useTunnelEvents((event) => {
@@ -163,13 +168,20 @@ function TunnelDetail() {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, md: 2 }, mb: 4 }}>
         <IconButton onClick={() => navigate('/tunnels')}>
           <ArrowLeft size={20} />
         </IconButton>
-        <Box sx={{ flex: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 0.5 }}>
-            <Typography variant="h4" sx={{ fontWeight: 700, color: '#667eea' }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, md: 2 }, mb: 0.5, flexWrap: 'wrap' }}>
+            <Typography
+              variant={isMobile ? 'h5' : 'h4'}
+              sx={{
+                fontWeight: 700,
+                color: '#667eea',
+                wordBreak: 'break-word',
+              }}
+            >
               {tunnel.saved_name || tunnel.subdomain}
             </Typography>
             <Chip
@@ -392,7 +404,83 @@ function TunnelDetail() {
                   Send a request to {tunnel.public_url} to see logs here
                 </Typography>
               </Box>
+            ) : isMobile ? (
+              /* Mobile Card View */
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 2 }}>
+                {logs.map((log) => (
+                  <Card key={log.id} variant="outlined">
+                    <CardContent sx={{ p: 2 }}>
+                      {/* Header: Method, Status, Time */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Chip
+                            label={log.method}
+                            size="small"
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              fontSize: '0.75rem',
+                            }}
+                          />
+                          <Chip
+                            label={log.status_code}
+                            size="small"
+                            sx={{
+                              bgcolor: getStatusColor(log.status_code),
+                              color: 'white',
+                              fontWeight: 600,
+                            }}
+                          />
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatRelativeTime(log.created_at)}
+                        </Typography>
+                      </Box>
+
+                      {/* Path */}
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Path
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontFamily: 'monospace',
+                            fontSize: '0.875rem',
+                            wordBreak: 'break-all',
+                          }}
+                        >
+                          {log.path}
+                        </Typography>
+                      </Box>
+
+                      <Divider sx={{ my: 1.5 }} />
+
+                      {/* Stats */}
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 2 }}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Duration
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {formatDuration(log.duration_ms)}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Size
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {formatBytes(log.bytes_in + log.bytes_out)}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
             ) : (
+              /* Desktop Table View */
               <TableContainer component={Paper} variant="outlined" sx={{ mt: 2 }}>
                 <Table size="small">
                   <TableHead>
