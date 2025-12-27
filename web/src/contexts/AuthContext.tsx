@@ -1,5 +1,6 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { sseService } from '@/services/sseService';
 
 type UserRole = 'super_admin' | 'org_admin' | 'org_user' | null;
 
@@ -47,6 +48,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [organizationName, setOrganizationName] = useState<string | null>(() => {
     return sessionStorage.getItem('auth_org_name');
   });
+
+  // Fetch CSRF token on mount if user is already authenticated
+  useEffect(() => {
+    const fetchCSRFToken = async () => {
+      // Only fetch if user is authenticated but we don't have a CSRF token
+      if (user && !csrfToken) {
+        try {
+          const csrfResponse = await fetch('/api/auth/csrf', {
+            credentials: 'include',
+          });
+          if (csrfResponse.ok) {
+            const csrfData = await csrfResponse.json();
+            setCSRFToken(csrfData.csrf_token);
+            window._csrfToken = csrfData.csrf_token;
+          }
+        } catch (error) {
+          console.error('Failed to fetch CSRF token:', error);
+        }
+      }
+    };
+
+    fetchCSRFToken();
+  }, [user, csrfToken]);
+
+  // Initialize SSE service when user authenticates
+  useEffect(() => {
+    if (user) {
+      // User is authenticated, initialize SSE connection
+      sseService.init(true);
+    } else {
+      // User is not authenticated, disconnect SSE
+      sseService.disconnect();
+    }
+  }, [user]);
 
   const login = async (username: string, password: string, otpCode?: string): Promise<LoginResponse> => {
     const response = await fetch('/api/auth/login', {
@@ -97,6 +132,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem('auth_org_name', data.organization_name);
     }
 
+    // Note: No reload here - let the Login component navigate first
+    // The page will refresh after navigation in Login.tsx
+
     return data;
   };
 
@@ -120,6 +158,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem('auth_role');
     sessionStorage.removeItem('auth_org_id');
     sessionStorage.removeItem('auth_org_name');
+
+    // Refresh page to reset state after logout
+    window.location.reload();
   };
 
   // Derived properties

@@ -20,6 +20,8 @@ import {
   Select,
   MenuItem,
   Paper,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   ArrowLeft,
@@ -38,6 +40,8 @@ export default function OrganizationDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -236,13 +240,24 @@ export default function OrganizationDetail() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', md: 'flex-start' },
+          gap: 2,
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <IconButton onClick={() => navigate('/organizations')}>
             <ArrowLeft size={20} />
           </IconButton>
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 700 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography
+              variant={isMobile ? 'h5' : 'h4'}
+              sx={{ fontWeight: 700, wordBreak: 'break-word' }}
+            >
               {organization.name}
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -250,33 +265,44 @@ export default function OrganizationDetail() {
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: 1,
+          }}
+        >
           <Chip
             label={organization.is_active ? 'Active' : 'Inactive'}
             color={organization.is_active ? 'success' : 'default'}
             variant="outlined"
+            sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }}
           />
           <Button
             variant="outlined"
-            startIcon={<Edit size={16} />}
+            startIcon={!isMobile && <Edit size={16} />}
             onClick={handleEdit}
+            fullWidth={isMobile}
           >
-            Edit
+            {isMobile ? 'Edit' : 'Edit'}
           </Button>
           <Button
             variant="outlined"
-            startIcon={<Power size={16} />}
+            startIcon={!isMobile && <Power size={16} />}
             onClick={() => toggleMutation.mutate()}
+            fullWidth={isMobile}
           >
             {organization.is_active ? 'Deactivate' : 'Activate'}
           </Button>
           <Button
             variant="outlined"
             color="error"
-            startIcon={<Trash2 size={16} />}
+            startIcon={!isMobile && <Trash2 size={16} />}
             onClick={handleDelete}
+            fullWidth={isMobile}
           >
-            Delete
+            {isMobile ? 'Delete' : 'Delete'}
           </Button>
         </Box>
       </Box>
@@ -484,7 +510,7 @@ export default function OrganizationDetail() {
       </Card>
 
       {/* Edit Organization Dialog */}
-      <Dialog open={isEditOpen} onClose={() => setIsEditOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={isEditOpen} onClose={() => setIsEditOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Edit Organization</DialogTitle>
         <form onSubmit={handleSubmit}>
           <DialogContent>
@@ -526,6 +552,7 @@ export default function OrganizationDetail() {
         }
         maxWidth="xs"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Reset Password</DialogTitle>
         <DialogContent>
@@ -568,6 +595,7 @@ export default function OrganizationDetail() {
         onClose={() => setDeleteDialog({ isOpen: false, id: '', name: '', type: 'org' })}
         maxWidth="xs"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Confirm Deletion</DialogTitle>
         <DialogContent>

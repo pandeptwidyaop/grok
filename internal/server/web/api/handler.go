@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
@@ -42,7 +43,7 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 		authMW:        middleware.NewAuthMiddleware(cfg.Auth.JWTSecret),
 		rateLimiter:   middleware.NewRateLimiter(0.5, 3), // 1 request per 2 seconds, burst of 3
 		csrf:          middleware.NewCSRFProtection(),
-		sseBroker:     NewSSEBroker(),
+		sseBroker:     NewSSEBroker(cfg.Logging.SSELogLevel),
 	}
 
 	// Subscribe to tunnel events and broadcast via SSE
@@ -123,7 +124,7 @@ func (h *Handler) CORSMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-CSRF-Token")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}
 
@@ -431,12 +432,26 @@ func (h *Handler) listTunnels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for show_all query parameter
+	showAll := r.URL.Query().Get("show_all") == "true"
+
 	var tunnels []models.Tunnel
 	// Show both active and offline tunnels (all persistent tunnels)
 	// Preload User and Organization to include owner and org info in response
 	query := h.db.Preload("User").Preload("Organization").
-		Where("status IN (?)", []string{"active", "offline"}).
-		Order("status ASC, connected_at DESC") // Active first, then by recent activity
+		Where("status IN (?)", []string{"active", "offline"})
+
+	// Filter out tunnels offline for more than 1 hour (unless show_all is true)
+	if !showAll {
+		oneHourAgo := time.Now().Add(-1 * time.Hour)
+		// Show active tunnels OR tunnels that went offline less than 1 hour ago
+		query = query.Where(
+			"status = ? OR (status = ? AND (disconnected_at IS NULL OR disconnected_at > ?))",
+			"active", "offline", oneHourAgo,
+		)
+	}
+
+	query = query.Order("status ASC, connected_at DESC") // Active first, then by recent activity
 
 	// Filter by organization for non-super-admins
 	if claims.Role != string(models.RoleSuperAdmin) {
@@ -598,24 +613,39 @@ func (h *Handler) deleteTunnel(w http.ResponseWriter, r *http.Request) {
 
 	// Check permissions: only tunnel owner, org admin, or super admin can delete
 	isOwner := tun.UserID.String() == claims.UserID
-	isOrgAdmin := claims.Role == string(models.RoleOrgAdmin) || claims.Role == string(models.RoleSuperAdmin)
+	isSuperAdmin := claims.Role == string(models.RoleSuperAdmin)
+	isOrgAdmin := claims.Role == string(models.RoleOrgAdmin)
 
-	// Check org membership if tunnel belongs to an org
-	sameOrg := true
-	if tun.OrganizationID != nil {
-		if claims.OrganizationID == nil {
-			sameOrg = false
-		} else {
-			sameOrg = tun.OrganizationID.String() == *claims.OrganizationID
+	// Debug logging
+	logger.InfoEvent().
+		Str("user_id", claims.UserID).
+		Str("username", claims.Username).
+		Str("role", claims.Role).
+		Bool("is_super_admin", isSuperAdmin).
+		Bool("is_org_admin", isOrgAdmin).
+		Bool("is_owner", isOwner).
+		Str("tunnel_id", tunnelID.String()).
+		Str("tunnel_owner_id", tun.UserID.String()).
+		Msg("Delete tunnel permission check")
+
+	// Super admin can delete any tunnel
+	if isSuperAdmin {
+		// Super admin has full access, skip other checks
+		logger.InfoEvent().Str("tunnel_id", tunnelID.String()).Msg("Super admin deleting tunnel")
+	} else if isOrgAdmin {
+		// Org admin can only delete tunnels in their organization
+		if tun.OrganizationID == nil || claims.OrganizationID == nil {
+			respondError(w, http.StatusForbidden, "Access denied")
+			return
 		}
-	}
-
-	if !isOwner && !isOrgAdmin {
-		respondError(w, http.StatusForbidden, "Access denied")
-		return
-	}
-
-	if !sameOrg {
+		if tun.OrganizationID.String() != *claims.OrganizationID {
+			respondError(w, http.StatusForbidden, "Access denied")
+			return
+		}
+	} else if isOwner {
+		// Owner can delete their own tunnel
+	} else {
+		// Not owner, not admin, not super admin
 		respondError(w, http.StatusForbidden, "Access denied")
 		return
 	}
@@ -848,10 +878,10 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		Name:     "auth_token",
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true,                     // Prevents JavaScript access (XSS protection)
-		Secure:   r.TLS != nil,             // Only send over HTTPS in production
-		SameSite: http.SameSiteStrictMode,  // CSRF protection
-		MaxAge:   24 * 60 * 60,             // 24 hours (matches JWT expiry)
+		HttpOnly: true,                    // Prevents JavaScript access (XSS protection)
+		Secure:   r.TLS != nil,            // Only send over HTTPS in production
+		SameSite: http.SameSiteStrictMode, // CSRF protection
+		MaxAge:   24 * 60 * 60,            // 24 hours (matches JWT expiry)
 	})
 
 	respondJSON(w, http.StatusOK, loginResponse{

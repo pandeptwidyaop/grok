@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	_ "google.golang.org/grpc/encoding/gzip" // Register gzip compressor
 	"google.golang.org/grpc/keepalive"
 	"gorm.io/gorm"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	"github.com/pandeptwidyaop/grok/internal/server/web"
 	"github.com/pandeptwidyaop/grok/internal/server/web/api"
+	"github.com/pandeptwidyaop/grok/internal/server/web/middleware"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
 )
@@ -142,8 +144,8 @@ func createGRPCServer(tlsMgr *tlsmanager.Manager, tunnelManager *tunnel.Manager,
 			Time:    60 * time.Second,
 			Timeout: 20 * time.Second,
 		}),
-		grpc.MaxRecvMsgSize(64 << 20),
-		grpc.MaxSendMsgSize(64 << 20),
+		grpc.MaxRecvMsgSize(16 << 20), // Reduced from 64MB to 16MB
+		grpc.MaxSendMsgSize(16 << 20), // Reduced from 64MB to 16MB
 	}
 
 	if tlsMgr != nil && tlsMgr.IsEnabled() {
@@ -153,6 +155,12 @@ func createGRPCServer(tlsMgr *tlsmanager.Manager, tunnelManager *tunnel.Manager,
 	grpcServer := grpc.NewServer(grpcOpts...)
 	tunnelService := grpcserver.NewTunnelService(tunnelManager, tokenService)
 	tunnelv1.RegisterTunnelServiceServer(grpcServer, tunnelService)
+
+	logger.InfoEvent().
+		Int("max_recv_mb", 16).
+		Int("max_send_mb", 16).
+		Bool("compression_enabled", true).
+		Msg("gRPC server configured with compression support")
 
 	return grpcServer
 }
@@ -202,16 +210,24 @@ func createHTTPServers(
 		apiMux.Handle("/", http.FileServer(dashboardFS))
 	}
 
+	// Wrap with logging middleware for request tracing (using configured HTTP log level)
+	apiHandlerWithLogging := middleware.HTTPLoggerWithLevel(apiHandler.CORSMiddleware(apiMux), cfg.Logging.HTTPLogLevel)
+
 	apiServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Server.APIPort),
-		Handler:      apiHandler.CORSMiddleware(apiMux),
+		Addr:    fmt.Sprintf(":%d", cfg.Server.APIPort),
+		Handler: apiHandlerWithLogging,
+		// Longer timeouts for SSE connections
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 0, // No write timeout for SSE (long-lived connections)
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// Enable TLS for API server if TLS is configured
 	if tlsMgr != nil && tlsMgr.IsEnabled() {
-		apiServer.TLSConfig = tlsMgr.GetTLSConfig()
+		tlsConfig := tlsMgr.GetTLSConfig()
+		// Disable HTTP/2 to avoid SSE compatibility issues
+		tlsConfig.NextProtos = []string{"http/1.1"}
+		apiServer.TLSConfig = tlsConfig
 	}
 
 	return httpServer, httpsServer, apiServer
@@ -305,13 +321,14 @@ func runServer() error {
 		Msg("Starting Grok server")
 
 	database, err := db.Connect(db.Config{
-		Driver:   cfg.Database.Driver,
-		Host:     cfg.Database.Host,
-		Port:     cfg.Database.Port,
-		Database: cfg.Database.Database,
-		Username: cfg.Database.Username,
-		Password: cfg.Database.Password,
-		SSLMode:  cfg.Database.SSLMode,
+		Driver:      cfg.Database.Driver,
+		Host:        cfg.Database.Host,
+		Port:        cfg.Database.Port,
+		Database:    cfg.Database.Database,
+		Username:    cfg.Database.Username,
+		Password:    cfg.Database.Password,
+		SSLMode:     cfg.Database.SSLMode,
+		SQLLogLevel: cfg.Logging.SQLLogLevel,
 	})
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to connect to database: %v", err))
@@ -346,7 +363,7 @@ func runServer() error {
 
 	router := proxy.NewRouter(tunnelManager, cfg.Server.Domain)
 	webhookRouter := proxy.NewWebhookRouter(database, tunnelManager, cfg.Server.Domain)
-	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager, database)
+	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager, database, cfg.Logging.HTTPLogLevel)
 
 	httpServer, httpsServer, apiServer := createHTTPServers(cfg, tlsMgr, httpProxy, database, tokenService, tunnelManager, webhookRouter)
 

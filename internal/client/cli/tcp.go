@@ -24,16 +24,17 @@ var tcpCmd = &cobra.Command{
 	Long: `Create a TCP tunnel to expose a local TCP service to the internet.
 
 Examples:
-  grok tcp 22                       # Tunnel SSH on port 22 (auto-generated name)
-  grok tcp 3306 --name my-db        # Named persistent tunnel
-  grok tcp localhost:5432           # Tunnel PostgreSQL with explicit host`,
+  grok tcp 22                       # Tunnel SSH on port 22 (auto-generated subdomain)
+  grok tcp 3306 --name db           # Named tunnel (recommended, min 3 chars)
+  grok tcp 5432 --name postgres     # Persistent tunnel with custom name
+  grok tcp localhost:27017          # Explicit host and port`,
 	Args: cobra.ExactArgs(1),
 	RunE: runTCPTunnel,
 }
 
 func init() {
 	rootCmd.AddCommand(tcpCmd)
-	tcpCmd.Flags().StringVarP(&tcpSavedName, "name", "n", "", "saved tunnel name (auto-generated if not provided)")
+	tcpCmd.Flags().StringVarP(&tcpSavedName, "name", "n", "", "tunnel name for persistent tunnels (min 3 chars, recommended)")
 }
 
 func runTCPTunnel(cmd *cobra.Command, args []string) error {

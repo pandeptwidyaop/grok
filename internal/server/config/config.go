@@ -65,10 +65,13 @@ type TunnelsConfig struct {
 
 // LoggingConfig holds logging settings.
 type LoggingConfig struct {
-	Level  string `mapstructure:"level"`
-	Format string `mapstructure:"format"`
-	Output string `mapstructure:"output"`
-	File   string `mapstructure:"file"`
+	Level        string `mapstructure:"level"`
+	Format       string `mapstructure:"format"`
+	Output       string `mapstructure:"output"`
+	File         string `mapstructure:"file"`
+	SQLLogLevel  string `mapstructure:"sql_log_level"`  // GORM SQL query log level: silent, error, warn, info
+	HTTPLogLevel string `mapstructure:"http_log_level"` // HTTP request log level: silent, error, warn, info
+	SSELogLevel  string `mapstructure:"sse_log_level"`  // SSE connection log level: silent, warn, info
 }
 
 // Load loads configuration from file.
@@ -161,4 +164,7 @@ func setDefaults() {
 	viper.SetDefault("logging.level", "info")
 	viper.SetDefault("logging.format", "json")
 	viper.SetDefault("logging.output", "stdout")
+	viper.SetDefault("logging.sql_log_level", "silent") // silent = no SQL query logs (use "info" to enable)
+	viper.SetDefault("logging.http_log_level", "error") // error = only log errors (use "info" to log all requests)
+	viper.SetDefault("logging.sse_log_level", "warn")   // warn = only log disconnects (use "info" to log all connects)
 }

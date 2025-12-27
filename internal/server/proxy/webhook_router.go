@@ -177,33 +177,41 @@ func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdoma
 
 	webhookSubdomain := strings.TrimSuffix(host, suffix)
 
-	// Extract org subdomain by removing "-webhook" suffix
-	// Pattern: {org}-webhook.{domain}/{app_name}/{user_webhook_path}
+	// Validate webhook subdomain format: must end with "-webhook"
+	// Pattern: {app-name}-{org-subdomain}-webhook.{domain}/{user_webhook_path}
 	if !strings.HasSuffix(webhookSubdomain, "-webhook") {
 		return "", "", "", ErrInvalidWebhookURL
 	}
-	orgSubdomain = strings.TrimSuffix(webhookSubdomain, "-webhook")
 
-	// Validate path format: must start with "/" and contain app name
-	if path == "" || !strings.HasPrefix(path, "/") {
-		return "", "", "", fmt.Errorf("invalid webhook path: must start with /")
+	// Remove "-webhook" suffix to get: {app-name}-{org-subdomain}
+	appOrgPart := strings.TrimSuffix(webhookSubdomain, "-webhook")
+
+	// Query database to find matching webhook app
+	// We need to find a webhook app where concatenating app.Name + "-" + org.Subdomain
+	// matches the appOrgPart
+	// Note: Use || for string concatenation (SQLite compatible)
+	var webhookApp models.WebhookApp
+	err = wr.db.Preload("Organization").
+		Joins("JOIN organizations ON organizations.id = webhook_apps.organization_id").
+		Where("webhook_apps.name || '-' || organizations.subdomain = ?", appOrgPart).
+		First(&webhookApp).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", "", "", fmt.Errorf("webhook app not found for subdomain: %s", webhookSubdomain)
+		}
+		return "", "", "", fmt.Errorf("failed to query webhook app: %w", err)
 	}
 
-	// Extract app name from first path segment
-	// Example: "/payment-app/stripe/callback" -> ["", "payment-app", "stripe", "callback"]
-	pathParts := strings.Split(path, "/")
-	if len(pathParts) < 2 || pathParts[1] == "" {
-		return "", "", "", fmt.Errorf("invalid webhook path: missing app name")
-	}
+	// Extract components from database result
+	appName = webhookApp.Name
+	orgSubdomain = webhookApp.Organization.Subdomain
 
-	appName = pathParts[1]
-
-	// Extract user webhook path from remaining segments
-	// Example: "/payment-app/stripe/callback" -> "/stripe/callback"
-	if len(pathParts) > 2 {
-		userPath = "/" + strings.Join(pathParts[2:], "/")
-	} else {
+	// User path is the entire request path
+	if path == "" {
 		userPath = "/"
+	} else {
+		userPath = path
 	}
 
 	return orgSubdomain, appName, userPath, nil

@@ -17,6 +17,10 @@ import {
   Alert,
   IconButton,
   Collapse,
+  AppBar,
+  Toolbar,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   LayoutDashboard,
@@ -32,6 +36,7 @@ import {
   ChevronUp,
   ChevronDown,
   Github,
+  Menu,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTunnelEvents } from '@/hooks/useSSE';
@@ -55,7 +60,14 @@ function MainLayout() {
   const { user, role, organizationName, organizationId, isSuperAdmin, isOrgAdmin, logout } =
     useAuth();
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [showUpdateDetails, setShowUpdateDetails] = useState(false);
+
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
 
   // Fetch version info
   const { data: versionInfo } = useQuery({
@@ -170,23 +182,9 @@ function MainLayout() {
       : []),
   ];
 
-  return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-      {/* Left Sidebar */}
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: DRAWER_WIDTH,
-          flexShrink: 0,
-          '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH,
-            boxSizing: 'border-box',
-            background: 'linear-gradient(180deg, #667eea 0%, #764ba2 100%)',
-            color: 'white',
-            borderRight: 'none',
-          },
-        }}
-      >
+  // Drawer content (reused for both mobile and desktop)
+  const drawerContent = (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         {/* Logo/Brand */}
         <Box sx={{ p: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
@@ -233,7 +231,12 @@ function MainLayout() {
               <ListItem key={item.id} disablePadding sx={{ mb: 1 }}>
                 <ListItemButton
                   selected={isActive}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => {
+                    navigate(item.path);
+                    if (isMobile) {
+                      setMobileOpen(false);
+                    }
+                  }}
                   sx={{
                     borderRadius: 2,
                     color: isActive ? 'white' : 'rgba(255, 255, 255, 0.7)',
@@ -416,6 +419,58 @@ function MainLayout() {
             </Box>
           </Box>
         </Box>
+    </Box>
+  );
+
+  return (
+    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      {/* Mobile App Bar */}
+      {isMobile && (
+        <AppBar
+          position="fixed"
+          sx={{
+            zIndex: theme.zIndex.drawer + 1,
+            background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
+          }}
+        >
+          <Toolbar>
+            <IconButton
+              color="inherit"
+              aria-label="open drawer"
+              edge="start"
+              onClick={handleDrawerToggle}
+              sx={{ mr: 2 }}
+            >
+              <Menu size={24} />
+            </IconButton>
+            <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+              Grok
+            </Typography>
+          </Toolbar>
+        </AppBar>
+      )}
+
+      {/* Left Sidebar - Responsive Drawer */}
+      <Drawer
+        variant={isMobile ? 'temporary' : 'permanent'}
+        open={isMobile ? mobileOpen : true}
+        onClose={handleDrawerToggle}
+        ModalProps={{
+          keepMounted: true, // Better mobile performance
+        }}
+        sx={{
+          width: DRAWER_WIDTH,
+          flexShrink: 0,
+          '& .MuiDrawer-paper': {
+            width: DRAWER_WIDTH,
+            boxSizing: 'border-box',
+            background: 'linear-gradient(180deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            borderRight: 'none',
+          },
+        }}
+      >
+        {drawerContent}
       </Drawer>
 
       {/* Main Content */}
@@ -425,7 +480,8 @@ function MainLayout() {
           flexGrow: 1,
           bgcolor: 'background.default',
           minHeight: '100vh',
-          p: 4,
+          p: { xs: 2, sm: 3, md: 4 },
+          mt: { xs: 8, md: 0 }, // Account for mobile app bar
         }}
       >
         <Routes>
