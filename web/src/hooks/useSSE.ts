@@ -1,123 +1,91 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useEffect, useState, useCallback } from 'react';
+import { sseService } from '@/services/sseService';
+import type { SSEEvent, SSEEventHandler } from '@/services/sseService';
 
-export interface SSEEvent {
-  type: string;
-  data: any;
-}
-
-export type SSEEventHandler = (event: SSEEvent) => void;
-
-export function useSSE(url: string, onMessage?: SSEEventHandler) {
+/**
+ * Hook to subscribe to SSE events using the global SSE service
+ * No longer creates/destroys EventSource on mount/unmount
+ * Instead, subscribes/unsubscribes to the global connection
+ *
+ * @param eventType - Event type to listen for (e.g., 'tunnel_created', '*' for all)
+ * @param onMessage - Callback when event is received
+ * @returns Connection status
+ */
+export function useSSE(eventType: string = '*', onMessage?: SSEEventHandler) {
   const [isConnected, setIsConnected] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const { isAuthenticated } = useAuth();
 
-  const connect = useCallback(() => {
-    if (!isAuthenticated) {
-      setIsConnected(false);
-      return;
-    }
-
-    // Clear any existing connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-
-    // Build full URL
-    const baseURL = import.meta.env.VITE_API_URL || '';
-    const fullURL = `${baseURL}${url}`;
-
-    console.log('[SSE] Connecting to:', fullURL);
-
-    try {
-      // Create EventSource with credentials
-      const eventSource = new EventSource(fullURL, {
-        withCredentials: true,
-      });
-
-      eventSourceRef.current = eventSource;
-
-      eventSource.onopen = () => {
-        console.log('[SSE] Connection established');
-        setIsConnected(true);
-        setError(null);
-        reconnectAttemptsRef.current = 0; // Reset reconnect counter on success
-      };
-
-      eventSource.onerror = (err) => {
-        console.error('[SSE] Connection error:', err);
-        setIsConnected(false);
-
-        // Close the failed connection
-        eventSource.close();
-
-        // Implement exponential backoff for reconnection
-        const maxAttempts = 5;
-        const baseDelay = 1000; // 1 second
-        const maxDelay = 30000; // 30 seconds
-
-        if (reconnectAttemptsRef.current < maxAttempts) {
-          const delay = Math.min(
-            baseDelay * Math.pow(2, reconnectAttemptsRef.current),
-            maxDelay
-          );
-
-          console.log(`[SSE] Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current + 1}/${maxAttempts})`);
-
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectAttemptsRef.current++;
-            connect();
-          }, delay);
-        } else {
-          console.error('[SSE] Max reconnection attempts reached');
-          setError(new Error('SSE connection failed after multiple attempts'));
-        }
-      };
-
-      eventSource.onmessage = (event) => {
-        try {
-          const data: SSEEvent = JSON.parse(event.data);
-          onMessage?.(data);
-        } catch (err) {
-          console.error('[SSE] Failed to parse event data:', err);
-        }
-      };
-    } catch (err) {
-      console.error('[SSE] Failed to create EventSource:', err);
-      setError(err as Error);
-    }
-  }, [url, isAuthenticated, onMessage]);
+  // Memoize the message handler to prevent unnecessary re-subscriptions
+  const handleMessage = useCallback((event: SSEEvent) => {
+    onMessage?.(event);
+  }, [onMessage]);
 
   useEffect(() => {
-    connect();
-
-    return () => {
-      // Cleanup on unmount
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+    // Update connection status when connected/disconnected
+    const handleConnectionChange = (event: SSEEvent) => {
+      if (event.type === '_connected') {
+        setIsConnected(true);
+        setError(null);
+      } else if (event.type === '_disconnected') {
+        setIsConnected(false);
       }
     };
-  }, [connect]);
+
+    // Subscribe to connection status changes
+    const unsubscribeStatus = sseService.subscribe('_connected', handleConnectionChange);
+    const unsubscribeDisconnect = sseService.subscribe('_disconnected', handleConnectionChange);
+
+    // Subscribe to the specific event type or all events
+    const unsubscribe = sseService.subscribe(eventType, handleMessage);
+
+    // Set initial connection status
+    setIsConnected(sseService.isConnected());
+
+    // Cleanup: unsubscribe when component unmounts
+    // IMPORTANT: This does NOT close the EventSource, just removes this component's listeners
+    return () => {
+      unsubscribe();
+      unsubscribeStatus();
+      unsubscribeDisconnect();
+    };
+  }, [eventType, handleMessage]);
 
   return { isConnected, error };
 }
 
-// Hook specifically for tunnel events
+/**
+ * Hook specifically for tunnel events
+ * Listens to all tunnel-related events (created, updated, deleted)
+ */
 export function useTunnelEvents(onTunnelEvent: SSEEventHandler) {
-  return useSSE('/api/sse', onTunnelEvent);
+  // Listen to all events and filter for tunnel events
+  const handleEvent = useCallback((event: SSEEvent) => {
+    if (event.type.startsWith('tunnel_') || event.type.includes('tunnel')) {
+      onTunnelEvent(event);
+    }
+  }, [onTunnelEvent]);
+
+  return useSSE('*', handleEvent);
 }
 
-// Hook for all real-time events (tunnels, webhooks, etc.)
-// Use this when you need to listen to all event types
+/**
+ * Hook for all real-time events
+ * Use this when you need to listen to all event types
+ */
 export function useAllEvents(onEvent: SSEEventHandler) {
-  return useSSE('/api/sse', onEvent);
+  return useSSE('*', onEvent);
 }
+
+/**
+ * Hook to listen to a specific event type only
+ * More efficient than useAllEvents when you only care about one type
+ */
+export function useSSEEvent(eventType: string, onEvent: SSEEventHandler) {
+  return useSSE(eventType, onEvent);
+}
+
+/**
+ * Export SSE service for manual control if needed
+ */
+export { sseService };
+export type { SSEEvent, SSEEventHandler };

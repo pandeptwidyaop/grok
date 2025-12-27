@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	_ "google.golang.org/grpc/encoding/gzip" // Register gzip compressor
 	"google.golang.org/grpc/keepalive"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
@@ -164,9 +165,9 @@ func (c *Client) createGRPCDialOptions() ([]grpc.DialOption, error) {
 			PermitWithoutStream: true,
 		}),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(64<<20),
-			grpc.MaxCallSendMsgSize(64<<20),
-			grpc.UseCompressor(""),
+			grpc.MaxCallRecvMsgSize(16<<20), // Reduced from 64MB to 16MB
+			grpc.MaxCallSendMsgSize(16<<20), // Reduced from 64MB to 16MB
+			grpc.UseCompressor("gzip"),      // ✅ Enable gzip compression
 		),
 	}
 
@@ -185,6 +186,12 @@ func (c *Client) createGRPCDialOptions() ([]grpc.DialOption, error) {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		logger.WarnEvent().Msg("Connecting without TLS (insecure)")
 	}
+
+	logger.InfoEvent().
+		Int("max_recv_mb", 16).
+		Int("max_send_mb", 16).
+		Str("compression", "gzip").
+		Msg("gRPC client configured with compression enabled")
 
 	return opts, nil
 }

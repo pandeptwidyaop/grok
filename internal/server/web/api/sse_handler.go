@@ -26,22 +26,24 @@ type SSEClient struct {
 
 // SSEBroker manages SSE connections and broadcasts events
 type SSEBroker struct {
-	clients    map[string]*SSEClient
-	clientsMu  sync.RWMutex
-	register   chan *SSEClient
-	unregister chan *SSEClient
-	broadcast  chan SSEEvent
-	done       chan struct{}
+	clients     map[string]*SSEClient
+	clientsMu   sync.RWMutex
+	register    chan *SSEClient
+	unregister  chan *SSEClient
+	broadcast   chan SSEEvent
+	done        chan struct{}
+	sseLogLevel string // SSE connection log level: silent, warn, info
 }
 
 // NewSSEBroker creates a new SSE broker
-func NewSSEBroker() *SSEBroker {
+func NewSSEBroker(sseLogLevel string) *SSEBroker {
 	broker := &SSEBroker{
-		clients:    make(map[string]*SSEClient),
-		register:   make(chan *SSEClient),
-		unregister: make(chan *SSEClient),
-		broadcast:  make(chan SSEEvent, 100), // Buffer for 100 events
-		done:       make(chan struct{}),
+		clients:     make(map[string]*SSEClient),
+		register:    make(chan *SSEClient),
+		unregister:  make(chan *SSEClient),
+		broadcast:   make(chan SSEEvent, 100), // Buffer for 100 events
+		done:        make(chan struct{}),
+		sseLogLevel: sseLogLevel,
 	}
 
 	go broker.run()
@@ -59,10 +61,13 @@ func (b *SSEBroker) run() {
 			b.clientsMu.Lock()
 			b.clients[client.ID] = client
 			b.clientsMu.Unlock()
-			logger.InfoEvent().
-				Str("client_id", client.ID).
-				Int("total_clients", len(b.clients)).
-				Msg("SSE client connected")
+			// Only log if level is info
+			if b.sseLogLevel == "info" {
+				logger.InfoEvent().
+					Str("client_id", client.ID).
+					Int("total_clients", len(b.clients)).
+					Msg("SSE client connected")
+			}
 
 		case client := <-b.unregister:
 			b.clientsMu.Lock()
@@ -71,10 +76,13 @@ func (b *SSEBroker) run() {
 				close(client.Channel)
 			}
 			b.clientsMu.Unlock()
-			logger.InfoEvent().
-				Str("client_id", client.ID).
-				Int("total_clients", len(b.clients)).
-				Msg("SSE client disconnected")
+			// Log disconnects at warn level or higher
+			if b.sseLogLevel == "warn" || b.sseLogLevel == "info" {
+				logger.InfoEvent().
+					Str("client_id", client.ID).
+					Int("total_clients", len(b.clients)).
+					Msg("SSE client disconnected")
+			}
 
 		case event := <-b.broadcast:
 			b.clientsMu.RLock()

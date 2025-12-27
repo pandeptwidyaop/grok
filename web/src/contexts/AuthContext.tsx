@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { sseService } from '@/services/sseService';
 
 type UserRole = 'super_admin' | 'org_admin' | 'org_user' | null;
 
@@ -70,6 +71,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     fetchCSRFToken();
   }, [user, csrfToken]);
+
+  // Initialize SSE service when user authenticates
+  useEffect(() => {
+    if (user) {
+      // User is authenticated, initialize SSE connection
+      sseService.init(true);
+    } else {
+      // User is not authenticated, disconnect SSE
+      sseService.disconnect();
+    }
+  }, [user]);
 
   const login = async (username: string, password: string, otpCode?: string): Promise<LoginResponse> => {
     const response = await fetch('/api/auth/login', {

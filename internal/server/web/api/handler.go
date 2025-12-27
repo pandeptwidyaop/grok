@@ -43,7 +43,7 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 		authMW:        middleware.NewAuthMiddleware(cfg.Auth.JWTSecret),
 		rateLimiter:   middleware.NewRateLimiter(0.5, 3), // 1 request per 2 seconds, burst of 3
 		csrf:          middleware.NewCSRFProtection(),
-		sseBroker:     NewSSEBroker(),
+		sseBroker:     NewSSEBroker(cfg.Logging.SSELogLevel),
 	}
 
 	// Subscribe to tunnel events and broadcast via SSE

@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	_ "google.golang.org/grpc/encoding/gzip" // Register gzip compressor
 	"google.golang.org/grpc/keepalive"
 	"gorm.io/gorm"
 
@@ -143,8 +144,8 @@ func createGRPCServer(tlsMgr *tlsmanager.Manager, tunnelManager *tunnel.Manager,
 			Time:    60 * time.Second,
 			Timeout: 20 * time.Second,
 		}),
-		grpc.MaxRecvMsgSize(64 << 20),
-		grpc.MaxSendMsgSize(64 << 20),
+		grpc.MaxRecvMsgSize(16 << 20), // Reduced from 64MB to 16MB
+		grpc.MaxSendMsgSize(16 << 20), // Reduced from 64MB to 16MB
 	}
 
 	if tlsMgr != nil && tlsMgr.IsEnabled() {
@@ -154,6 +155,12 @@ func createGRPCServer(tlsMgr *tlsmanager.Manager, tunnelManager *tunnel.Manager,
 	grpcServer := grpc.NewServer(grpcOpts...)
 	tunnelService := grpcserver.NewTunnelService(tunnelManager, tokenService)
 	tunnelv1.RegisterTunnelServiceServer(grpcServer, tunnelService)
+
+	logger.InfoEvent().
+		Int("max_recv_mb", 16).
+		Int("max_send_mb", 16).
+		Bool("compression_enabled", true).
+		Msg("gRPC server configured with compression support")
 
 	return grpcServer
 }
@@ -203,8 +210,8 @@ func createHTTPServers(
 		apiMux.Handle("/", http.FileServer(dashboardFS))
 	}
 
-	// Wrap with logging middleware for request tracing
-	apiHandlerWithLogging := middleware.HTTPLogger(apiHandler.CORSMiddleware(apiMux))
+	// Wrap with logging middleware for request tracing (using configured HTTP log level)
+	apiHandlerWithLogging := middleware.HTTPLoggerWithLevel(apiHandler.CORSMiddleware(apiMux), cfg.Logging.HTTPLogLevel)
 
 	apiServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.APIPort),
@@ -356,7 +363,7 @@ func runServer() error {
 
 	router := proxy.NewRouter(tunnelManager, cfg.Server.Domain)
 	webhookRouter := proxy.NewWebhookRouter(database, tunnelManager, cfg.Server.Domain)
-	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager, database)
+	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager, database, cfg.Logging.HTTPLogLevel)
 
 	httpServer, httpsServer, apiServer := createHTTPServers(cfg, tlsMgr, httpProxy, database, tokenService, tunnelManager, webhookRouter)
 

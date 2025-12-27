@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
@@ -33,15 +34,17 @@ type HTTPProxy struct {
 	webhookRouter *WebhookRouter
 	tunnelManager *tunnel.Manager
 	db            *gorm.DB
+	httpLogLevel  string // HTTP request log level: silent, error, warn, info
 }
 
 // NewHTTPProxy creates a new HTTP proxy.
-func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager, db *gorm.DB) *HTTPProxy {
+func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager, db *gorm.DB, httpLogLevel string) *HTTPProxy {
 	return &HTTPProxy{
 		router:        router,
 		webhookRouter: webhookRouter,
 		tunnelManager: tunnelManager,
 		db:            db,
+		httpLogLevel:  httpLogLevel,
 	}
 }
 
@@ -111,18 +114,33 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// Log request
+	// Log request based on configured level
 	duration := time.Since(start)
-	logger.InfoEvent().
-		Str("tunnel_id", tun.ID.String()).
-		Str("subdomain", tun.Subdomain).
-		Str("method", r.Method).
-		Str("path", r.URL.Path).
-		Int("status", int(resp.StatusCode)).
-		Dur("duration", duration).
-		Int64("bytes_in", reqBytes).
-		Int64("bytes_out", respBytes).
-		Msg("Request proxied")
+	statusCode := int(resp.StatusCode)
+
+	shouldLog := p.shouldLogHTTPRequest(statusCode)
+	if shouldLog {
+		// Choose log level based on status code
+		var logEvent *zerolog.Event
+		if statusCode >= 500 {
+			logEvent = logger.ErrorEvent()
+		} else if statusCode >= 400 {
+			logEvent = logger.WarnEvent()
+		} else {
+			logEvent = logger.InfoEvent()
+		}
+
+		logEvent.
+			Str("tunnel_id", tun.ID.String()).
+			Str("subdomain", tun.Subdomain).
+			Str("method", r.Method).
+			Str("path", r.URL.Path).
+			Int("status", statusCode).
+			Dur("duration", duration).
+			Int64("bytes_in", reqBytes).
+			Int64("bytes_out", respBytes).
+			Msg("Request proxied")
+	}
 
 	// Save request log to database (async)
 	go p.saveRequestLog(tun.ID, r, int(resp.StatusCode), duration, reqBytes, respBytes)
@@ -624,6 +642,22 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 		Str("request_id", requestID).
 		Str("tunnel_id", tun.ID.String()).
 		Msg("WebSocket connection closed")
+}
+
+// shouldLogHTTPRequest determines if HTTP request should be logged based on configured level
+func (p *HTTPProxy) shouldLogHTTPRequest(statusCode int) bool {
+	switch p.httpLogLevel {
+	case "silent":
+		return false
+	case "error":
+		return statusCode >= 500
+	case "warn":
+		return statusCode >= 400
+	case "info":
+		return true
+	default:
+		return true // Default to logging everything
+	}
 }
 
 // HealthCheckHandler returns a simple health check handler.

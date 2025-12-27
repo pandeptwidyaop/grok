@@ -34,7 +34,13 @@ func (rw *responseWriter) Flush() {
 }
 
 // HTTPLogger logs all HTTP requests with detailed information
+// logLevel controls what gets logged: "silent", "error" (4xx+5xx), "warn" (4xx+5xx), "info" (all requests)
 func HTTPLogger(next http.Handler) http.Handler {
+	return HTTPLoggerWithLevel(next, "info") // Default to info for backward compatibility
+}
+
+// HTTPLoggerWithLevel logs HTTP requests based on configured level
+func HTTPLoggerWithLevel(next http.Handler, logLevel string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
@@ -60,14 +66,54 @@ func HTTPLogger(next http.Handler) http.Handler {
 		// Calculate duration
 		duration := time.Since(start)
 
-		// Choose log level based on status code
+		// Determine if we should log based on configured level
+		shouldLog := false
 		var logEvent *zerolog.Event
-		if rw.statusCode >= 500 {
-			logEvent = logger.ErrorEvent()
-		} else if rw.statusCode >= 400 {
-			logEvent = logger.WarnEvent()
-		} else {
-			logEvent = logger.InfoEvent()
+
+		switch logLevel {
+		case "silent":
+			// Don't log anything
+			shouldLog = false
+		case "error":
+			// Only log 5xx errors
+			if rw.statusCode >= 500 {
+				shouldLog = true
+				logEvent = logger.ErrorEvent()
+			}
+		case "warn":
+			// Log 4xx and 5xx
+			if rw.statusCode >= 400 {
+				shouldLog = true
+				if rw.statusCode >= 500 {
+					logEvent = logger.ErrorEvent()
+				} else {
+					logEvent = logger.WarnEvent()
+				}
+			}
+		case "info":
+			// Log everything with appropriate level
+			shouldLog = true
+			if rw.statusCode >= 500 {
+				logEvent = logger.ErrorEvent()
+			} else if rw.statusCode >= 400 {
+				logEvent = logger.WarnEvent()
+			} else {
+				logEvent = logger.InfoEvent()
+			}
+		default:
+			// Default to info level
+			shouldLog = true
+			if rw.statusCode >= 500 {
+				logEvent = logger.ErrorEvent()
+			} else if rw.statusCode >= 400 {
+				logEvent = logger.WarnEvent()
+			} else {
+				logEvent = logger.InfoEvent()
+			}
+		}
+
+		if !shouldLog {
+			return
 		}
 
 		// Build log event with all details
