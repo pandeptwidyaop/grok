@@ -1,3 +1,9 @@
+## [1.0.0-alpha.14](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.13...v1.0.0-alpha.14) (2025-12-27)
+
+### Features
+
+* **cli:** enhance version command with runtime information ([cf3443f](https://github.com/pandeptwidyaop/grok/commit/cf3443f72e0879b939566bbd782e87b92004fd6f))
+
 ## [1.0.0-alpha.13](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.12...v1.0.0-alpha.13) (2025-12-27)
 
 ### Features
