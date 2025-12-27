@@ -1,3 +1,16 @@
+## [1.1.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.1...v1.1.0-alpha.2) (2025-12-27)
+
+### Features
+
+* **cli:** add static file server command with directory listing ([ad2e23e](https://github.com/pandeptwidyaop/grok/commit/ad2e23e679b694db84fa6e1a5da0f49b3e84ecf7))
+* **client:** add real-time monitoring dashboard with SSE and React UI ([51bc303](https://github.com/pandeptwidyaop/grok/commit/51bc303c7836650d1344e8f298acfa127709c27d))
+* **server:** add content negotiation and JSON support for error pages ([303cb6f](https://github.com/pandeptwidyaop/grok/commit/303cb6fc9d2a7377073622e9f41fa5b4a39ba7b5))
+* **server:** add HTML error pages for tunnel not found and invalid webhook ([34834f8](https://github.com/pandeptwidyaop/grok/commit/34834f8c623b294e6c3308a16e6021603cc68ec0))
+
+### Bug Fixes
+
+* **dashboard:** show "Show all tunnels" switch when no active tunnels ([3021a91](https://github.com/pandeptwidyaop/grok/commit/3021a912ae31a10c88d52a527d7208dd47ee27e3))
+
 ## [1.1.0-alpha.1](https://github.com/pandeptwidyaop/grok/compare/v1.0.0...v1.1.0-alpha.1) (2025-12-27)
 
 ### Features
