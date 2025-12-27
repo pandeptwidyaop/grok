@@ -28,6 +28,7 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	"github.com/pandeptwidyaop/grok/internal/server/web"
 	"github.com/pandeptwidyaop/grok/internal/server/web/api"
+	"github.com/pandeptwidyaop/grok/internal/server/web/middleware"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
 )
@@ -202,9 +203,12 @@ func createHTTPServers(
 		apiMux.Handle("/", http.FileServer(dashboardFS))
 	}
 
+	// Wrap with logging middleware for request tracing
+	apiHandlerWithLogging := middleware.HTTPLogger(apiHandler.CORSMiddleware(apiMux))
+
 	apiServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.APIPort),
-		Handler: apiHandler.CORSMiddleware(apiMux),
+		Handler: apiHandlerWithLogging,
 		// Longer timeouts for SSE connections
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 0, // No write timeout for SSE (long-lived connections)

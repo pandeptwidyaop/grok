@@ -14,9 +14,8 @@ export default defineConfig({
     port: 5173, // Vite default port (avoid conflict with API)
     proxy: {
       '/api': {
-        target: 'https://cloudtunnel.id:4040', // HTTPS API server
+        target: 'http://localhost:4040', // Local HTTP API server (change to https://cloudtunnel.id:4040 for production)
         changeOrigin: true,
-        secure: false, // Accept self-signed certificates in development
         ws: true, // Enable WebSocket proxying for SSE
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {
