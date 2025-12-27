@@ -1,3 +1,9 @@
+## [1.1.0-alpha.4](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.3...v1.1.0-alpha.4) (2025-12-27)
+
+### Bug Fixes
+
+* resolve data races in dashboard, fileserver, and SSE handler ([de4e6c5](https://github.com/pandeptwidyaop/grok/commit/de4e6c57581ed1affd5351d9cb7ec20dc11010f5))
+
 ## [1.1.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.2...v1.1.0-alpha.3) (2025-12-27)
 
 ### Bug Fixes
