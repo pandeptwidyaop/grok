@@ -213,6 +213,12 @@ func (s *Server) processEvents() {
 			s.requestStore.RecordStart(event)
 			s.metricsAgg.RecordRequestStart()
 
+			// Broadcast to SSE clients
+			s.sseBroker.Broadcast(SSEEvent{
+				Type: "request_started",
+				Data: event.Data,
+			})
+
 		case events.EventRequestCompleted:
 			s.requestStore.RecordCompletion(event)
 			s.metricsAgg.RecordRequestEnd(event)

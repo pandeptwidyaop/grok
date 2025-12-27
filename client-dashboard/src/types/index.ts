@@ -50,8 +50,17 @@ export interface MetricsSnapshot {
 
 // SSEEvent represents a server-sent event
 export interface SSEEvent {
-  type: 'request_completed' | 'connection_established' | 'connection_lost' | 'metrics_update' | 'connected';
-  data: RequestCompletedData | TunnelStatus | MetricsSnapshot | ConnectedData;
+  type: 'request_started' | 'request_completed' | 'connection_established' | 'connection_lost' | 'metrics_update' | 'connected';
+  data: RequestStartedData | RequestCompletedData | TunnelStatus | MetricsSnapshot | ConnectedData;
+}
+
+export interface RequestStartedData {
+  request_id: string;
+  method: string;
+  path: string;
+  remote_addr: string;
+  protocol: string;
+  headers?: Record<string, string>;
 }
 
 export interface RequestCompletedData {

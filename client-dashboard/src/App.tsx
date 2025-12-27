@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { Container, Box, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { useSSEConnection } from './hooks/useSSE';
+import { sseService } from './services/sseService';
 import api from './services/api';
 import ConnectionStatus from './components/ConnectionStatus';
 import RequestLog from './components/RequestLog';
@@ -8,6 +10,18 @@ import PerformanceCharts from './components/PerformanceCharts';
 
 function App() {
   const sseConnected = useSSEConnection();
+
+  // Initialize SSE connection on mount
+  useEffect(() => {
+    console.log('[App] Initializing SSE connection...');
+    sseService.connect();
+
+    // Cleanup on unmount
+    return () => {
+      console.log('[App] Disconnecting SSE...');
+      sseService.disconnect();
+    };
+  }, []);
 
   // Fetch tunnel status
   const { data: tunnelStatus } = useQuery({

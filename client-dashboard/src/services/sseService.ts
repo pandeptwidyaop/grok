@@ -79,6 +79,7 @@ class SSEService {
     // Specific event handlers
     const eventTypes = [
       'connected',
+      'request_started',
       'request_completed',
       'connection_established',
       'connection_lost',
