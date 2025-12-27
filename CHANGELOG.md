@@ -29,6 +29,18 @@
 
 * fix all linting issues and reduce cyclomatic complexity ([6180e61](https://github.com/pandeptwidyaop/grok/commit/6180e61cb7a8cd30c8829d43c38a41a032bb1380))
 
+## [1.1.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.2...v1.1.0-alpha.3) (2025-12-27)
+
+### Bug Fixes
+
+* **cli:** add dashboard support to serve command ([40fad13](https://github.com/pandeptwidyaop/grok/commit/40fad13abdc6dbc17299e879511671bf2fca1068))
+* **dashboard:** enable real-time SSE updates for request log ([5da55d7](https://github.com/pandeptwidyaop/grok/commit/5da55d720e2d50e6d8c697137dda9f38d2340a83))
+* **fileserver:** fix parent directory (..) navigation in directory listing ([20239af](https://github.com/pandeptwidyaop/grok/commit/20239afe05fb1b36ff30ad7c3077005d05da0470))
+
+### Code Refactoring
+
+* fix all linting issues and reduce cyclomatic complexity ([6180e61](https://github.com/pandeptwidyaop/grok/commit/6180e61cb7a8cd30c8829d43c38a41a032bb1380))
+
 ## [1.1.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.1...v1.1.0-alpha.2) (2025-12-27)
 
 ### Features
