@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 
 type UserRole = 'super_admin' | 'org_admin' | 'org_user' | null;
@@ -47,6 +47,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [organizationName, setOrganizationName] = useState<string | null>(() => {
     return sessionStorage.getItem('auth_org_name');
   });
+
+  // Fetch CSRF token on mount if user is already authenticated
+  useEffect(() => {
+    const fetchCSRFToken = async () => {
+      // Only fetch if user is authenticated but we don't have a CSRF token
+      if (user && !csrfToken) {
+        try {
+          const csrfResponse = await fetch('/api/auth/csrf', {
+            credentials: 'include',
+          });
+          if (csrfResponse.ok) {
+            const csrfData = await csrfResponse.json();
+            setCSRFToken(csrfData.csrf_token);
+            window._csrfToken = csrfData.csrf_token;
+          }
+        } catch (error) {
+          console.error('Failed to fetch CSRF token:', error);
+        }
+      }
+    };
+
+    fetchCSRFToken();
+  }, [user, csrfToken]);
 
   const login = async (username: string, password: string, otpCode?: string): Promise<LoginResponse> => {
     const response = await fetch('/api/auth/login', {
