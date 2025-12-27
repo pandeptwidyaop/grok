@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
@@ -50,6 +51,14 @@ const (
 	// ChunkSize is the size of each chunk for streaming large responses (4MB).
 	ChunkSize = 4 * 1024 * 1024
 )
+
+// httpChunkedBufferPool pools 4MB buffers for chunked HTTP responses to reduce GC pressure.
+var httpChunkedBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, ChunkSize) // 4MB
+		return &buf
+	},
+}
 
 // Forward forwards a gRPC HTTP request to local service.
 // For small responses, returns complete response. For large responses, this is deprecated - use ForwardChunked.
@@ -190,8 +199,11 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 		Int("status", httpResp.StatusCode).
 		Msg("Received response from local service, streaming in chunks")
 
-	// Read and send response body in chunks
-	buffer := make([]byte, ChunkSize)
+	// Get buffer from pool
+	bufPtr := httpChunkedBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
+	buffer := *bufPtr
+	defer httpChunkedBufferPool.Put(bufPtr)
+
 	totalBytes := 0
 
 	for {

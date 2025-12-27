@@ -23,6 +23,14 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/utils"
 )
 
+// wsServerBufferPool pools 32KB buffers for WebSocket read operations to reduce GC pressure.
+var wsServerBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32*1024) // 32KB
+		return &buf
+	},
+}
+
 const (
 	// DefaultRequestTimeout is the default timeout for proxied requests.
 	DefaultRequestTimeout = 30 * time.Second
@@ -613,7 +621,12 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 	// Client -> Tunnel (read from HTTP connection, send to gRPC stream)
 	go func() {
 		defer wg.Done()
-		buffer := make([]byte, 32*1024) // 32KB buffer
+
+		// Get buffer from pool
+		bufPtr := wsServerBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
+		buffer := *bufPtr
+		defer wsServerBufferPool.Put(bufPtr)
+
 		sequence := int64(0)
 
 		for {
@@ -628,8 +641,10 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 
 			if n > 0 {
 				// Send data to tunnel via gRPC stream
+				// CRITICAL: Must copy buffer data before sending to avoid data corruption
+				// when buffer is reused in next Read() iteration
 				tcpData := &tunnelv1.TCPData{
-					Data:     buffer[:n],
+					Data:     append([]byte(nil), buffer[:n]...),
 					Sequence: sequence,
 				}
 				sequence++
