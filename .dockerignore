@@ -1,0 +1,75 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+
+# Documentation
+*.md
+docs/
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+*.test
+coverage.out
+coverage.html
+
+# Dependencies
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+logs/
+
+# Certificates (use mounted volumes in production)
+certs/*.crt
+certs/*.key
+certs/*.pem
+
+# Config (use environment-specific configs)
+configs/*.yaml
+!configs/server.example.yaml
+
+# Web development
+web/node_modules/
+web/dist/
+web/.vite/
+# Keep package-lock.json for Docker builds (npm ci requires it)
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Backup files
+*.bak
+*.bak2
+
+# Tests
+tests/

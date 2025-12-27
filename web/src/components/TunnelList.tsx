@@ -1,76 +1,99 @@
-import { useQuery } from '@tanstack/react-query';
-import { api, type Tunnel } from '@/lib/api';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
-  TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Globe, Activity, ArrowUpDown } from 'lucide-react';
+  Chip,
+  IconButton,
+  Tooltip,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  DialogContentText,
+} from '@mui/material';
+import { Globe, Copy, Check, Trash2, Eye, Circle } from 'lucide-react';
+import { api, type Tunnel } from '@/lib/api';
+import { toast } from 'sonner';
 
 function TunnelList() {
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [tunnelToDelete, setTunnelToDelete] = useState<Tunnel | null>(null);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
   const { data: tunnels, isLoading } = useQuery({
     queryKey: ['tunnels'],
     queryFn: async () => {
       const response = await api.tunnels.list();
       return response.data;
     },
-    refetchInterval: 3000, // Refresh every 3 seconds
   });
 
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.tunnels.delete(id),
+    onSuccess: () => {
+      queryClient.refetchQueries({ queryKey: ['tunnels'] });
+      queryClient.refetchQueries({ queryKey: ['stats'] });
+      toast.success('Tunnel deleted successfully');
+      setDeleteDialogOpen(false);
+      setTunnelToDelete(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to delete tunnel');
+    },
+  });
+
+  const handleCopyUrl = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopiedUrl(url);
+    toast.success('URL copied to clipboard');
+    setTimeout(() => setCopiedUrl(null), 2000);
   };
 
-  const formatDate = (date: string) => {
-    if (!date) return 'N/A';
-    const d = new Date(date);
-    return isNaN(d.getTime()) ? 'N/A' : d.toLocaleString();
+  const handleDeleteClick = (tunnel: Tunnel) => {
+    setTunnelToDelete(tunnel);
+    setDeleteDialogOpen(true);
   };
 
-  const getStatusBadge = (status: string) => {
-    if (!status) return <Badge variant="outline">Unknown</Badge>;
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setTunnelToDelete(null);
+  };
 
-    switch (status.toLowerCase()) {
-      case 'active':
-        return <Badge variant="default">Active</Badge>;
-      case 'inactive':
-        return <Badge variant="secondary">Inactive</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+  const handleDeleteConfirm = () => {
+    if (tunnelToDelete) {
+      deleteMutation.mutate(tunnelToDelete.id);
     }
   };
 
-  const getTypeBadge = (type: string) => {
-    if (!type) return <Badge>Unknown</Badge>;
-
-    const colors: Record<string, string> = {
-      http: 'bg-blue-500',
-      https: 'bg-green-500',
-      tcp: 'bg-purple-500',
-    };
-    return (
-      <Badge className={colors[type.toLowerCase()] || ''}>
-        {type.toUpperCase()}
-      </Badge>
-    );
+  const handleViewDetails = (tunnelId: string) => {
+    navigate(`/tunnels/${tunnelId}`);
   };
 
   if (isLoading) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Active Tunnels</CardTitle>
-          <CardDescription>Loading tunnels...</CardDescription>
-        </CardHeader>
+        <CardContent sx={{ py: 8 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <CircularProgress />
+            <Typography variant="body2" color="text.secondary">
+              Loading tunnels...
+            </Typography>
+          </Box>
+        </CardContent>
       </Card>
     );
   }
@@ -78,89 +101,266 @@ function TunnelList() {
   if (!tunnels || tunnels.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Active Tunnels</CardTitle>
-          <CardDescription>
-            No active tunnels. Start a tunnel with the Grok client.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <Globe className="h-16 w-16 mx-auto mb-4 opacity-50" />
-            <p className="text-lg mb-2">No tunnels running</p>
-            <p className="text-sm">
-              Run <code className="bg-muted px-2 py-1 rounded">grok http 3000</code>{' '}
-              to create your first tunnel
-            </p>
-          </div>
+        <CardContent sx={{ py: 4 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Active Tunnels
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              No active tunnels. Start a tunnel using the CLI client.
+            </Typography>
+          </Box>
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Active Tunnels</CardTitle>
-        <CardDescription>
-          {tunnels.length} tunnel{tunnels.length !== 1 ? 's' : ''} currently active
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Type</TableHead>
-              <TableHead>Public URL</TableHead>
-              <TableHead>Local Address</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Requests</TableHead>
-              <TableHead className="text-right">Data In/Out</TableHead>
-              <TableHead>Connected</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tunnels.map((tunnel: Tunnel) => (
-              <TableRow key={tunnel.id}>
-                <TableCell>{getTypeBadge(tunnel.tunnel_type)}</TableCell>
-                <TableCell>
-                  <a
-                    href={tunnel.public_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline flex items-center gap-2"
+    <Box>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, color: '#667eea', mb: 1 }}>
+          Tunnels
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Manage your active and persistent tunnels
+        </Typography>
+      </Box>
+
+      <Card>
+        <CardContent sx={{ py: 4 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Active Tunnels
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {tunnels.length} tunnel{tunnels.length !== 1 ? 's' : ''} running
+            </Typography>
+          </Box>
+
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 600 }}>Tunnel</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Organization</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Owner</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Local Address</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Public URL</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>
+                    Actions
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {tunnels.map((tunnel) => (
+                  <TableRow
+                    key={tunnel.id}
+                    hover
+                    sx={{
+                      cursor: 'pointer',
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                      },
+                    }}
                   >
-                    {tunnel.public_url}
-                    <Globe className="h-4 w-4" />
-                  </a>
-                </TableCell>
-                <TableCell>
-                  <code className="text-sm">{tunnel.local_addr}</code>
-                </TableCell>
-                <TableCell>{getStatusBadge(tunnel.status)}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Activity className="h-4 w-4 text-muted-foreground" />
-                    {(tunnel.requests_count ?? 0).toLocaleString()}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex flex-col items-end text-sm">
-                    <div className="flex items-center gap-1">
-                      <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
-                      {formatBytes(tunnel.bytes_in ?? 0)} / {formatBytes(tunnel.bytes_out ?? 0)}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="text-sm text-muted-foreground">
-                  {formatDate(tunnel.connected_at)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      <Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Globe size={16} style={{ color: '#667eea' }} />
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {tunnel.saved_name || tunnel.subdomain}
+                          </Typography>
+                        </Box>
+                        {tunnel.saved_name && tunnel.tunnel_type?.toLowerCase() !== 'tcp' && tunnel.subdomain !== 'pending-allocation' && (
+                          <Typography variant="caption" color="text.secondary" sx={{ ml: 3 }}>
+                            {tunnel.subdomain}
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      <Chip
+                        label={tunnel.tunnel_type?.toUpperCase() || 'HTTP'}
+                        size="small"
+                        variant="outlined"
+                        color={tunnel.tunnel_type?.toLowerCase() === 'tcp' ? 'secondary' : 'primary'}
+                        sx={{ fontWeight: 500 }}
+                      />
+                    </TableCell>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      {tunnel.organization_name ? (
+                        <Chip
+                          label={tunnel.organization_name}
+                          color="secondary"
+                          variant="outlined"
+                          size="small"
+                          sx={{ fontWeight: 500 }}
+                        />
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          —
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {tunnel.owner_name || '—'}
+                        </Typography>
+                        {tunnel.owner_email && (
+                          <Typography variant="caption" color="text.secondary">
+                            {tunnel.owner_email}
+                          </Typography>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      <Chip
+                        icon={
+                          <Circle
+                            size={8}
+                            fill={tunnel.status === 'active' ? '#4caf50' : '#9e9e9e'}
+                            color={tunnel.status === 'active' ? '#4caf50' : '#9e9e9e'}
+                          />
+                        }
+                        label={tunnel.status === 'active' ? 'online' : 'offline'}
+                        variant="outlined"
+                        size="small"
+                        sx={{
+                          fontWeight: 500,
+                          borderColor: tunnel.status === 'active' ? '#4caf50' : '#9e9e9e',
+                          color: tunnel.status === 'active' ? '#4caf50' : '#9e9e9e',
+                          '& .MuiChip-icon': {
+                            marginLeft: '8px',
+                          }
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
+                        {tunnel.local_addr}
+                      </Typography>
+                    </TableCell>
+                    <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      {tunnel.tunnel_type?.toLowerCase() === 'tcp' ? (
+                        <Box>
+                          <Box
+                            component="code"
+                            sx={{
+                              bgcolor: 'action.hover',
+                              px: 1,
+                              py: 0.5,
+                              borderRadius: 1,
+                              fontSize: '0.875rem',
+                              fontFamily: 'monospace',
+                            }}
+                          >
+                            {tunnel.public_url}
+                          </Box>
+                        </Box>
+                      ) : (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontSize: '0.875rem',
+                              color: 'primary.main',
+                            }}
+                          >
+                            {tunnel.public_url}
+                          </Typography>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCopyUrl(tunnel.public_url);
+                            }}
+                          >
+                            {copiedUrl === tunnel.public_url ? (
+                              <Check size={16} style={{ color: '#4caf50' }} />
+                            ) : (
+                              <Copy size={16} />
+                            )}
+                          </IconButton>
+                        </Box>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+                        <Tooltip title="View details">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewDetails(tunnel.id);
+                            }}
+                            color="primary"
+                          >
+                            <Eye size={18} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete tunnel">
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteClick(tunnel);
+                            }}
+                            color="error"
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Delete Tunnel</DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            Are you sure you want to delete the tunnel{' '}
+            <strong>{tunnelToDelete?.saved_name || tunnelToDelete?.subdomain}</strong>?
+            {tunnelToDelete?.status === 'active' && (
+              <Box sx={{ mt: 2, color: 'warning.main' }}>
+                ⚠️ This tunnel is currently active and will be forcefully disconnected.
+              </Box>
+            )}
+            <Box sx={{ mt: 1 }}>
+              This action cannot be undone.
+            </Box>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDeleteConfirm}
+            color="error"
+            variant="contained"
+            disabled={deleteMutation.isPending}
+          >
+            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
 

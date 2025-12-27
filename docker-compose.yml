@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  grok-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: dev
+        BUILD_TIME: ${BUILD_TIME:-2024-01-01T00:00:00Z}
+        GIT_COMMIT: ${GIT_COMMIT:-dev}
+    image: grok-server:latest
+    container_name: grok-server
+    restart: unless-stopped
+    ports:
+      - "80:80"       # HTTP (Tunnel)
+      - "443:443"     # HTTPS (Tunnel)
+      - "4040:4040"   # gRPC (Client Connection)
+      - "4080:4080"   # Web Panel / API
+      - "10000-10100:10000-10100"  # TCP tunnel ports (100 ports)
+    volumes:
+      # Config
+      - ./configs/server.yaml:/etc/grok/server.yaml:ro
+      # Database (SQLite)
+      - grok-data:/var/lib/grok
+      # TLS certificates
+      - grok-certs:/var/lib/grok/certs
+      # Logs
+      - grok-logs:/var/log/grok
+    environment:
+      - GROK_CONFIG=/etc/grok/server.yaml
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - grok-network
+
+  # Optional: PostgreSQL for production
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: grok-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_DB: grok
+  #     POSTGRES_USER: grok
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - grok-network
+
+volumes:
+  grok-data:
+    driver: local
+  grok-certs:
+    driver: local
+  grok-logs:
+    driver: local
+  # postgres-data:
+  #   driver: local
+
+networks:
+  grok-network:
+    driver: bridge

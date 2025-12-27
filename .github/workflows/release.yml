@@ -4,11 +4,18 @@ on:
   push:
     branches:
       - main
+      - master
+      - beta
+      - develop
+      - alpha
 
 permissions:
   contents: write
   issues: write
   pull-requests: write
+  packages: write  # Required for Docker image push
+  id-token: write  # Required for Docker attestation
+  attestations: write  # Required for Docker artifact attestation
 
 jobs:
   # Job 1: Determine next version using semantic-release (dry-run)
@@ -56,7 +63,8 @@ jobs:
     strategy:
       matrix:
         include:
-          # Server binaries
+          # Server binaries (Pure Go - no CGO required)
+          # Linux
           - target: server
             goos: linux
             goarch: amd64
@@ -66,6 +74,12 @@ jobs:
             goarch: arm64
             output: grok-server-linux-arm64
           - target: server
+            goos: linux
+            goarch: arm
+            output: grok-server-linux-arm
+
+          # macOS
+          - target: server
             goos: darwin
             goarch: amd64
             output: grok-server-darwin-amd64
@@ -73,7 +87,19 @@ jobs:
             goos: darwin
             goarch: arm64
             output: grok-server-darwin-arm64
-          # Client binaries
+
+          # Windows
+          - target: server
+            goos: windows
+            goarch: amd64
+            output: grok-server-windows-amd64.exe
+          - target: server
+            goos: windows
+            goarch: arm64
+            output: grok-server-windows-arm64.exe
+
+          # Client binaries (Pure Go - no CGO required)
+          # Linux
           - target: client
             goos: linux
             goarch: amd64
@@ -83,6 +109,16 @@ jobs:
             goarch: arm64
             output: grok-linux-arm64
           - target: client
+            goos: linux
+            goarch: arm
+            output: grok-linux-arm
+          - target: client
+            goos: linux
+            goarch: 386
+            output: grok-linux-386
+
+          # macOS
+          - target: client
             goos: darwin
             goarch: amd64
             output: grok-darwin-amd64
@@ -91,6 +127,20 @@ jobs:
             goarch: arm64
             output: grok-darwin-arm64
 
+          # Windows
+          - target: client
+            goos: windows
+            goarch: amd64
+            output: grok-windows-amd64.exe
+          - target: client
+            goos: windows
+            goarch: arm64
+            output: grok-windows-arm64.exe
+          - target: client
+            goos: windows
+            goarch: 386
+            output: grok-windows-386.exe
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -98,7 +148,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25'
 
       - name: Install protoc
         run: |
@@ -113,6 +163,20 @@ jobs:
       - name: Generate gRPC code
         run: make proto
 
+      - name: Setup Node.js (for frontend build)
+        if: matrix.target == 'server'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Frontend Dashboard
+        if: matrix.target == 'server'
+        run: |
+          cd web
+          npm ci
+          npm run build
+          ls -la ../internal/server/web/dist/
+
       - name: Build ${{ matrix.target }} for ${{ matrix.goos }}/${{ matrix.goarch }}
         env:
           GOOS: ${{ matrix.goos }}
@@ -122,10 +186,18 @@ jobs:
         run: |
           mkdir -p dist
           if [ "${{ matrix.target }}" = "server" ]; then
-            go build -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=$(git rev-parse --short HEAD)" \
+            # Server build (pure Go - no CGO required)
+            go build -ldflags="-s -w \
+              -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
+              -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$(git rev-parse --short HEAD) \
+              -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               -o dist/${{ matrix.output }} ./cmd/grok-server
           else
-            go build -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=$(git rev-parse --short HEAD)" \
+            # Client build (pure Go - no CGO required)
+            go build -ldflags="-s -w \
+              -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
+              -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$(git rev-parse --short HEAD) \
+              -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               -o dist/${{ matrix.output }} ./cmd/grok
           fi
 
@@ -160,16 +232,70 @@ jobs:
 
       - name: Prepare release assets
         run: |
-          mkdir -p dist
+          mkdir -p dist release
           find artifacts -type f -exec cp {} dist/ \;
           ls -lah dist/
 
       - name: Make binaries executable
         run: chmod +x dist/*
 
-      - name: Generate checksums
+      - name: Create tar.gz archives
         run: |
           cd dist
+          for binary in *; do
+            # Skip if it's a directory or already an archive
+            if [ -f "$binary" ] && [[ "$binary" != *.tar.gz ]] && [[ "$binary" != checksums.txt ]]; then
+              # Determine archive name based on binary name
+              if [[ "$binary" == grok-server-* ]]; then
+                # Server: grok-server-linux-amd64 -> grok-server_v1.0.0_linux_x86_64.tar.gz
+                os=$(echo $binary | cut -d- -f3)
+                arch=$(echo $binary | cut -d- -f4 | sed 's/\.exe$//')
+                # Convert arch names
+                if [ "$arch" = "amd64" ]; then arch="x86_64"; fi
+                if [ "$arch" = "arm64" ]; then arch="aarch64"; fi
+                if [ "$arch" = "arm" ]; then arch="armv7"; fi
+                archive_name="grok-server_${{ needs.version.outputs.new_release_version }}_${os}_${arch}.tar.gz"
+                # Copy binary to canonical name, create archive, then remove temp file
+                # Windows binaries keep .exe extension
+                if [[ "$binary" == *.exe ]]; then
+                  cp "$binary" grok-server.exe
+                  tar -czf ../release/$archive_name grok-server.exe
+                  rm grok-server.exe
+                else
+                  cp "$binary" grok-server
+                  tar -czf ../release/$archive_name grok-server
+                  rm grok-server
+                fi
+              elif [[ "$binary" == grok-* ]]; then
+                # Client: grok-linux-amd64 -> grok_v1.0.0_linux_x86_64.tar.gz
+                os=$(echo $binary | cut -d- -f2)
+                arch=$(echo $binary | cut -d- -f3 | sed 's/\.exe$//')
+                # Convert arch names
+                if [ "$arch" = "amd64" ]; then arch="x86_64"; fi
+                if [ "$arch" = "arm64" ]; then arch="aarch64"; fi
+                if [ "$arch" = "arm" ]; then arch="armv7"; fi
+                if [ "$arch" = "386" ]; then arch="i386"; fi
+                archive_name="grok_${{ needs.version.outputs.new_release_version }}_${os}_${arch}.tar.gz"
+                # Copy binary to canonical name, create archive, then remove temp file
+                # Windows binaries keep .exe extension
+                if [[ "$binary" == *.exe ]]; then
+                  cp "$binary" grok.exe
+                  tar -czf ../release/$archive_name grok.exe
+                  rm grok.exe
+                else
+                  cp "$binary" grok
+                  tar -czf ../release/$archive_name grok
+                  rm grok
+                fi
+              fi
+            fi
+          done
+          cd ..
+          ls -lah release/
+
+      - name: Generate checksums
+        run: |
+          cd release
           sha256sum * > checksums.txt
           cat checksums.txt
 
@@ -182,3 +308,14 @@ jobs:
             conventional-changelog-conventionalcommits
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 4: Build and push Docker images with semantic versioning
+  docker:
+    name: Build and Push Docker Images
+    needs: [version, release]
+    if: needs.version.outputs.new_release_published == 'true'
+    uses: ./.github/workflows/docker-release.yml
+    with:
+      version: ${{ needs.version.outputs.new_release_version }}
+      is_prerelease: ${{ contains(needs.version.outputs.new_release_version, '-') }}
+    secrets: inherit

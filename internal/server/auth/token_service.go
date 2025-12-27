@@ -5,25 +5,26 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	"github.com/pandeptwidyaop/grok/internal/db/models"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
-	"gorm.io/gorm"
 )
 
-// TokenService handles token operations
+// TokenService handles token operations.
 type TokenService struct {
 	db *gorm.DB
 }
 
-// NewTokenService creates a new token service
+// NewTokenService creates a new token service.
 func NewTokenService(db *gorm.DB) *TokenService {
 	return &TokenService{
 		db: db,
 	}
 }
 
-// CreateToken creates a new authentication token for a user
+// CreateToken creates a new authentication token for a user.
 func (s *TokenService) CreateToken(ctx context.Context, userID uuid.UUID, name string, expiresIn *time.Duration) (*models.AuthToken, string, error) {
 	// Generate token
 	token, tokenHash, err := utils.GenerateAuthToken()
@@ -54,7 +55,7 @@ func (s *TokenService) CreateToken(ctx context.Context, userID uuid.UUID, name s
 	return authToken, token, nil
 }
 
-// ValidateToken validates a token and returns the associated auth token record
+// ValidateToken validates a token and returns the associated auth token record.
 func (s *TokenService) ValidateToken(ctx context.Context, token string) (*models.AuthToken, error) {
 	// Hash the token
 	tokenHash := utils.HashToken(token)
@@ -91,7 +92,7 @@ func (s *TokenService) ValidateToken(ctx context.Context, token string) (*models
 	return &authToken, nil
 }
 
-// RevokeToken revokes a token
+// RevokeToken revokes a token.
 func (s *TokenService) RevokeToken(ctx context.Context, tokenID uuid.UUID) error {
 	result := s.db.WithContext(ctx).
 		Model(&models.AuthToken{}).
@@ -109,7 +110,7 @@ func (s *TokenService) RevokeToken(ctx context.Context, tokenID uuid.UUID) error
 	return nil
 }
 
-// ListTokens lists all tokens for a user
+// ListTokens lists all tokens for a user.
 func (s *TokenService) ListTokens(ctx context.Context, userID uuid.UUID) ([]models.AuthToken, error) {
 	var tokens []models.AuthToken
 	err := s.db.WithContext(ctx).
@@ -124,7 +125,7 @@ func (s *TokenService) ListTokens(ctx context.Context, userID uuid.UUID) ([]mode
 	return tokens, nil
 }
 
-// GetTokenByID retrieves a token by its ID
+// GetTokenByID retrieves a token by its ID.
 func (s *TokenService) GetTokenByID(ctx context.Context, tokenID uuid.UUID) (*models.AuthToken, error) {
 	var token models.AuthToken
 	err := s.db.WithContext(ctx).
@@ -140,4 +141,22 @@ func (s *TokenService) GetTokenByID(ctx context.Context, tokenID uuid.UUID) (*mo
 	}
 
 	return &token, nil
+}
+
+// GetUserByID retrieves a user by ID with organization preloaded.
+func (s *TokenService) GetUserByID(ctx context.Context, userID uuid.UUID) (*models.User, error) {
+	var user models.User
+	err := s.db.WithContext(ctx).
+		Where("id = ?", userID).
+		Preload("Organization").
+		First(&user).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, pkgerrors.ErrUserNotFound
+		}
+		return nil, pkgerrors.Wrap(err, "failed to get user")
+	}
+
+	return &user, nil
 }

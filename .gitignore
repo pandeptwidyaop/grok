@@ -9,6 +9,13 @@ bin/
 # Test binaries
 *.test
 *.out
+coverage.out
+coverage.html
+
+# Backup files
+*.bak
+*.bak2
+*~.nib
 
 # Go workspace file
 go.work
@@ -61,3 +68,5 @@ dist/
 *.key
 *.crt
 certs/
+certs/
+grok-server

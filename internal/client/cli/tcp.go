@@ -7,20 +7,25 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/pandeptwidyaop/grok/internal/client/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
-	"github.com/spf13/cobra"
 )
 
-// tcpCmd represents the tcp command
+var (
+	tcpSavedName string
+)
+
+// tcpCmd represents the tcp command.
 var tcpCmd = &cobra.Command{
 	Use:   "tcp [port]",
 	Short: "Start TCP tunnel",
 	Long: `Create a TCP tunnel to expose a local TCP service to the internet.
 
 Examples:
-  grok tcp 22                       # Tunnel SSH on port 22
-  grok tcp 3306                     # Tunnel MySQL on port 3306
+  grok tcp 22                       # Tunnel SSH on port 22 (auto-generated name)
+  grok tcp 3306 --name my-db        # Named persistent tunnel
   grok tcp localhost:5432           # Tunnel PostgreSQL with explicit host`,
 	Args: cobra.ExactArgs(1),
 	RunE: runTCPTunnel,
@@ -28,6 +33,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(tcpCmd)
+	tcpCmd.Flags().StringVarP(&tcpSavedName, "name", "n", "", "saved tunnel name (auto-generated if not provided)")
 }
 
 func runTCPTunnel(cmd *cobra.Command, args []string) error {
@@ -36,6 +42,7 @@ func runTCPTunnel(cmd *cobra.Command, args []string) error {
 
 	logger.InfoEvent().
 		Str("local_addr", localAddr).
+		Str("saved_name", tcpSavedName).
 		Msg("Starting TCP tunnel")
 
 	// Get config with overrides from flags
@@ -49,12 +56,16 @@ func runTCPTunnel(cmd *cobra.Command, args []string) error {
 
 	// Create tunnel client
 	client, err := tunnel.NewClient(tunnel.ClientConfig{
-		ServerAddr:   cfg.Server.Addr,
-		TLS:          cfg.Server.TLS,
-		AuthToken:    cfg.Auth.Token,
-		LocalAddr:    localAddr,
-		Protocol:     "tcp",
-		ReconnectCfg: cfg.Reconnect,
+		ServerAddr:    cfg.Server.Addr,
+		TLS:           cfg.Server.TLS,
+		TLSCertFile:   cfg.Server.TLSCertFile,
+		TLSInsecure:   cfg.Server.TLSInsecure,
+		TLSServerName: cfg.Server.TLSServerName,
+		AuthToken:     cfg.Auth.Token,
+		LocalAddr:     localAddr,
+		SavedName:     tcpSavedName,
+		Protocol:      "tcp",
+		ReconnectCfg:  cfg.Reconnect,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create tunnel client: %w", err)

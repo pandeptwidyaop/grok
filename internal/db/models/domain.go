@@ -7,27 +7,29 @@ import (
 	"gorm.io/gorm"
 )
 
-// Domain represents a custom subdomain
+// Domain represents a custom subdomain reservation.
 type Domain struct {
-	ID         uuid.UUID  `gorm:"type:uuid;primaryKey"`
-	UserID     uuid.UUID  `gorm:"type:uuid;not null;index"`
-	Subdomain  string     `gorm:"uniqueIndex;not null"`
-	IsReserved bool       `gorm:"default:false"`
-	CreatedAt  time.Time
+	ID             uuid.UUID  `gorm:"type:uuid;primaryKey"`
+	UserID         uuid.UUID  `gorm:"type:uuid;not null;index"`
+	OrganizationID *uuid.UUID `gorm:"type:uuid;index"`
+	Subdomain      string     `gorm:"not null;unique"` // Full subdomain must be globally unique
+	IsReserved     bool       `gorm:"default:false"`
+	CreatedAt      time.Time
 
 	// Relationships
-	User User `gorm:"foreignKey:UserID"`
+	User         *User         `gorm:"foreignKey:UserID"`
+	Organization *Organization `gorm:"foreignKey:OrganizationID"`
 }
 
-// BeforeCreate hook to set UUID if not provided
-func (d *Domain) BeforeCreate(tx *gorm.DB) error {
+// BeforeCreate hook to set UUID if not provided.
+func (d *Domain) BeforeCreate(_ *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
 	}
 	return nil
 }
 
-// TableName specifies the table name
+// TableName specifies the table name.
 func (Domain) TableName() string {
 	return "domains"
 }

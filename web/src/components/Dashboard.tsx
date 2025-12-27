@@ -1,24 +1,27 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Avatar,
+} from '@mui/material';
+import {
+  Activity,
+  Globe,
+  Download,
+  Upload,
+} from 'lucide-react';
 import { api } from '@/lib/api';
-import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Activity, Globe, Download, Upload, LogOut, User } from 'lucide-react';
-import TunnelList from './TunnelList';
-import TokenManager from './TokenManager';
+import GettingStarted from './GettingStarted';
 
 function Dashboard() {
-  const [activeTab, setActiveTab] = useState<'tunnels' | 'tokens'>('tunnels');
-  const { user, logout } = useAuth();
-
   const { data: stats } = useQuery({
     queryKey: ['stats'],
     queryFn: async () => {
       const response = await api.stats.get();
       return response.data;
     },
-    refetchInterval: 5000, // Refresh every 5 seconds
   });
 
   const formatBytes = (bytes: number) => {
@@ -29,124 +32,111 @@ function Dashboard() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const statsCards = [
+    {
+      title: 'Active Tunnels',
+      value: stats?.active_tunnels || 0,
+      subtitle: `of ${stats?.total_tunnels || 0} total tunnels`,
+      icon: Globe,
+      color: '#667eea',
+    },
+    {
+      title: 'Total Requests',
+      value: (stats?.total_requests ?? 0).toLocaleString(),
+      subtitle: 'All time requests',
+      icon: Activity,
+      color: '#667eea',
+    },
+    {
+      title: 'Data Received',
+      value: formatBytes(stats?.total_bytes_in || 0),
+      subtitle: 'Inbound traffic',
+      icon: Download,
+      color: '#667eea',
+    },
+    {
+      title: 'Data Sent',
+      value: formatBytes(stats?.total_bytes_out || 0),
+      subtitle: 'Outbound traffic',
+      icon: Upload,
+      color: '#667eea',
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8 flex items-start justify-between">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">Grok Dashboard</h1>
-            <p className="text-muted-foreground">
-              Manage your tunnels and authentication tokens
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <User className="h-4 w-4" />
-              <span>{user}</span>
-            </div>
-            <Button variant="outline" size="sm" onClick={logout}>
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
-            </Button>
-          </div>
-        </div>
+    <Box>
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, color: '#667eea', mb: 1 }}>
+          Dashboard
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Overview of your tunneling system
+        </Typography>
+      </Box>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Active Tunnels
-              </CardTitle>
-              <Globe className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {stats?.active_tunnels || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                of {stats?.total_tunnels || 0} total
-              </p>
-            </CardContent>
-          </Card>
+      {/* Stats Cards */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: 'repeat(2, 1fr)',
+            lg: 'repeat(4, 1fr)',
+          },
+          gap: 3,
+          mb: 4,
+        }}
+      >
+        {statsCards.map((card, index) => {
+          const IconComponent = card.icon;
+          return (
+            <Card
+              key={index}
+              elevation={2}
+              sx={{
+                transition: 'box-shadow 0.3s',
+                '&:hover': {
+                  boxShadow: 6,
+                },
+              }}
+            >
+              <CardContent>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    mb: 2,
+                  }}
+                >
+                  <Typography variant="body2" color="text.secondary" fontWeight={500}>
+                    {card.title}
+                  </Typography>
+                  <Avatar
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      bgcolor: card.color,
+                    }}
+                  >
+                    <IconComponent size={20} color="white" />
+                  </Avatar>
+                </Box>
+                <Typography variant="h4" sx={{ fontWeight: 700, color: card.color, mb: 0.5 }}>
+                  {card.value}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {card.subtitle}
+                </Typography>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Box>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Total Requests
-              </CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {(stats?.total_requests ?? 0).toLocaleString()}
-              </div>
-              <p className="text-xs text-muted-foreground">All time</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Data Received
-              </CardTitle>
-              <Download className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {formatBytes(stats?.total_bytes_in || 0)}
-              </div>
-              <p className="text-xs text-muted-foreground">Inbound traffic</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Data Sent</CardTitle>
-              <Upload className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {formatBytes(stats?.total_bytes_out || 0)}
-              </div>
-              <p className="text-xs text-muted-foreground">Outbound traffic</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabs */}
-        <div className="mb-6">
-          <div className="border-b border-border">
-            <div className="flex gap-4">
-              <button
-                onClick={() => setActiveTab('tunnels')}
-                className={`px-4 py-2 border-b-2 transition-colors ${
-                  activeTab === 'tunnels'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Tunnels
-              </button>
-              <button
-                onClick={() => setActiveTab('tokens')}
-                className={`px-4 py-2 border-b-2 transition-colors ${
-                  activeTab === 'tokens'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                Auth Tokens
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div>{activeTab === 'tunnels' ? <TunnelList /> : <TokenManager />}</div>
-      </div>
-    </div>
+      {/* Getting Started Tutorial */}
+      <GettingStarted />
+    </Box>
   );
 }
 

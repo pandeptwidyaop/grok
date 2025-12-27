@@ -12,19 +12,30 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// HTTPForwarder forwards HTTP requests to local service
+// HTTPForwarder forwards HTTP requests to local service.
 type HTTPForwarder struct {
 	localAddr  string
 	httpClient *http.Client
 }
 
-// NewHTTPForwarder creates a new HTTP forwarder
+// NewHTTPForwarder creates a new HTTP forwarder.
 func NewHTTPForwarder(localAddr string) *HTTPForwarder {
+	// Create custom transport with optimized settings
+	transport := &http.Transport{
+		MaxIdleConns:        100,              // Reuse connections
+		MaxIdleConnsPerHost: 10,               // Keep connections to local service alive
+		IdleConnTimeout:     90 * time.Second, // Keep idle connections longer
+		DisableCompression:  false,            // Allow compression if server supports it
+		WriteBufferSize:     32 * 1024,        // 32KB write buffer (default is 4KB)
+		ReadBufferSize:      32 * 1024,        // 32KB read buffer (default is 4KB)
+	}
+
 	return &HTTPForwarder{
 		localAddr: localAddr,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			Timeout:   30 * time.Second,
+			Transport: transport,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				// Don't follow redirects
 				return http.ErrUseLastResponse
 			},
@@ -32,7 +43,7 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 	}
 }
 
-// Forward forwards a gRPC HTTP request to local service
+// Forward forwards a gRPC HTTP request to local service.
 func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) (*tunnelv1.HTTPResponse, error) {
 	// Build URL
 	url := fmt.Sprintf("http://%s%s", f.localAddr, req.Path)
@@ -100,8 +111,9 @@ func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) 
 		Msg("Received response from local service")
 
 	// Build gRPC HTTP response
+	// StatusCode conversion is safe: HTTP status codes are 100-599, well within int32 range
 	return &tunnelv1.HTTPResponse{
-		StatusCode: int32(httpResp.StatusCode),
+		StatusCode: int32(httpResp.StatusCode), //nolint:gosec // Safe conversion: HTTP status codes are always 100-599
 		Headers:    headers,
 		Body:       respBody,
 	}, nil

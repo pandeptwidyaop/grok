@@ -5,6 +5,21 @@ server:
   api_port: 4040
   domain: "grok.io"
 
+  # TCP tunnel port allocation range
+  # Allocates ports for TCP tunnels dynamically from this range
+  # Each TCP tunnel gets a unique port (e.g., tcp://domain:12345)
+  # Range size determines max concurrent TCP tunnels
+  tcp_port_start: 10000  # Start of port range (default: 10000)
+  tcp_port_end: 20000    # End of port range (default: 20000, allows 10,001 TCP tunnels)
+
+  # SECURITY: CORS allowed origins
+  # Only requests from these origins will be allowed
+  # For production, specify your exact domain(s)
+  allowed_origins:
+    - "http://localhost:5173"   # Vite dev server
+    - "http://localhost:4040"   # Dashboard API
+    # - "https://dashboard.yourdomain.com"  # Production dashboard
+
 database:
   # Driver: "sqlite" or "postgres"
   driver: "sqlite"
@@ -21,16 +36,49 @@ database:
   # password: "your-password-here"
   # ssl_mode: "disable"
 
+# TLS Configuration
+# TLS is used for:
+# 1. HTTPS tunnel connections (public URLs)
+# 2. gRPC connections between client and server (tunnel control)
+#
+# Three options:
+# 1. Auto Certificate (Let's Encrypt) - Production with public domain
+# 2. Manual Certificate - Production with custom CA or self-signed for dev
+# 3. Disabled - Development only (insecure)
 tls:
-  auto_cert: true
+  # Option 1: Auto Certificate with Let's Encrypt (RECOMMENDED for production)
+  auto_cert: false
   cert_dir: "/var/lib/grok/certs"
   email: "admin@grok.io"
-  # For manual cert management:
-  # cert_file: "/path/to/cert.pem"
-  # key_file: "/path/to/key.pem"
+
+  # Option 2: Manual Certificate
+  # For production: Use certificates from trusted CA
+  # For development: Generate self-signed certificate with: grok-server gencert
+  cert_file: "certs/server.crt"
+  key_file: "certs/server.key"
+
+  # Note: If both auto_cert and cert_file/key_file are specified,
+  # manual certificate takes precedence.
+
+  # Generate self-signed certificate for development:
+  #   grok-server gencert
+  #   grok-server gencert --host yourdomain.com
+  #   grok-server gencert --cert /path/to/server.crt --key /path/to/server.key
 
 auth:
-  jwt_secret: "change-this-to-a-secure-random-string"
+  # SECURITY: JWT secret for signing authentication tokens
+  # REQUIRED: Must be at least 32 characters long
+  # RECOMMENDED: Use environment variable instead of hardcoding
+  #
+  # Generate a secure secret with: openssl rand -base64 48
+  # Set via environment variable: export GROK_AUTH_JWT_SECRET="your-secret-here"
+  # Environment variables override this config file value
+  #
+  # For production: Use environment variable (see above)
+  # For development: Generate new secret or use the example below
+  #
+  # Example generated secret (DO NOT use this in production!):
+  jwt_secret: "change-this-to-a-secure-random-string-min-32-chars-long"
 
 tunnels:
   max_per_user: 5

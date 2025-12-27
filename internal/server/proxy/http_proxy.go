@@ -8,7 +8,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
@@ -16,27 +20,39 @@ import (
 )
 
 const (
-	// DefaultRequestTimeout is the default timeout for proxied requests
+	// DefaultRequestTimeout is the default timeout for proxied requests.
 	DefaultRequestTimeout = 30 * time.Second
 )
 
-// HTTPProxy handles HTTP reverse proxying
+// HTTPProxy handles HTTP reverse proxying.
 type HTTPProxy struct {
-	router *Router
+	router        *Router
+	webhookRouter *WebhookRouter
+	tunnelManager *tunnel.Manager
+	db            *gorm.DB
 }
 
-// NewHTTPProxy creates a new HTTP proxy
-func NewHTTPProxy(router *Router) *HTTPProxy {
+// NewHTTPProxy creates a new HTTP proxy.
+func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager, db *gorm.DB) *HTTPProxy {
 	return &HTTPProxy{
-		router: router,
+		router:        router,
+		webhookRouter: webhookRouter,
+		tunnelManager: tunnelManager,
+		db:            db,
 	}
 }
 
-// ServeHTTP implements http.Handler
+// ServeHTTP implements http.Handler.
 func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
-	// Route to tunnel
+	// Check if this is a webhook request
+	if p.webhookRouter != nil && p.webhookRouter.IsWebhookRequest(r.Host) {
+		p.handleWebhookRequest(w, r, start)
+		return
+	}
+
+	// Regular tunnel routing
 	tun, err := p.router.RouteToTunnel(r.Host)
 	if err != nil {
 		logger.WarnEvent().
@@ -57,7 +73,7 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tun.UpdateActivity()
 
 	// Proxy request through tunnel
-	resp, err := p.proxyRequest(r, tun)
+	resp, reqBytes, err := p.proxyRequest(r, tun)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -71,7 +87,20 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Write response
-	p.writeResponse(w, resp)
+	respBytes := p.writeResponse(w, resp)
+
+	// Update tunnel statistics
+	tun.UpdateStats(reqBytes, respBytes)
+
+	// Save stats to database (async to avoid blocking)
+	go func() {
+		if err := p.tunnelManager.SaveTunnelStats(context.Background(), tun.ID); err != nil {
+			logger.WarnEvent().
+				Err(err).
+				Str("tunnel_id", tun.ID.String()).
+				Msg("Failed to save tunnel stats")
+		}
+	}()
 
 	// Log request
 	duration := time.Since(start)
@@ -82,20 +111,34 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Str("path", r.URL.Path).
 		Int("status", int(resp.StatusCode)).
 		Dur("duration", duration).
+		Int64("bytes_in", reqBytes).
+		Int64("bytes_out", respBytes).
 		Msg("Request proxied")
+
+	// Save request log to database (async)
+	go p.saveRequestLog(tun.ID, r, int(resp.StatusCode), duration, reqBytes, respBytes)
 }
 
-// proxyRequest proxies an HTTP request through a tunnel
-func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, error) {
+// Returns: (response, requestBytes, error).
+func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, int64, error) {
 	// Generate request ID
 	requestID := utils.GenerateRequestID()
 
 	// Read request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, pkgerrors.Wrap(err, "failed to read request body")
+		return nil, 0, pkgerrors.Wrap(err, "failed to read request body")
 	}
 	defer r.Body.Close()
+
+	// Calculate request size (headers + body)
+	requestBytes := int64(len(body))
+	for key, values := range r.Header {
+		for _, val := range values {
+			requestBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+		}
+	}
+	requestBytes += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20) // Method, path, query, protocol
 
 	// Convert HTTP headers to proto format
 	headers := make(map[string]*tunnelv1.HeaderValues)
@@ -134,7 +177,7 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 	}
 
 	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
-		return nil, pkgerrors.Wrap(err, "failed to send request to tunnel")
+		return nil, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
 	}
 
 	// Wait for response with timeout
@@ -145,17 +188,26 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 	case proxyResp := <-responseCh:
 		// Got response
 		if httpResp := proxyResp.GetHttp(); httpResp != nil {
-			return httpResp, nil
+			return httpResp, requestBytes, nil
 		}
-		return nil, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
+		return nil, 0, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
 
 	case <-ctx.Done():
-		return nil, pkgerrors.ErrRequestTimeout
+		return nil, 0, pkgerrors.ErrRequestTimeout
 	}
 }
 
-// writeResponse writes a proto HTTP response to http.ResponseWriter
-func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) {
+// Returns: bytes written.
+func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) int64 {
+	// Calculate response size (headers + body)
+	responseBytes := int64(len(resp.Body))
+	for key, headerVals := range resp.Headers {
+		for _, val := range headerVals.Values {
+			responseBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+		}
+	}
+	responseBytes += 20 // Status line overhead
+
 	// Write headers
 	for key, headerVals := range resp.Headers {
 		for _, val := range headerVals.Values {
@@ -174,11 +226,165 @@ func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResp
 				Msg("Failed to write response body")
 		}
 	}
+
+	return responseBytes
 }
 
-// HealthCheckHandler returns a simple health check handler
+// handleWebhookRequest handles webhook broadcast requests.
+func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request, start time.Time) {
+	// Extract webhook components
+	orgSubdomain, appName, userPath, err := p.webhookRouter.ExtractWebhookComponents(r.Host, r.URL.Path)
+	if err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("host", r.Host).
+			Str("path", r.URL.Path).
+			Msg("Invalid webhook URL format")
+		http.Error(w, "Invalid webhook URL", http.StatusBadRequest)
+		return
+	}
+
+	logger.DebugEvent().
+		Str("org", orgSubdomain).
+		Str("app", appName).
+		Str("user_path", userPath).
+		Msg("Webhook request received")
+
+	// Get webhook routes
+	cache, err := p.webhookRouter.GetWebhookRoutes(orgSubdomain, appName)
+	if err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("org", orgSubdomain).
+			Str("app", appName).
+			Msg("Failed to get webhook routes")
+
+		if err == ErrWebhookAppNotFound {
+			http.Error(w, "Webhook app not found", http.StatusNotFound)
+		} else {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Read request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to read webhook request body")
+		http.Error(w, "Failed to read request", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+
+	// Prepare request data
+	requestData := &RequestData{
+		Method:  r.Method,
+		Path:    userPath, // Use user-defined path, not the full path
+		Headers: r.Header,
+		Body:    body,
+	}
+
+	// Broadcast to all enabled tunnels
+	ctx := context.Background()
+	result, err := p.webhookRouter.BroadcastToTunnels(ctx, cache, userPath, requestData)
+
+	duration := time.Since(start)
+
+	// Log webhook event (async)
+	go p.logWebhookEvent(cache.AppID, r, result, duration, err)
+
+	// Handle response
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("app", appName).
+			Int("tunnel_count", result.TunnelCount).
+			Int("success_count", result.SuccessCount).
+			Msg("Webhook broadcast failed")
+
+		http.Error(w, "No available tunnels", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Return first successful response
+	if result.FirstSuccess != nil {
+		// Write headers
+		for key, values := range result.FirstSuccess.Headers {
+			for _, val := range values {
+				w.Header().Add(key, val)
+			}
+		}
+
+		// Write status code
+		w.WriteHeader(result.FirstSuccess.StatusCode)
+
+		// Write body
+		if len(result.FirstSuccess.Body) > 0 {
+			_, _ = w.Write(result.FirstSuccess.Body) // Ignore error - handled by HTTP layer
+		}
+
+		logger.InfoEvent().
+			Str("app", appName).
+			Str("method", r.Method).
+			Str("path", userPath).
+			Int("status", result.FirstSuccess.StatusCode).
+			Int("tunnel_count", result.TunnelCount).
+			Int("success_count", result.SuccessCount).
+			Dur("duration", duration).
+			Msg("Webhook request broadcast completed")
+	} else {
+		http.Error(w, "All tunnels failed", http.StatusServiceUnavailable)
+	}
+}
+
+// logWebhookEvent logs a webhook event to the database.
+func (p *HTTPProxy) logWebhookEvent(appID uuid.UUID, r *http.Request, result *BroadcastResult, duration time.Duration, _ error) {
+	// This would be implemented to save webhook events to database
+	// For now, just log to console
+	logger.DebugEvent().
+		Str("app_id", appID.String()).
+		Str("path", r.URL.Path).
+		Str("method", r.Method).
+		Int("tunnel_count", result.TunnelCount).
+		Int("success_count", result.SuccessCount).
+		Dur("duration", duration).
+		Msg("Webhook event logged")
+}
+
+// saveRequestLog saves HTTP request log to database.
+func (p *HTTPProxy) saveRequestLog(tunnelID uuid.UUID, r *http.Request, statusCode int, duration time.Duration, bytesIn, bytesOut int64) {
+	if p.db == nil {
+		return
+	}
+
+	// Build full path with query parameters
+	fullPath := r.URL.Path
+	if r.URL.RawQuery != "" {
+		fullPath = r.URL.Path + "?" + r.URL.RawQuery
+	}
+
+	requestLog := &models.RequestLog{
+		TunnelID:   tunnelID,
+		Method:     r.Method,
+		Path:       fullPath,
+		StatusCode: statusCode,
+		DurationMs: int(duration.Milliseconds()),
+		BytesIn:    int(bytesIn),
+		BytesOut:   int(bytesOut),
+		ClientIP:   r.RemoteAddr,
+	}
+
+	if err := p.db.Create(requestLog).Error; err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("tunnel_id", tunnelID.String()).
+			Msg("Failed to save request log")
+	}
+}
+
+// HealthCheckHandler returns a simple health check handler.
 func HealthCheckHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "OK")
 	}

@@ -8,25 +8,28 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/pandeptwidyaop/grok/internal/client/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
-	"github.com/spf13/cobra"
 )
 
 var (
 	httpSubdomain string
+	httpSavedName string
 )
 
-// httpCmd represents the http command
+// httpCmd represents the http command.
 var httpCmd = &cobra.Command{
 	Use:   "http [port]",
 	Short: "Start HTTP tunnel",
 	Long: `Create an HTTP tunnel to expose a local HTTP server to the internet.
 
 Examples:
-  grok http 3000                    # Tunnel to localhost:3000
-  grok http 8080 --subdomain demo   # Custom subdomain demo.grok.io
-  grok http localhost:3000          # Explicit host and port`,
+  grok http 3000                       # Tunnel to localhost:3000 (auto-generated name)
+  grok http 8080 --subdomain demo      # Custom subdomain demo.grok.io
+  grok http 3000 --name my-api         # Named persistent tunnel
+  grok http localhost:3000             # Explicit host and port`,
 	Args: cobra.ExactArgs(1),
 	RunE: runHTTPTunnel,
 }
@@ -35,6 +38,7 @@ func init() {
 	rootCmd.AddCommand(httpCmd)
 
 	httpCmd.Flags().StringVarP(&httpSubdomain, "subdomain", "s", "", "request custom subdomain")
+	httpCmd.Flags().StringVarP(&httpSavedName, "name", "n", "", "saved tunnel name (auto-generated if not provided)")
 }
 
 func runHTTPTunnel(cmd *cobra.Command, args []string) error {
@@ -44,6 +48,7 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 	logger.InfoEvent().
 		Str("local_addr", localAddr).
 		Str("subdomain", httpSubdomain).
+		Str("saved_name", httpSavedName).
 		Msg("Starting HTTP tunnel")
 
 	// Get config with overrides from flags
@@ -59,9 +64,13 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 	client, err := tunnel.NewClient(tunnel.ClientConfig{
 		ServerAddr:    cfg.Server.Addr,
 		TLS:           cfg.Server.TLS,
+		TLSCertFile:   cfg.Server.TLSCertFile,
+		TLSInsecure:   cfg.Server.TLSInsecure,
+		TLSServerName: cfg.Server.TLSServerName,
 		AuthToken:     cfg.Auth.Token,
 		LocalAddr:     localAddr,
 		Subdomain:     httpSubdomain,
+		SavedName:     httpSavedName,
 		Protocol:      "http",
 		ReconnectCfg:  cfg.Reconnect,
 	})
@@ -90,8 +99,8 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// parseLocalAddr converts port or host:port to full address
-func parseLocalAddr(addr string, protocol string) string {
+// parseLocalAddr converts port or host:port to full address.
+func parseLocalAddr(addr string, _ string) string {
 	// If it's just a number, treat as port
 	if port, err := strconv.Atoi(addr); err == nil {
 		return fmt.Sprintf("localhost:%d", port)

@@ -8,21 +8,21 @@ import (
 )
 
 const (
-	// SubdomainChars contains allowed characters for subdomain generation
+	// SubdomainChars contains allowed characters for subdomain generation.
 	SubdomainChars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	// DefaultSubdomainLength is the default length for random subdomains
+	// DefaultSubdomainLength is the default length for random subdomains.
 	DefaultSubdomainLength = 8
-	// MinSubdomainLength is the minimum allowed subdomain length
+	// MinSubdomainLength is the minimum allowed subdomain length.
 	MinSubdomainLength = 4
-	// MaxSubdomainLength is the maximum allowed subdomain length
+	// MaxSubdomainLength is the maximum allowed subdomain length.
 	MaxSubdomainLength = 63
 )
 
 var (
-	// subdomainRegex validates subdomain format
+	// subdomainRegex validates subdomain format.
 	subdomainRegex = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
-	// Reserved subdomains that cannot be used
+	// Reserved subdomains that cannot be used.
 	reservedSubdomains = map[string]bool{
 		"www":       true,
 		"api":       true,
@@ -34,15 +34,35 @@ var (
 		"smtp":      true,
 		"ftp":       true,
 		"localhost": true,
-		// "test":      true,  // Removed - allow "test" subdomain
+		"test":      true, // Removed - allow "test" subdomain
 		"dev":       true,
 		"staging":   true,
 		"prod":      true,
 		"grpc":      true,
+		"webhook":   true,
+	}
+
+	// Docker-style name components.
+	adjectives = []string{
+		"happy", "silly", "peaceful", "brave", "clever",
+		"kind", "gentle", "bright", "swift", "noble",
+		"wise", "cool", "calm", "bold", "eager",
+		"keen", "smart", "witty", "sharp", "quick",
+		"jolly", "merry", "lucky", "sunny", "cozy",
+		"fancy", "grand", "proud", "royal", "prime",
+	}
+
+	nouns = []string{
+		"panda", "tiger", "eagle", "dolphin", "falcon",
+		"phoenix", "dragon", "panther", "cobra", "hawk",
+		"wolf", "lion", "bear", "shark", "cheetah",
+		"fox", "owl", "raven", "lynx", "orca",
+		"jaguar", "viper", "condor", "bison", "moose",
+		"badger", "otter", "mink", "skunk", "seal",
 	}
 )
 
-// GenerateRandomSubdomain generates a random subdomain of specified length
+// GenerateRandomSubdomain generates a random subdomain of specified length.
 func GenerateRandomSubdomain(length int) (string, error) {
 	if length < MinSubdomainLength {
 		length = DefaultSubdomainLength
@@ -62,7 +82,7 @@ func GenerateRandomSubdomain(length int) (string, error) {
 	return string(result), nil
 }
 
-// IsValidSubdomain checks if a subdomain is valid
+// IsValidSubdomain checks if a subdomain is valid.
 func IsValidSubdomain(subdomain string) bool {
 	// Convert to lowercase
 	subdomain = strings.ToLower(subdomain)
@@ -85,12 +105,29 @@ func IsValidSubdomain(subdomain string) bool {
 	return true
 }
 
-// IsReservedSubdomain checks if a subdomain is reserved
+// IsReservedSubdomain checks if a subdomain is reserved.
 func IsReservedSubdomain(subdomain string) bool {
 	return reservedSubdomains[strings.ToLower(subdomain)]
 }
 
-// NormalizeSubdomain normalizes a subdomain (lowercase, trim)
+// NormalizeSubdomain normalizes a subdomain (lowercase, trim).
 func NormalizeSubdomain(subdomain string) string {
 	return strings.ToLower(strings.TrimSpace(subdomain))
+}
+
+// Examples: happy-panda, brave-eagle, clever-dolphin.
+func GenerateRandomName() (string, error) {
+	// Pick random adjective
+	adjIdx, err := rand.Int(rand.Reader, big.NewInt(int64(len(adjectives))))
+	if err != nil {
+		return "", err
+	}
+
+	// Pick random noun
+	nounIdx, err := rand.Int(rand.Reader, big.NewInt(int64(len(nouns))))
+	if err != nil {
+		return "", err
+	}
+
+	return adjectives[adjIdx.Int64()] + "-" + nouns[nounIdx.Int64()], nil
 }

@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// startProxyStream starts the bidirectional proxy stream
+// startProxyStream starts the bidirectional proxy stream.
 func (c *Client) startProxyStream(ctx context.Context) error {
 	stream, err := c.tunnelSvc.ProxyStream(ctx)
 	if err != nil {
@@ -24,13 +25,14 @@ func (c *Client) startProxyStream(ctx context.Context) error {
 	logger.InfoEvent().Msg("Proxy stream established")
 
 	// Send registration control message with tunnel details
-	// Format: subdomain|token|localaddr|publicurl
+	// Format: subdomain|token|localaddr|publicurl|savedname(optional)
 	c.mu.RLock()
-	regData := fmt.Sprintf("%s|%s|%s|%s",
+	regData := fmt.Sprintf("%s|%s|%s|%s|%s",
 		c.getSubdomain(),
 		c.cfg.AuthToken,
 		c.cfg.LocalAddr,
 		c.publicURL,
+		c.cfg.SavedName,
 	)
 	c.mu.RUnlock()
 
@@ -55,7 +57,7 @@ func (c *Client) startProxyStream(ctx context.Context) error {
 	return nil
 }
 
-// getSubdomain extracts subdomain from public URL
+// getSubdomain extracts subdomain from public URL.
 func (c *Client) getSubdomain() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -65,30 +67,22 @@ func (c *Client) getSubdomain() string {
 		return ""
 	}
 
-	// Simple extraction - just find the subdomain part
-	// This assumes format like "https://subdomain.domain" or "tcp://subdomain.domain:port"
-	start := 0
-	if idx := len("https://"); len(c.publicURL) > idx {
-		start = idx
-	}
-	if idx := len("http://"); len(c.publicURL) > idx {
-		start = idx
+	// Remove protocol prefix
+	url := c.publicURL
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+	url = strings.TrimPrefix(url, "tcp://")
+
+	// Find the subdomain part (everything before the first dot)
+	if dotIdx := strings.Index(url, "."); dotIdx != -1 {
+		return url[:dotIdx]
 	}
 
-	end := len(c.publicURL)
-	if idx := start; idx < len(c.publicURL) {
-		for i := start; i < len(c.publicURL); i++ {
-			if c.publicURL[i] == '.' {
-				end = i
-				break
-			}
-		}
-	}
-
-	return c.publicURL[start:end]
+	// If no dot found, return the whole URL (shouldn't happen in normal cases)
+	return url
 }
 
-// receiveRequests receives and handles proxy requests from server
+// receiveRequests receives and handles proxy requests from server.
 func (c *Client) receiveRequests(ctx context.Context) {
 	for {
 		select {
@@ -133,7 +127,7 @@ func (c *Client) receiveRequests(ctx context.Context) {
 	}
 }
 
-// handleProxyRequest handles a proxy request from the server
+// handleProxyRequest handles a proxy request from the server.
 func (c *Client) handleProxyRequest(ctx context.Context, req *tunnelv1.ProxyRequest) {
 	logger.DebugEvent().
 		Str("request_id", req.RequestId).
@@ -154,14 +148,19 @@ func (c *Client) handleProxyRequest(ctx context.Context, req *tunnelv1.ProxyRequ
 	}
 }
 
-// handleHTTPRequest forwards HTTP request to local service
+// handleHTTPRequest forwards HTTP request to local service.
 func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpReq *tunnelv1.HTTPRequest) {
+	start := time.Now()
+
 	// Forward request to local service
-	httpResp, err := c.forwarder.Forward(ctx, httpReq)
+	httpResp, err := c.httpForwarder.Forward(ctx, httpReq)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
 			Str("request_id", requestID).
+			Str("method", httpReq.Method).
+			Str("path", httpReq.Path).
+			Str("remote_addr", httpReq.RemoteAddr).
 			Msg("Failed to forward HTTP request")
 
 		// Send error response
@@ -171,10 +170,10 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 
 	// Send response back to server
 	proxyResp := &tunnelv1.ProxyResponse{
-		RequestId:     requestID,
-		TunnelId:      c.tunnelID,
-		Payload:       &tunnelv1.ProxyResponse_Http{Http: httpResp},
-		EndOfStream:   true,
+		RequestId:   requestID,
+		TunnelId:    c.tunnelID,
+		Payload:     &tunnelv1.ProxyResponse_Http{Http: httpResp},
+		EndOfStream: true,
 	}
 
 	msg := &tunnelv1.ProxyMessage{
@@ -188,24 +187,104 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 			Msg("Failed to send response")
 	}
 
+	// Log access with details
+	duration := time.Since(start)
+	logger.InfoEvent().
+		Str("method", httpReq.Method).
+		Str("path", httpReq.Path).
+		Str("remote_addr", httpReq.RemoteAddr).
+		Int32("status", httpResp.StatusCode).
+		Int("bytes_in", len(httpReq.Body)).
+		Int("bytes_out", len(httpResp.Body)).
+		Dur("duration", duration).
+		Msg("HTTP request processed")
+}
+
+// handleTCPRequest forwards TCP data to local service.
+func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData *tunnelv1.TCPData) {
 	logger.DebugEvent().
 		Str("request_id", requestID).
-		Int32("status", httpResp.StatusCode).
-		Msg("HTTP request handled")
+		Int("bytes", len(tcpData.Data)).
+		Int64("sequence", tcpData.Sequence).
+		Msg("TCP data received")
+
+	// Create response sender function
+	sendResponse := func(respData *tunnelv1.TCPData) error {
+		response := &tunnelv1.ProxyResponse{
+			RequestId: requestID,
+			TunnelId:  c.tunnelID,
+			Payload: &tunnelv1.ProxyResponse_Tcp{
+				Tcp: respData,
+			},
+		}
+
+		msg := &tunnelv1.ProxyMessage{
+			Message: &tunnelv1.ProxyMessage_Response{
+				Response: response,
+			},
+		}
+
+		c.mu.RLock()
+		stream := c.stream
+		c.mu.RUnlock()
+
+		if stream == nil {
+			return fmt.Errorf("stream not available")
+		}
+
+		return stream.Send(msg)
+	}
+
+	// Forward to local service
+	startReadLoop, err := c.tcpForwarder.Forward(ctx, requestID, tcpData, sendResponse)
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("request_id", requestID).
+			Msg("Failed to forward TCP data")
+
+		// Send error response (close signal)
+		if err := sendResponse(&tunnelv1.TCPData{
+			Data:     []byte{},
+			Sequence: 0,
+		}); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to send error response")
+		}
+		return
+	}
+
+	// Start read loop for new connections
+	if startReadLoop {
+		go c.tcpForwarder.StartReadLoop(ctx, requestID, sendResponse)
+	}
 }
 
-// handleTCPRequest forwards TCP data to local service
-func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData *tunnelv1.TCPData) {
-	// TODO: Implement TCP forwarding
-	logger.WarnEvent().Msg("TCP forwarding not yet implemented")
-}
-
-// handleControlMessage handles control messages from server
+// handleControlMessage handles control messages from server.
 func (c *Client) handleControlMessage(ctrl *tunnelv1.ControlMessage) {
 	logger.InfoEvent().
 		Str("type", ctrl.Type.String()).
 		Str("tunnel_id", ctrl.TunnelId).
 		Msg("Received control message")
+
+	// Check for public_url update in metadata
+	if ctrl.Metadata != nil {
+		if publicURL, ok := ctrl.Metadata["public_url"]; ok && publicURL != "" {
+			c.mu.Lock()
+			oldURL := c.publicURL
+			c.publicURL = publicURL
+			c.mu.Unlock()
+
+			if oldURL != publicURL {
+				logger.InfoEvent().
+					Str("old_url", oldURL).
+					Str("new_url", publicURL).
+					Msg("Public URL updated")
+
+				// Print updated URL to console
+				fmt.Printf("\n✓ Public URL updated: %s\n", publicURL)
+			}
+		}
+	}
 
 	switch ctrl.Type {
 	case tunnelv1.ControlMessage_TUNNEL_CLOSED:
@@ -219,12 +298,18 @@ func (c *Client) handleControlMessage(ctrl *tunnelv1.ControlMessage) {
 		logger.InfoEvent().Msg("Server requested reconnect")
 		// Close current stream to trigger reconnect
 		if c.stream != nil {
-			c.stream.CloseSend()
+			if err := c.stream.CloseSend(); err != nil {
+				logger.WarnEvent().Err(err).Msg("Failed to close send stream")
+			}
 		}
+
+	case tunnelv1.ControlMessage_UNKNOWN:
+		// Unknown type - likely a URL update (already handled above via metadata)
+		logger.DebugEvent().Msg("Received control message with unknown type")
 	}
 }
 
-// sendError sends an error response to the server
+// sendError sends an error response to the server.
 func (c *Client) sendError(requestID string, code tunnelv1.ErrorCode, message string) {
 	errorMsg := &tunnelv1.ProxyError{
 		RequestId: requestID,
@@ -244,45 +329,63 @@ func (c *Client) sendError(requestID string, code tunnelv1.ErrorCode, message st
 	}
 }
 
-// startHeartbeat starts sending heartbeat messages to server
-func (c *Client) startHeartbeat(ctx context.Context) {
+// receiveHeartbeats receives heartbeat responses from server.
+func receiveHeartbeats(stream tunnelv1.TunnelService_HeartbeatClient, heartbeatErrCh chan error) {
+	for {
+		_, err := stream.Recv()
+		if err == io.EOF {
+			heartbeatErrCh <- io.EOF
+			return
+		}
+		if err != nil {
+			logger.WarnEvent().Err(err).Msg("Heartbeat receive error")
+			heartbeatErrCh <- err
+			return
+		}
+	}
+}
+
+// signalConnectionLost signals that the connection was lost.
+func signalConnectionLost(connLostCh chan struct{}) {
+	select {
+	case connLostCh <- struct{}{}:
+	default:
+	}
+}
+
+// startHeartbeat starts sending heartbeat messages to server.
+func (c *Client) startHeartbeat(ctx context.Context, connLostCh chan struct{}) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	// Create heartbeat stream
 	heartbeatStream, err := c.tunnelSvc.Heartbeat(ctx)
 	if err != nil {
-		logger.ErrorEvent().
-			Err(err).
-			Msg("Failed to create heartbeat stream")
+		logger.ErrorEvent().Err(err).Msg("Failed to create heartbeat stream")
+		signalConnectionLost(connLostCh)
 		return
 	}
 
 	logger.DebugEvent().Msg("Heartbeat stream established")
 
-	// Start receiving heartbeat responses
-	go func() {
-		for {
-			_, err := heartbeatStream.Recv()
-			if err == io.EOF {
-				return
-			}
-			if err != nil {
-				logger.DebugEvent().
-					Err(err).
-					Msg("Heartbeat stream error")
-				return
-			}
-			// Heartbeat received, tunnel is healthy
-		}
-	}()
+	heartbeatErrCh := make(chan error, 1)
+	go receiveHeartbeats(heartbeatStream, heartbeatErrCh)
 
-	// Send heartbeat periodically
 	for {
 		select {
 		case <-ctx.Done():
-			heartbeatStream.CloseSend()
+			if err := heartbeatStream.CloseSend(); err != nil {
+				logger.WarnEvent().Err(err).Msg("Failed to close heartbeat stream")
+			}
 			return
+
+		case err := <-heartbeatErrCh:
+			logger.WarnEvent().Err(err).Msg("Heartbeat failed, signaling connection lost")
+			if err := heartbeatStream.CloseSend(); err != nil {
+				logger.WarnEvent().Err(err).Msg("Failed to close heartbeat stream")
+			}
+			signalConnectionLost(connLostCh)
+			return
+
 		case <-ticker.C:
 			req := &tunnelv1.HeartbeatRequest{
 				TunnelId:  c.tunnelID,
@@ -290,10 +393,11 @@ func (c *Client) startHeartbeat(ctx context.Context) {
 			}
 
 			if err := heartbeatStream.Send(req); err != nil {
-				logger.ErrorEvent().
-					Err(err).
-					Msg("Failed to send heartbeat")
-				heartbeatStream.CloseSend()
+				logger.ErrorEvent().Err(err).Msg("Failed to send heartbeat")
+				if err := heartbeatStream.CloseSend(); err != nil {
+					logger.WarnEvent().Err(err).Msg("Failed to close heartbeat stream")
+				}
+				signalConnectionLost(connLostCh)
 				return
 			}
 

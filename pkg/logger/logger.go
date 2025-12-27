@@ -9,7 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Config holds logger configuration
+// Config holds logger configuration.
 type Config struct {
 	Level  string // debug, info, warn, error
 	Format string // json, text
@@ -17,7 +17,7 @@ type Config struct {
 	File   string // file path if Output is "file"
 }
 
-// Setup initializes the global logger
+// Setup initializes the global logger.
 func Setup(cfg Config) error {
 	// Set log level
 	level, err := zerolog.ParseLevel(cfg.Level)
@@ -56,63 +56,63 @@ func Setup(cfg Config) error {
 	return nil
 }
 
-// Get returns the global logger
+// Get returns the global logger.
 func Get() *zerolog.Logger {
 	return &log.Logger
 }
 
-// Info logs an info message
+// Info logs an info message.
 func Info(msg string) {
 	log.Info().Msg(msg)
 }
 
-// Debug logs a debug message
+// Debug logs a debug message.
 func Debug(msg string) {
 	log.Debug().Msg(msg)
 }
 
-// Error logs an error message
+// Error logs an error message.
 func Error(msg string) {
 	log.Error().Msg(msg)
 }
 
-// Warn logs a warning message
+// Warn logs a warning message.
 func Warn(msg string) {
 	log.Warn().Msg(msg)
 }
 
-// Fatal logs a fatal message and exits
+// Fatal logs a fatal message and exits.
 func Fatal(msg string) {
 	log.Fatal().Msg(msg)
 }
 
-// InfoEvent returns an info event for chaining
+// InfoEvent returns an info event for chaining.
 func InfoEvent() *zerolog.Event {
 	return log.Info()
 }
 
-// DebugEvent returns a debug event for chaining
+// DebugEvent returns a debug event for chaining.
 func DebugEvent() *zerolog.Event {
 	return log.Debug()
 }
 
-// ErrorEvent returns an error event for chaining
+// ErrorEvent returns an error event for chaining.
 func ErrorEvent() *zerolog.Event {
 	return log.Error()
 }
 
-// WarnEvent returns a warning event for chaining
+// WarnEvent returns a warning event for chaining.
 func WarnEvent() *zerolog.Event {
 	return log.Warn()
 }
 
-// WithField returns a logger with additional field
+// WithField returns a logger with additional field.
 func WithField(key string, value interface{}) *zerolog.Logger {
 	logger := log.With().Interface(key, value).Logger()
 	return &logger
 }
 
-// WithFields returns a logger with multiple fields
+// WithFields returns a logger with multiple fields.
 func WithFields(fields map[string]interface{}) *zerolog.Logger {
 	logger := log.With().Fields(fields).Logger()
 	return &logger

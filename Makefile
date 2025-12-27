@@ -1,4 +1,4 @@
-.PHONY: help proto build-server build-client build-dashboard build-all dev-server dev-client test clean migrate-up migrate-down
+ sqlite .PHONY: help proto build-server build-client build-dashboard build-all dev-server dev-client test clean migrate-up migrate-down
 
 help:
 	@echo "Grok - ngrok Clone"

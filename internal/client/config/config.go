@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config represents the client configuration
+// Config represents the client configuration.
 type Config struct {
 	Server    ServerConfig    `mapstructure:"server"`
 	Auth      AuthConfig      `mapstructure:"auth"`
@@ -16,24 +16,27 @@ type Config struct {
 	Reconnect ReconnectConfig `mapstructure:"reconnect"`
 }
 
-// ServerConfig holds server connection settings
+// ServerConfig holds server connection settings.
 type ServerConfig struct {
-	Addr string `mapstructure:"addr"`
-	TLS  bool   `mapstructure:"tls"`
+	Addr          string `mapstructure:"addr"`
+	TLS           bool   `mapstructure:"tls"`
+	TLSCertFile   string `mapstructure:"tls_cert_file"`   // Optional: custom CA cert
+	TLSInsecure   bool   `mapstructure:"tls_insecure"`    // Skip cert verification (dev only)
+	TLSServerName string `mapstructure:"tls_server_name"` // Override server name for verification
 }
 
-// AuthConfig holds authentication settings
+// AuthConfig holds authentication settings.
 type AuthConfig struct {
 	Token string `mapstructure:"token"`
 }
 
-// LoggingConfig holds logging settings
+// LoggingConfig holds logging settings.
 type LoggingConfig struct {
 	Level  string `mapstructure:"level"`
 	Format string `mapstructure:"format"`
 }
 
-// ReconnectConfig holds reconnection settings
+// ReconnectConfig holds reconnection settings.
 type ReconnectConfig struct {
 	Enabled       bool `mapstructure:"enabled"`
 	InitialDelay  int  `mapstructure:"initial_delay"`  // seconds
@@ -42,7 +45,7 @@ type ReconnectConfig struct {
 	MaxAttempts   int  `mapstructure:"max_attempts"`   // 0 = infinite
 }
 
-// Load loads configuration from file
+// Load loads configuration from file.
 func Load(configPath string) (*Config, error) {
 	v := viper.New()
 
@@ -91,6 +94,9 @@ func setDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.addr", "localhost:4443")
 	v.SetDefault("server.tls", false)
+	v.SetDefault("server.tls_cert_file", "")
+	v.SetDefault("server.tls_insecure", false)
+	v.SetDefault("server.tls_server_name", "")
 
 	// Logging defaults
 	v.SetDefault("logging.level", "info")
@@ -104,7 +110,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("reconnect.max_attempts", 0) // infinite
 }
 
-// SaveToken saves auth token to config file
+// SaveToken saves auth token to config file.
 func SaveToken(token string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -127,6 +133,190 @@ func SaveToken(token string) error {
 
 	// Set token
 	v.Set("auth.token", token)
+
+	// Write config
+	if err := v.WriteConfig(); err != nil {
+		// If file doesn't exist, create it
+		if err := v.SafeWriteConfig(); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// SaveServer saves server address to config file.
+func SaveServer(addr string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home dir: %w", err)
+	}
+
+	configDir := filepath.Join(home, ".grok")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// Create config directory if not exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+
+	// Try to read existing config
+	_ = v.ReadInConfig()
+
+	// Set server address
+	v.Set("server.addr", addr)
+
+	// Write config
+	if err := v.WriteConfig(); err != nil {
+		// If file doesn't exist, create it
+		if err := v.SafeWriteConfig(); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// SetTLSCert sets TLS certificate file and enables TLS.
+func SetTLSCert(certPath string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home dir: %w", err)
+	}
+
+	configDir := filepath.Join(home, ".grok")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// Create config directory if not exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+
+	// Try to read existing config
+	_ = v.ReadInConfig()
+
+	// Enable TLS and set cert file
+	v.Set("server.tls", true)
+	v.Set("server.tls_cert_file", certPath)
+	v.Set("server.tls_insecure", false) // Disable insecure when using cert
+
+	// Write config
+	if err := v.WriteConfig(); err != nil {
+		// If file doesn't exist, create it
+		if err := v.SafeWriteConfig(); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// SetTLSInsecure sets TLS insecure mode.
+func SetTLSInsecure(insecure bool) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home dir: %w", err)
+	}
+
+	configDir := filepath.Join(home, ".grok")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// Create config directory if not exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+
+	// Try to read existing config
+	_ = v.ReadInConfig()
+
+	// Enable TLS and set insecure mode
+	v.Set("server.tls", true)
+	v.Set("server.tls_insecure", insecure)
+	if insecure {
+		// Clear cert file when using insecure mode
+		v.Set("server.tls_cert_file", "")
+	}
+
+	// Write config
+	if err := v.WriteConfig(); err != nil {
+		// If file doesn't exist, create it
+		if err := v.SafeWriteConfig(); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// EnableTLS enables TLS with system CA pool.
+func EnableTLS() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home dir: %w", err)
+	}
+
+	configDir := filepath.Join(home, ".grok")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// Create config directory if not exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+
+	// Try to read existing config
+	_ = v.ReadInConfig()
+
+	// Enable TLS with system CA (no custom cert)
+	v.Set("server.tls", true)
+	v.Set("server.tls_cert_file", "")
+	v.Set("server.tls_insecure", false)
+
+	// Write config
+	if err := v.WriteConfig(); err != nil {
+		// If file doesn't exist, create it
+		if err := v.SafeWriteConfig(); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// DisableTLS disables TLS.
+func DisableTLS() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get user home dir: %w", err)
+	}
+
+	configDir := filepath.Join(home, ".grok")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	// Create config directory if not exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config dir: %w", err)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configFile)
+
+	// Try to read existing config
+	_ = v.ReadInConfig()
+
+	// Disable TLS
+	v.Set("server.tls", false)
 
 	// Write config
 	if err := v.WriteConfig(); err != nil {

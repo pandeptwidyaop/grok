@@ -1,0 +1,69 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="256" cy="256" r="256" fill="#667eea"/>
+
+  <!-- Tunnel Structure -->
+  <g opacity="0.95">
+    <!-- Outer Tunnel Ring -->
+    <ellipse cx="256" cy="256" rx="180" ry="90" fill="#5568d3" opacity="0.3"/>
+    <ellipse cx="256" cy="256" rx="160" ry="80" fill="#4854b8" opacity="0.4"/>
+    <ellipse cx="256" cy="256" rx="140" ry="70" fill="#3a429d" opacity="0.5"/>
+
+    <!-- Inner Tunnel Core -->
+    <ellipse cx="256" cy="256" rx="120" ry="60" fill="#2c3282"/>
+    <ellipse cx="256" cy="256" rx="100" ry="50" fill="#1e2267"/>
+    <ellipse cx="256" cy="256" rx="80" ry="40" fill="#ffffff" opacity="0.1"/>
+  </g>
+
+  <!-- Left Side - Local Computer -->
+  <g transform="translate(80, 230)">
+    <!-- Computer Screen -->
+    <rect x="0" y="0" width="48" height="36" rx="4" fill="#ffffff" opacity="0.9"/>
+    <rect x="4" y="4" width="40" height="28" rx="2" fill="#4a5568"/>
+    <!-- Computer Base -->
+    <rect x="8" y="36" width="32" height="4" rx="2" fill="#ffffff" opacity="0.8"/>
+    <!-- Stand -->
+    <rect x="20" y="32" width="8" height="4" fill="#ffffff" opacity="0.8"/>
+  </g>
+
+  <!-- Right Side - Internet Cloud -->
+  <g transform="translate(370, 220)">
+    <!-- Cloud Shape -->
+    <path d="M 30 25 Q 20 20 20 10 Q 20 0 30 0 Q 35 0 40 5 Q 50 0 60 5 Q 70 10 70 20 Q 70 25 65 30 L 35 30 Q 30 30 30 25 Z"
+          fill="#ffffff" opacity="0.9"/>
+    <!-- Globe Symbol in Cloud -->
+    <circle cx="45" cy="15" r="8" fill="#667eea" opacity="0.8"/>
+    <ellipse cx="45" cy="15" rx="3" ry="8" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+    <line x1="37" y1="15" x2="53" y2="15" stroke="#ffffff" stroke-width="1.5"/>
+  </g>
+
+  <!-- Connection Lines with Animation Feel -->
+  <!-- Left to Center -->
+  <g opacity="0.8">
+    <line x1="128" y1="248" x2="200" y2="256" stroke="#a5b4fc" stroke-width="4" stroke-linecap="round"/>
+    <line x1="128" y1="248" x2="200" y2="256" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  </g>
+
+  <!-- Center to Right -->
+  <g opacity="0.8">
+    <line x1="312" y1="256" x2="370" y2="248" stroke="#a5b4fc" stroke-width="4" stroke-linecap="round"/>
+    <line x1="312" y1="256" x2="370" y2="248" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.6"/>
+  </g>
+
+  <!-- Data Packets (small dots showing data flow) -->
+  <circle cx="180" cy="254" r="4" fill="#ffffff" opacity="0.9"/>
+  <circle cx="220" cy="256" r="3" fill="#ffffff" opacity="0.7"/>
+  <circle cx="290" cy="256" r="3" fill="#ffffff" opacity="0.7"/>
+  <circle cx="330" cy="252" r="4" fill="#ffffff" opacity="0.9"/>
+
+  <!-- Center Highlight -->
+  <ellipse cx="256" cy="240" rx="40" ry="20" fill="#ffffff" opacity="0.15"/>
+
+  <!-- Lock Symbol (Security) -->
+  <g transform="translate(244, 280)">
+    <rect x="0" y="8" width="24" height="20" rx="3" fill="#ffffff" opacity="0.9"/>
+    <path d="M 6 8 L 6 4 Q 6 0 12 0 Q 18 0 18 4 L 18 8"
+          fill="none" stroke="#ffffff" stroke-width="3" opacity="0.9"/>
+    <circle cx="12" cy="16" r="3" fill="#667eea"/>
+  </g>
+</svg>
