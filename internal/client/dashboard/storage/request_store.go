@@ -9,24 +9,25 @@ import (
 
 // RequestRecord represents a stored HTTP/TCP request with response data.
 type RequestRecord struct {
-	mu             sync.RWMutex      `json:"-"` // Protects concurrent reads/writes
-	ID             string            `json:"id"`
-	Method         string            `json:"method"`
-	Path           string            `json:"path"`
-	RemoteAddr     string            `json:"remote_addr"`
-	Protocol       string            `json:"protocol"` // "http" or "tcp"
-	StatusCode     int32             `json:"status_code"`
-	BytesIn        int64             `json:"bytes_in"`
-	BytesOut       int64             `json:"bytes_out"`
-	Duration       time.Duration     `json:"-"`           // Internal use only
-	DurationMS     float64           `json:"duration_ms"` // milliseconds for JSON
-	StartTime      time.Time         `json:"start_time"`
-	EndTime        time.Time         `json:"end_time"`
-	Error          string            `json:"error,omitempty"`
-	Completed      bool              `json:"completed"`
-	RequestHeaders map[string]string `json:"request_headers,omitempty"`
-	RequestBody    []byte            `json:"request_body,omitempty"`
-	ResponseBody   []byte            `json:"response_body,omitempty"`
+	mu              sync.RWMutex      `json:"-"` // Protects concurrent reads/writes
+	ID              string            `json:"id"`
+	Method          string            `json:"method"`
+	Path            string            `json:"path"`
+	RemoteAddr      string            `json:"remote_addr"`
+	Protocol        string            `json:"protocol"` // "http" or "tcp"
+	StatusCode      int32             `json:"status_code"`
+	BytesIn         int64             `json:"bytes_in"`
+	BytesOut        int64             `json:"bytes_out"`
+	Duration        time.Duration     `json:"-"`           // Internal use only
+	DurationMS      float64           `json:"duration_ms"` // milliseconds for JSON
+	StartTime       time.Time         `json:"start_time"`
+	EndTime         time.Time         `json:"end_time"`
+	Error           string            `json:"error,omitempty"`
+	Completed       bool              `json:"completed"`
+	RequestHeaders  map[string]string `json:"request_headers,omitempty"`
+	RequestBody     []byte            `json:"request_body,omitempty"`
+	ResponseHeaders map[string]string `json:"response_headers,omitempty"`
+	ResponseBody    []byte            `json:"response_body,omitempty"`
 }
 
 // RequestStore stores HTTP/TCP requests in memory with bounded size.
@@ -100,6 +101,11 @@ func (rs *RequestStore) RecordCompletion(event events.Event) {
 	record.Error = data.Error
 	record.Completed = true
 
+	// Store response headers if present
+	if len(data.ResponseHeaders) > 0 {
+		record.ResponseHeaders = data.ResponseHeaders
+	}
+
 	// Store response body if present and within size limit
 	if len(data.ResponseBody) > 0 && int64(len(data.ResponseBody)) <= rs.maxBodySize {
 		record.ResponseBody = data.ResponseBody
@@ -116,23 +122,24 @@ func (rs *RequestStore) GetRecent(limit int) []*RequestRecord {
 			rec.mu.RLock()
 			// Manually copy fields to avoid copying mutex
 			recCopy := &RequestRecord{
-				ID:             rec.ID,
-				Method:         rec.Method,
-				Path:           rec.Path,
-				RemoteAddr:     rec.RemoteAddr,
-				Protocol:       rec.Protocol,
-				StatusCode:     rec.StatusCode,
-				BytesIn:        rec.BytesIn,
-				BytesOut:       rec.BytesOut,
-				Duration:       rec.Duration,
-				DurationMS:     rec.DurationMS,
-				StartTime:      rec.StartTime,
-				EndTime:        rec.EndTime,
-				Error:          rec.Error,
-				Completed:      rec.Completed,
-				RequestHeaders: rec.RequestHeaders,
-				RequestBody:    rec.RequestBody,
-				ResponseBody:   rec.ResponseBody,
+				ID:              rec.ID,
+				Method:          rec.Method,
+				Path:            rec.Path,
+				RemoteAddr:      rec.RemoteAddr,
+				Protocol:        rec.Protocol,
+				StatusCode:      rec.StatusCode,
+				BytesIn:         rec.BytesIn,
+				BytesOut:        rec.BytesOut,
+				Duration:        rec.Duration,
+				DurationMS:      rec.DurationMS,
+				StartTime:       rec.StartTime,
+				EndTime:         rec.EndTime,
+				Error:           rec.Error,
+				Completed:       rec.Completed,
+				RequestHeaders:  rec.RequestHeaders,
+				RequestBody:     rec.RequestBody,
+				ResponseHeaders: rec.ResponseHeaders,
+				ResponseBody:    rec.ResponseBody,
 			}
 			rec.mu.RUnlock()
 			copies[i] = recCopy
@@ -151,23 +158,24 @@ func (rs *RequestStore) GetAll() []*RequestRecord {
 			rec.mu.RLock()
 			// Manually copy fields to avoid copying mutex
 			recCopy := &RequestRecord{
-				ID:             rec.ID,
-				Method:         rec.Method,
-				Path:           rec.Path,
-				RemoteAddr:     rec.RemoteAddr,
-				Protocol:       rec.Protocol,
-				StatusCode:     rec.StatusCode,
-				BytesIn:        rec.BytesIn,
-				BytesOut:       rec.BytesOut,
-				Duration:       rec.Duration,
-				DurationMS:     rec.DurationMS,
-				StartTime:      rec.StartTime,
-				EndTime:        rec.EndTime,
-				Error:          rec.Error,
-				Completed:      rec.Completed,
-				RequestHeaders: rec.RequestHeaders,
-				RequestBody:    rec.RequestBody,
-				ResponseBody:   rec.ResponseBody,
+				ID:              rec.ID,
+				Method:          rec.Method,
+				Path:            rec.Path,
+				RemoteAddr:      rec.RemoteAddr,
+				Protocol:        rec.Protocol,
+				StatusCode:      rec.StatusCode,
+				BytesIn:         rec.BytesIn,
+				BytesOut:        rec.BytesOut,
+				Duration:        rec.Duration,
+				DurationMS:      rec.DurationMS,
+				StartTime:       rec.StartTime,
+				EndTime:         rec.EndTime,
+				Error:           rec.Error,
+				Completed:       rec.Completed,
+				RequestHeaders:  rec.RequestHeaders,
+				RequestBody:     rec.RequestBody,
+				ResponseHeaders: rec.ResponseHeaders,
+				ResponseBody:    rec.ResponseBody,
 			}
 			rec.mu.RUnlock()
 			copies[i] = recCopy
@@ -189,23 +197,24 @@ func (rs *RequestStore) GetByID(id string) *RequestRecord {
 	// Return a copy to avoid data races during concurrent reads/writes
 	record.mu.RLock()
 	recCopy := &RequestRecord{
-		ID:             record.ID,
-		Method:         record.Method,
-		Path:           record.Path,
-		RemoteAddr:     record.RemoteAddr,
-		Protocol:       record.Protocol,
-		StatusCode:     record.StatusCode,
-		BytesIn:        record.BytesIn,
-		BytesOut:       record.BytesOut,
-		Duration:       record.Duration,
-		DurationMS:     record.DurationMS,
-		StartTime:      record.StartTime,
-		EndTime:        record.EndTime,
-		Error:          record.Error,
-		Completed:      record.Completed,
-		RequestHeaders: record.RequestHeaders,
-		RequestBody:    record.RequestBody,
-		ResponseBody:   record.ResponseBody,
+		ID:              record.ID,
+		Method:          record.Method,
+		Path:            record.Path,
+		RemoteAddr:      record.RemoteAddr,
+		Protocol:        record.Protocol,
+		StatusCode:      record.StatusCode,
+		BytesIn:         record.BytesIn,
+		BytesOut:        record.BytesOut,
+		Duration:        record.Duration,
+		DurationMS:      record.DurationMS,
+		StartTime:       record.StartTime,
+		EndTime:         record.EndTime,
+		Error:           record.Error,
+		Completed:       record.Completed,
+		RequestHeaders:  record.RequestHeaders,
+		RequestBody:     record.RequestBody,
+		ResponseHeaders: record.ResponseHeaders,
+		ResponseBody:    record.ResponseBody,
 	}
 	record.mu.RUnlock()
 	return recCopy

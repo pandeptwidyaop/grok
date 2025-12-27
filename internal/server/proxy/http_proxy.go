@@ -188,7 +188,7 @@ func (p *HTTPProxy) calculateRequestSize(r *http.Request, bodySize int) int64 {
 
 // convertHeadersToProto converts HTTP headers to protobuf format.
 func (p *HTTPProxy) convertHeadersToProto(headers http.Header) map[string]*tunnelv1.HeaderValues {
-	protoHeaders := make(map[string]*tunnelv1.HeaderValues)
+	protoHeaders := make(map[string]*tunnelv1.HeaderValues, len(headers))
 	for key, values := range headers {
 		protoHeaders[key] = &tunnelv1.HeaderValues{Values: values}
 	}
@@ -506,7 +506,7 @@ func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request,
 	requestID := utils.GenerateRequestID()
 
 	// Convert HTTP headers to proto format for upgrade request
-	headers := make(map[string]*tunnelv1.HeaderValues)
+	headers := make(map[string]*tunnelv1.HeaderValues, len(r.Header))
 	for key, values := range r.Header {
 		headers[key] = &tunnelv1.HeaderValues{
 			Values: values,

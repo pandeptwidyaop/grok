@@ -398,7 +398,7 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 	cache.mu.RLock()
 	defer cache.mu.RUnlock()
 
-	var enabledRoutes []*WebhookRouteCacheEntry
+	enabledRoutes := make([]*WebhookRouteCacheEntry, 0, len(cache.Routes))
 	for _, route := range cache.Routes {
 		if route.IsEnabled && route.HealthStatus != "unhealthy" {
 			enabledRoutes = append(enabledRoutes, route)
@@ -439,7 +439,7 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 	wr.emitWebhookEvent(cache, userPath, request, result, durationMs)
 
 	if result.SuccessCount == 0 {
-		var errMsgs []string
+		errMsgs := make([]string, 0, len(result.Responses))
 		for _, resp := range result.Responses {
 			if resp.ErrorMessage != "" {
 				errMsgs = append(errMsgs, resp.ErrorMessage)
@@ -458,7 +458,7 @@ func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, u
 	requestID := utils.GenerateRequestID()
 
 	// Convert headers to proto format
-	headers := make(map[string]*tunnelv1.HeaderValues)
+	headers := make(map[string]*tunnelv1.HeaderValues, len(request.Headers))
 	for key, values := range request.Headers {
 		headers[key] = &tunnelv1.HeaderValues{
 			Values: values,

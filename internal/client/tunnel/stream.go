@@ -23,6 +23,21 @@ var wsClientBufferPool = sync.Pool{
 	},
 }
 
+// convertHeaders converts protobuf headers (map[string]*HeaderValues) to simplified map[string]string.
+// Takes the first value for each header key.
+func convertHeaders(pbHeaders map[string]*tunnelv1.HeaderValues) map[string]string {
+	if len(pbHeaders) == 0 {
+		return nil
+	}
+	headers := make(map[string]string, len(pbHeaders))
+	for key, values := range pbHeaders {
+		if values != nil && len(values.Values) > 0 {
+			headers[key] = values.Values[0] // Take first value
+		}
+	}
+	return headers
+}
+
 // startProxyStream starts the bidirectional proxy stream.
 func (c *Client) startProxyStream(ctx context.Context) error {
 	stream, err := c.tunnelSvc.ProxyStream(ctx)
@@ -187,6 +202,7 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 				Path:       httpReq.Path,
 				RemoteAddr: httpReq.RemoteAddr,
 				Protocol:   "http",
+				Headers:    convertHeaders(httpReq.Headers),
 			},
 		})
 	}
@@ -200,16 +216,30 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 	// Track total bytes sent for logging
 	totalBytesSent := 0
 	var statusCode int32
+	var responseHeaders map[string]string
+	var responseBody []byte
+	const maxBodyCapture = 1024 * 1024 // Capture up to 1MB of response body for dashboard
 
 	// Forward HTTP request to local service with chunked streaming
 	err := c.httpForwarder.ForwardChunked(ctx, httpReq, func(httpResp *tunnelv1.HTTPResponse, isLast bool) error {
-		// Capture status code from first chunk
+		// Capture status code and headers from first chunk
 		if statusCode == 0 {
 			statusCode = httpResp.StatusCode
+			responseHeaders = convertHeaders(httpResp.Headers)
 		}
 
 		// Track bytes
 		totalBytesSent += len(httpResp.Body)
+
+		// Capture response body for dashboard (limited to maxBodyCapture)
+		if len(responseBody) < maxBodyCapture {
+			remaining := maxBodyCapture - len(responseBody)
+			if len(httpResp.Body) <= remaining {
+				responseBody = append(responseBody, httpResp.Body...)
+			} else {
+				responseBody = append(responseBody, httpResp.Body[:remaining]...)
+			}
+		}
 
 		// Send chunk back to server
 		proxyResp := &tunnelv1.ProxyResponse{
@@ -291,11 +321,13 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 			Type:      events.EventRequestCompleted,
 			Timestamp: time.Now(),
 			Data: events.RequestCompletedEvent{
-				RequestID:  requestID,
-				StatusCode: statusCode,
-				BytesIn:    int64(len(httpReq.Body)),
-				BytesOut:   int64(totalBytesSent),
-				Duration:   duration,
+				RequestID:       requestID,
+				StatusCode:      statusCode,
+				BytesIn:         int64(len(httpReq.Body)),
+				BytesOut:        int64(totalBytesSent),
+				Duration:        duration,
+				ResponseHeaders: responseHeaders,
+				ResponseBody:    responseBody,
 			},
 		})
 	}

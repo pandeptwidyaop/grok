@@ -41,13 +41,14 @@ type RequestStartedEvent struct {
 
 // RequestCompletedEvent contains data for request completion events.
 type RequestCompletedEvent struct {
-	RequestID    string        `json:"request_id"`
-	StatusCode   int32         `json:"status_code"` // HTTP only, 0 for TCP
-	BytesIn      int64         `json:"bytes_in"`
-	BytesOut     int64         `json:"bytes_out"`
-	Duration     time.Duration `json:"duration"`
-	Error        string        `json:"error,omitempty"` // Empty if successful
-	ResponseBody []byte        `json:"response_body,omitempty"`
+	RequestID       string            `json:"request_id"`
+	StatusCode      int32             `json:"status_code"` // HTTP only, 0 for TCP
+	BytesIn         int64             `json:"bytes_in"`
+	BytesOut        int64             `json:"bytes_out"`
+	Duration        time.Duration     `json:"duration"`
+	Error           string            `json:"error,omitempty"` // Empty if successful
+	ResponseHeaders map[string]string `json:"response_headers,omitempty"`
+	ResponseBody    []byte            `json:"response_body,omitempty"`
 }
 
 // ConnectionEvent contains data for connection state changes.

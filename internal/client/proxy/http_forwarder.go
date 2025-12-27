@@ -122,7 +122,7 @@ func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) 
 	}
 
 	// Convert response headers
-	headers := make(map[string]*tunnelv1.HeaderValues)
+	headers := make(map[string]*tunnelv1.HeaderValues, len(httpResp.Header))
 	for name, values := range httpResp.Header {
 		headers[name] = &tunnelv1.HeaderValues{
 			Values: values,
@@ -200,7 +200,7 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 	defer httpResp.Body.Close()
 
 	// Convert response headers
-	headers := make(map[string]*tunnelv1.HeaderValues)
+	headers := make(map[string]*tunnelv1.HeaderValues, len(httpResp.Header))
 	for name, values := range httpResp.Header {
 		headers[name] = &tunnelv1.HeaderValues{
 			Values: values,
@@ -227,9 +227,8 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 			chunk := &tunnelv1.HTTPResponse{
 				StatusCode: int32(httpResp.StatusCode), //nolint:gosec // Safe conversion
 				Headers:    headers,
-				Body:       make([]byte, n),
+				Body:       append([]byte(nil), buffer[:n]...),
 			}
-			copy(chunk.Body, buffer[:n])
 
 			// Check if this is the last chunk
 			isLast := (err == io.EOF)
@@ -350,7 +349,8 @@ func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnel
 	}
 
 	// Read headers
-	headers := make(map[string]*tunnelv1.HeaderValues)
+	// Pre-allocate with typical WebSocket upgrade header count (~8 headers)
+	headers := make(map[string]*tunnelv1.HeaderValues, 8)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
