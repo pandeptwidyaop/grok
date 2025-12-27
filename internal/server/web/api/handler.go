@@ -848,10 +848,10 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		Name:     "auth_token",
 		Value:    token,
 		Path:     "/",
-		HttpOnly: true,                     // Prevents JavaScript access (XSS protection)
-		Secure:   r.TLS != nil,             // Only send over HTTPS in production
-		SameSite: http.SameSiteStrictMode,  // CSRF protection
-		MaxAge:   24 * 60 * 60,             // 24 hours (matches JWT expiry)
+		HttpOnly: true,                    // Prevents JavaScript access (XSS protection)
+		Secure:   r.TLS != nil,            // Only send over HTTPS in production
+		SameSite: http.SameSiteStrictMode, // CSRF protection
+		MaxAge:   24 * 60 * 60,            // 24 hours (matches JWT expiry)
 	})
 
 	respondJSON(w, http.StatusOK, loginResponse{
