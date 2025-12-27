@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
@@ -431,12 +432,26 @@ func (h *Handler) listTunnels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for show_all query parameter
+	showAll := r.URL.Query().Get("show_all") == "true"
+
 	var tunnels []models.Tunnel
 	// Show both active and offline tunnels (all persistent tunnels)
 	// Preload User and Organization to include owner and org info in response
 	query := h.db.Preload("User").Preload("Organization").
-		Where("status IN (?)", []string{"active", "offline"}).
-		Order("status ASC, connected_at DESC") // Active first, then by recent activity
+		Where("status IN (?)", []string{"active", "offline"})
+
+	// Filter out tunnels offline for more than 1 hour (unless show_all is true)
+	if !showAll {
+		oneHourAgo := time.Now().Add(-1 * time.Hour)
+		// Show active tunnels OR tunnels that went offline less than 1 hour ago
+		query = query.Where(
+			"status = ? OR (status = ? AND (disconnected_at IS NULL OR disconnected_at > ?))",
+			"active", "offline", oneHourAgo,
+		)
+	}
+
+	query = query.Order("status ASC, connected_at DESC") // Active first, then by recent activity
 
 	// Filter by organization for non-super-admins
 	if claims.Role != string(models.RoleSuperAdmin) {
@@ -601,9 +616,22 @@ func (h *Handler) deleteTunnel(w http.ResponseWriter, r *http.Request) {
 	isSuperAdmin := claims.Role == string(models.RoleSuperAdmin)
 	isOrgAdmin := claims.Role == string(models.RoleOrgAdmin)
 
+	// Debug logging
+	logger.InfoEvent().
+		Str("user_id", claims.UserID).
+		Str("username", claims.Username).
+		Str("role", claims.Role).
+		Bool("is_super_admin", isSuperAdmin).
+		Bool("is_org_admin", isOrgAdmin).
+		Bool("is_owner", isOwner).
+		Str("tunnel_id", tunnelID.String()).
+		Str("tunnel_owner_id", tun.UserID.String()).
+		Msg("Delete tunnel permission check")
+
 	// Super admin can delete any tunnel
 	if isSuperAdmin {
 		// Super admin has full access, skip other checks
+		logger.InfoEvent().Str("tunnel_id", tunnelID.String()).Msg("Super admin deleting tunnel")
 	} else if isOrgAdmin {
 		// Org admin can only delete tunnels in their organization
 		if tun.OrganizationID == nil || claims.OrganizationID == nil {

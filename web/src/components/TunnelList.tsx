@@ -25,6 +25,8 @@ import {
   Divider,
   useMediaQuery,
   useTheme,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import { Globe, Copy, Check, Trash2, Eye, Circle } from 'lucide-react';
 import { api, type Tunnel } from '@/lib/api';
@@ -34,15 +36,16 @@ function TunnelList() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [tunnelToDelete, setTunnelToDelete] = useState<Tunnel | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { data: tunnels, isLoading } = useQuery({
-    queryKey: ['tunnels'],
+    queryKey: ['tunnels', showAll],
     queryFn: async () => {
-      const response = await api.tunnels.list();
+      const response = await api.tunnels.list({ show_all: showAll });
       return response.data;
     },
   });
@@ -133,13 +136,29 @@ function TunnelList() {
 
       <Card>
         <CardContent sx={{ py: 4 }}>
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Active Tunnels
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {tunnels.length} tunnel{tunnels.length !== 1 ? 's' : ''} running
-            </Typography>
+          <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Active Tunnels
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {tunnels.length} tunnel{tunnels.length !== 1 ? 's' : ''} {showAll ? 'total' : 'active or recently offline'}
+              </Typography>
+            </Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showAll}
+                  onChange={(e) => setShowAll(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={
+                <Typography variant="body2" color="text.secondary">
+                  Show all tunnels
+                </Typography>
+              }
+            />
           </Box>
 
           {/* Mobile Card View */}

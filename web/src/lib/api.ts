@@ -266,7 +266,10 @@ export const api = {
 
   // Tunnels
   tunnels: {
-    list: () => apiClient.get<Tunnel[]>('/tunnels'),
+    list: (params?: { show_all?: boolean }) =>
+      apiClient.get<Tunnel[]>('/tunnels', {
+        params: params?.show_all ? { show_all: 'true' } : {},
+      }),
     get: (id: string) => apiClient.get<Tunnel>(`/tunnels/${id}`),
     logs: (id: string, params?: { page?: number; limit?: number; path?: string }) =>
       apiClient.get<PaginatedLogs>(`/tunnels/${id}/logs`, {
