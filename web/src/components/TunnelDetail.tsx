@@ -21,6 +21,7 @@ import {
   Divider,
   useMediaQuery,
   useTheme,
+  Tooltip,
 } from '@mui/material';
 import {
   ArrowLeft,
@@ -518,16 +519,21 @@ function TunnelDetail() {
                             }}
                           />
                         </TableCell>
-                        <TableCell>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontSize: '0.875rem',
-                            }}
-                          >
-                            {log.path}
-                          </Typography>
+                        <TableCell sx={{ maxWidth: 300 }}>
+                          <Tooltip title={log.path} arrow>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                fontFamily: 'monospace',
+                                fontSize: '0.875rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {log.path}
+                            </Typography>
+                          </Tooltip>
                         </TableCell>
                         <TableCell align="center">
                           <Chip

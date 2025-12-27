@@ -22,6 +22,7 @@ import {
   TableRow,
   Paper,
   IconButton,
+  Tooltip,
 } from '@mui/material';
 import { Webhook, Plus, Eye } from 'lucide-react';
 import { toast } from 'sonner';
@@ -253,10 +254,20 @@ export function WebhookApps({}: WebhookAppsProps) {
                           </Typography>
                         </Box>
                       </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 300 }}>
-                          {app.description || '—'}
-                        </Typography>
+                      <TableCell sx={{ maxWidth: 300 }}>
+                        <Tooltip title={app.description || '—'} arrow>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {app.description || '—'}
+                          </Typography>
+                        </Tooltip>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2">
