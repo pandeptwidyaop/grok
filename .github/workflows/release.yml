@@ -15,6 +15,7 @@ permissions:
   pull-requests: write
   packages: write  # Required for Docker image push
   id-token: write  # Required for Docker attestation
+  attestations: write  # Required for Docker artifact attestation
 
 jobs:
   # Job 1: Determine next version using semantic-release (dry-run)
