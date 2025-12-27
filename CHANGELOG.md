@@ -1,3 +1,9 @@
+## [1.0.0-alpha.16](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.15...v1.0.0-alpha.16) (2025-12-27)
+
+### Bug Fixes
+
+* resolve golangci-lint formatting issues ([0b3c400](https://github.com/pandeptwidyaop/grok/commit/0b3c400f366c1ed4000201e6a4c1e25be2bfc672))
+
 ## [1.0.0-alpha.15](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.14...v1.0.0-alpha.15) (2025-12-27)
 
 ### Features
