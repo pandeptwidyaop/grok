@@ -56,13 +56,20 @@ func (s *Server) HandleRequests(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get recent requests
+	// Get recent requests (pointers, not copies)
 	requests := s.requestStore.GetRecent(limit)
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"requests": requests,
-		"total":    s.requestStore.Size(),
-	})
+	// Use thread-safe JSON marshaling with locks held
+	requestsJSON, err := s.requestStore.MarshalRecordsJSON(requests)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to marshal requests")
+		return
+	}
+
+	// Manually construct response JSON
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"requests":%s,"total":%d}`, requestsJSON, s.requestStore.Size())
 }
 
 // HandleRequestDetail returns detailed information about a specific request.

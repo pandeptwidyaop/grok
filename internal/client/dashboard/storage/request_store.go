@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 
@@ -112,76 +113,16 @@ func (rs *RequestStore) RecordCompletion(event events.Event) {
 	}
 }
 
-// GetRecent returns the most recent N requests as copies to avoid data races.
+// GetRecent returns the most recent N requests as pointers.
+// IMPORTANT: Callers must use MarshalRecordsJSON for thread-safe JSON serialization.
 func (rs *RequestStore) GetRecent(limit int) []*RequestRecord {
-	records := rs.requests.GetRecent(limit)
-	// Create copies to avoid data races during concurrent reads/writes
-	copies := make([]*RequestRecord, len(records))
-	for i, rec := range records {
-		if rec != nil {
-			rec.mu.RLock()
-			// Manually copy fields to avoid copying mutex
-			recCopy := &RequestRecord{
-				ID:              rec.ID,
-				Method:          rec.Method,
-				Path:            rec.Path,
-				RemoteAddr:      rec.RemoteAddr,
-				Protocol:        rec.Protocol,
-				StatusCode:      rec.StatusCode,
-				BytesIn:         rec.BytesIn,
-				BytesOut:        rec.BytesOut,
-				Duration:        rec.Duration,
-				DurationMS:      rec.DurationMS,
-				StartTime:       rec.StartTime,
-				EndTime:         rec.EndTime,
-				Error:           rec.Error,
-				Completed:       rec.Completed,
-				RequestHeaders:  rec.RequestHeaders,
-				RequestBody:     rec.RequestBody,
-				ResponseHeaders: rec.ResponseHeaders,
-				ResponseBody:    rec.ResponseBody,
-			}
-			rec.mu.RUnlock()
-			copies[i] = recCopy
-		}
-	}
-	return copies
+	return rs.requests.GetRecent(limit)
 }
 
-// GetAll returns all stored requests as copies to avoid data races.
+// GetAll returns all stored requests as pointers.
+// IMPORTANT: Callers must use MarshalRecordsJSON for thread-safe JSON serialization.
 func (rs *RequestStore) GetAll() []*RequestRecord {
-	records := rs.requests.GetAll()
-	// Create copies to avoid data races during concurrent reads/writes
-	copies := make([]*RequestRecord, len(records))
-	for i, rec := range records {
-		if rec != nil {
-			rec.mu.RLock()
-			// Manually copy fields to avoid copying mutex
-			recCopy := &RequestRecord{
-				ID:              rec.ID,
-				Method:          rec.Method,
-				Path:            rec.Path,
-				RemoteAddr:      rec.RemoteAddr,
-				Protocol:        rec.Protocol,
-				StatusCode:      rec.StatusCode,
-				BytesIn:         rec.BytesIn,
-				BytesOut:        rec.BytesOut,
-				Duration:        rec.Duration,
-				DurationMS:      rec.DurationMS,
-				StartTime:       rec.StartTime,
-				EndTime:         rec.EndTime,
-				Error:           rec.Error,
-				Completed:       rec.Completed,
-				RequestHeaders:  rec.RequestHeaders,
-				RequestBody:     rec.RequestBody,
-				ResponseHeaders: rec.ResponseHeaders,
-				ResponseBody:    rec.ResponseBody,
-			}
-			rec.mu.RUnlock()
-			copies[i] = recCopy
-		}
-	}
-	return copies
+	return rs.requests.GetAll()
 }
 
 // GetByID retrieves a specific request by ID as a copy to avoid data races.
@@ -218,6 +159,29 @@ func (rs *RequestStore) GetByID(id string) *RequestRecord {
 	}
 	record.mu.RUnlock()
 	return recCopy
+}
+
+// MarshalRecordsJSON safely marshals records to JSON while holding read locks.
+// This prevents data races during JSON serialization of pointer-returned records.
+func (rs *RequestStore) MarshalRecordsJSON(records []*RequestRecord) ([]byte, error) {
+	// Lock all records for reading
+	for _, rec := range records {
+		if rec != nil {
+			rec.mu.RLock()
+		}
+	}
+
+	// Unlock all records after JSON marshaling
+	defer func() {
+		for _, rec := range records {
+			if rec != nil {
+				rec.mu.RUnlock()
+			}
+		}
+	}()
+
+	// Marshal with all locks held
+	return json.Marshal(records)
 }
 
 // Size returns the number of requests currently stored.
