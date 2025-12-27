@@ -41,20 +41,31 @@ Example:
 // setServerCmd represents the set-server command.
 var setServerCmd = &cobra.Command{
 	Use:   "set-server [address]",
-	Short: "Set grok server address",
-	Long: `Set the grok server address for tunnel connections.
+	Short: "Set grok server address and optional TLS settings",
+	Long: `Set the grok server address for tunnel connections with optional TLS configuration.
 
 The address can be specified as:
   - hostname only (uses default port 4443): cloudtunnel.id
   - hostname with port: cloudtunnel.id:8080
   - IP address with port: 192.168.1.100:4443
 
+TLS can be configured in one command using flags, or separately using dedicated commands.
+
 Examples:
+  # Basic server setup
   grok config set-server cloudtunnel.id
-  grok config set-server cloudtunnel.id:8080
-  grok config set-server localhost:4443`,
+
+  # Quick TLS setup (one-liner)
+  grok config set-server cloudtunnel.id --tls
+  grok config set-server cloudtunnel.id --tls --tls-insecure
+  grok config set-server cloudtunnel.id --tls --tls-cert certs/server.crt
+
+  # Separate commands (same result)
+  grok config set-server cloudtunnel.id
+  grok config enable-tls
+  grok config set-tls-insecure true`,
 	Args: cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		addr := args[0]
 
 		// Add default port if not specified
@@ -62,11 +73,56 @@ Examples:
 			addr = addr + ":4443"
 		}
 
+		// Save server address first
 		if err := config.SaveServer(addr); err != nil {
 			return fmt.Errorf("failed to save server address: %w", err)
 		}
 
 		fmt.Printf("✓ Server address saved: %s\n", addr)
+
+		// Get flags
+		enableTLS, _ := cmd.Flags().GetBool("tls")
+		disableTLS, _ := cmd.Flags().GetBool("no-tls")
+		tlsCert, _ := cmd.Flags().GetString("tls-cert")
+		tlsInsecure, _ := cmd.Flags().GetBool("tls-insecure")
+
+		// Validate conflicting flags
+		if enableTLS && disableTLS {
+			return fmt.Errorf("cannot use both --tls and --no-tls flags")
+		}
+
+		if tlsCert != "" && tlsInsecure {
+			return fmt.Errorf("cannot use both --tls-cert and --tls-insecure flags")
+		}
+
+		// Process TLS flags
+		if disableTLS {
+			// Explicitly disable TLS
+			if err := config.DisableTLS(); err != nil {
+				return fmt.Errorf("failed to disable TLS: %w", err)
+			}
+			fmt.Printf("⚠️  TLS disabled - connection will be insecure\n")
+		} else if tlsCert != "" {
+			// Enable TLS with custom certificate
+			if err := config.SetTLSCert(tlsCert); err != nil {
+				return fmt.Errorf("failed to set TLS certificate: %w", err)
+			}
+			fmt.Printf("✓ TLS enabled with certificate: %s\n", tlsCert)
+		} else if tlsInsecure {
+			// Enable TLS in insecure mode
+			if err := config.SetTLSInsecure(true); err != nil {
+				return fmt.Errorf("failed to set TLS insecure mode: %w", err)
+			}
+			fmt.Printf("⚠️  TLS enabled in insecure mode (certificate verification disabled)\n")
+			fmt.Printf("⚠️  This should ONLY be used for development/testing!\n")
+		} else if enableTLS {
+			// Enable TLS with system CA pool
+			if err := config.EnableTLS(); err != nil {
+				return fmt.Errorf("failed to enable TLS: %w", err)
+			}
+			fmt.Printf("✓ TLS enabled with system CA pool\n")
+		}
+
 		fmt.Printf("Config file: ~/.grok/config.yaml\n")
 
 		return nil
@@ -214,4 +270,10 @@ func init() {
 	configCmd.AddCommand(setTLSInsecureCmd)
 	configCmd.AddCommand(enableTLSCmd)
 	configCmd.AddCommand(disableTLSCmd)
+
+	// Add TLS flags to set-server command for convenience
+	setServerCmd.Flags().Bool("tls", false, "Enable TLS with system CA pool")
+	setServerCmd.Flags().Bool("no-tls", false, "Explicitly disable TLS")
+	setServerCmd.Flags().String("tls-cert", "", "Enable TLS with custom certificate file")
+	setServerCmd.Flags().Bool("tls-insecure", false, "Enable TLS in insecure mode (skip verification, dev only)")
 }
