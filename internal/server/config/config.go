@@ -164,7 +164,7 @@ func setDefaults() {
 	viper.SetDefault("logging.level", "info")
 	viper.SetDefault("logging.format", "json")
 	viper.SetDefault("logging.output", "stdout")
-	viper.SetDefault("logging.sql_log_level", "silent")  // silent = no SQL query logs (use "info" to enable)
-	viper.SetDefault("logging.http_log_level", "error")  // error = only log errors (use "info" to log all requests)
-	viper.SetDefault("logging.sse_log_level", "warn")    // warn = only log disconnects (use "info" to log all connects)
+	viper.SetDefault("logging.sql_log_level", "silent") // silent = no SQL query logs (use "info" to enable)
+	viper.SetDefault("logging.http_log_level", "error") // error = only log errors (use "info" to log all requests)
+	viper.SetDefault("logging.sse_log_level", "warn")   // warn = only log disconnects (use "info" to log all connects)
 }

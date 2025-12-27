@@ -644,7 +644,7 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 		Msg("WebSocket connection closed")
 }
 
-// shouldLogHTTPRequest determines if HTTP request should be logged based on configured level
+// shouldLogHTTPRequest determines if HTTP request should be logged based on configured level.
 func (p *HTTPProxy) shouldLogHTTPRequest(statusCode int) bool {
 	switch p.httpLogLevel {
 	case "silent":
