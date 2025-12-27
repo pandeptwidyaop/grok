@@ -1,3 +1,31 @@
+## [1.1.0-alpha.1](https://github.com/pandeptwidyaop/grok/compare/v1.0.0...v1.1.0-alpha.1) (2025-12-27)
+
+### Features
+
+* add configurable SQL query logging level ([aabc755](https://github.com/pandeptwidyaop/grok/commit/aabc7557d88db32bd3e87b635f8b9eb4c5eb478e))
+* add HTTP request logging middleware and fix SSE support ([925c2ae](https://github.com/pandeptwidyaop/grok/commit/925c2ae8ebb29829084d14cb5944de3420747b6c))
+* add WebSocket support and reduce minimum subdomain length ([7b01868](https://github.com/pandeptwidyaop/grok/commit/7b0186884e1a84747cdba91000a890b25dc1883e))
+* **cli:** enhance version command with runtime information ([cf3443f](https://github.com/pandeptwidyaop/grok/commit/cf3443f72e0879b939566bbd782e87b92004fd6f))
+* **dashboard:** add mobile responsive design for organization pages ([94656a4](https://github.com/pandeptwidyaop/grok/commit/94656a48955d3b85797a15df9a4f6d6df91f29df))
+* **dashboard:** add mobile responsive design improvements ([02d64ac](https://github.com/pandeptwidyaop/grok/commit/02d64ac4126e57d33ad2791cfb200a324c39294e))
+* **dashboard:** auto-hide inactive tunnels and add show all filter ([b0da82d](https://github.com/pandeptwidyaop/grok/commit/b0da82da0e27e60492ecf4eda4a1f263a088850b))
+* **dashboard:** complete mobile responsive design for organization detail page ([331c989](https://github.com/pandeptwidyaop/grok/commit/331c989fb28ad7479129ea7cafe55b5e4a96dc80))
+* enable gRPC compression and fix SSE reconnection issues ([c2051c6](https://github.com/pandeptwidyaop/grok/commit/c2051c6f4e1eff1094e0b7c5565b168bef928b92))
+* **ui:** add comprehensive mobile optimization and critical fixes ([7cc8bd8](https://github.com/pandeptwidyaop/grok/commit/7cc8bd862dd7a5c04d575eb86926b9d58601f2d4))
+
+### Bug Fixes
+
+* **dashboard:** resolve CSRF token persistence across page refreshes ([7d42f91](https://github.com/pandeptwidyaop/grok/commit/7d42f916b6ea2a3ec31119d7cc0b1d016ff785a4))
+* login page reload timing and super admin delete permission ([84f907a](https://github.com/pandeptwidyaop/grok/commit/84f907a62a53a8ded62aec504d70013256e98ae0))
+* resolve golangci-lint formatting issues ([0b3c400](https://github.com/pandeptwidyaop/grok/commit/0b3c400f366c1ed4000201e6a4c1e25be2bfc672))
+* webhook URL parsing and subdomain validation improvements ([ac4ef11](https://github.com/pandeptwidyaop/grok/commit/ac4ef1158d6d3d4e955cc8b45e5ad63692bbf786))
+
+## [1.0.0-alpha.16](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.15...v1.0.0-alpha.16) (2025-12-27)
+
+### Bug Fixes
+
+* resolve golangci-lint formatting issues ([0b3c400](https://github.com/pandeptwidyaop/grok/commit/0b3c400f366c1ed4000201e6a4c1e25be2bfc672))
+
 ## [1.0.0-alpha.15](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.14...v1.0.0-alpha.15) (2025-12-27)
 
 ### Features
