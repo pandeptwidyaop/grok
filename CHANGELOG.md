@@ -1,3 +1,10 @@
+## [1.1.0-alpha.6](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.5...v1.1.0-alpha.6) (2025-12-27)
+
+### Features
+
+* **perf:** Phase 1 - Buffer pooling + WebSocket bug fix ([f5e120b](https://github.com/pandeptwidyaop/grok/commit/f5e120b34eb8d7435e3a00881359ec2f5294e91b))
+* **perf:** Phase 2 - strings.Builder for reduced allocations ([f23fae2](https://github.com/pandeptwidyaop/grok/commit/f23fae25490d334c06921bcfc03ba1987eaf0189))
+
 ## [1.1.0-alpha.5](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.4...v1.1.0-alpha.5) (2025-12-27)
 
 ### Bug Fixes
