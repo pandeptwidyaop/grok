@@ -110,13 +110,29 @@ function TunnelList() {
     return (
       <Card>
         <CardContent sx={{ py: 4 }}>
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Active Tunnels
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              No active tunnels. Start a tunnel using the CLI client.
-            </Typography>
+          <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Active Tunnels
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {showAll ? 'No tunnels found.' : 'No active tunnels. Start a tunnel using the CLI client.'}
+              </Typography>
+            </Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showAll}
+                  onChange={(e) => setShowAll(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={
+                <Typography variant="body2" color="text.secondary">
+                  Show all tunnels
+                </Typography>
+              }
+            />
           </Box>
         </CardContent>
       </Card>
