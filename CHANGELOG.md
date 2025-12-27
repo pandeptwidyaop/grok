@@ -1,3 +1,13 @@
+## [1.0.0-alpha.13](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.12...v1.0.0-alpha.13) (2025-12-27)
+
+### Features
+
+* add WebSocket support and reduce minimum subdomain length ([7b01868](https://github.com/pandeptwidyaop/grok/commit/7b0186884e1a84747cdba91000a890b25dc1883e))
+
+### Bug Fixes
+
+* login page reload timing and super admin delete permission ([84f907a](https://github.com/pandeptwidyaop/grok/commit/84f907a62a53a8ded62aec504d70013256e98ae0))
+
 ## [1.0.0-alpha.12](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.11...v1.0.0-alpha.12) (2025-12-27)
 
 ### Features
