@@ -1,0 +1,46 @@
+server:
+  grpc_port: 4443
+  http_port: 3080
+  https_port: 8443
+  api_port: 4040
+  domain: "localhost"
+
+  # TCP tunnel port allocation range
+  tcp_port_start: 10000
+  tcp_port_end: 20000
+
+  # SECURITY: CORS allowed origins (prevents unauthorized cross-origin requests)
+  # Only requests from these origins will be allowed
+  # For development with Vite dev server and local API
+  allowed_origins:
+    - "http://localhost:5173"   # Vite dev server (npm run dev)
+    - "https://localhost:4040"  # Dashboard API (HTTPS)
+    - "https://localhost:8443"  # HTTPS tunnel endpoint
+    - "http://localhost:4040"   # Dashboard API (HTTP fallback)
+    - "http://localhost:3080"   # HTTP tunnel endpoint
+
+database:
+  driver: "sqlite"
+  database: "grok.db"
+
+# TLS Configuration - ENABLED FOR TESTING
+tls:
+  auto_cert: false              # Using manual certificates (not Let's Encrypt)
+  cert_dir: "./certs"           # Directory for caching certificates
+  cert_file: "certs/server.crt" # Self-signed certificate for testing
+  key_file: "certs/server.key"  # Private key for testing
+
+auth:
+  jwt_secret: "S9MngsfFS+Fq6USX/P+NIKI4ZFMePkFEYZejSEhPbYYhEnW8+ffSz3Qhq5XcMxzh"
+  admin_username: "admin"
+  admin_password: "admin123"
+
+tunnels:
+  max_per_user: 10
+  idle_timeout: "10m"
+  heartbeat_interval: "30s"
+
+logging:
+  level: "info"
+  format: "text"
+  output: "stdout"
