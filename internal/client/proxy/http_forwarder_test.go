@@ -23,7 +23,7 @@ func TestNewHTTPForwarder(t *testing.T) {
 	require.NotNil(t, forwarder)
 	assert.Equal(t, "localhost:3000", forwarder.localAddr)
 	assert.NotNil(t, forwarder.httpClient)
-	assert.Equal(t, 30*time.Second, forwarder.httpClient.Timeout)
+	assert.Equal(t, time.Duration(0), forwarder.httpClient.Timeout) // No timeout for chunked transfers
 }
 
 // TestHTTPForwarder_Forward_SimpleGET tests forwarding a simple GET request.

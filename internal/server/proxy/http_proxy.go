@@ -243,7 +243,8 @@ func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w h
 	}
 
 	// Create response channel for receiving chunks
-	responseCh := make(chan *tunnelv1.ProxyResponse, 10) // Buffer for chunks
+	// Buffer size 50 for performance (blocking send with backpressure supports unlimited file size)
+	responseCh := make(chan *tunnelv1.ProxyResponse, 50)
 	tun.ResponseMap.Store(requestID, responseCh)
 	defer tun.ResponseMap.Delete(requestID)
 
@@ -259,7 +260,8 @@ func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w h
 	}
 
 	// Wait for response chunks and stream directly to client
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultRequestTimeout)
+	// No timeout for chunked streaming to support large file downloads
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	responseBytes := int64(0)

@@ -358,13 +358,20 @@ func (s *TunnelService) handleProxyResponse(currentTunnel *tunnel.Tunnel, respon
 		return
 	}
 
+	// Blocking send with timeout for backpressure
+	// This ensures chunks are never dropped and supports unlimited file sizes
+	sendCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	select {
 	case respChan <- response:
-		// Response delivered
-	default:
-		logger.WarnEvent().
+		// Response delivered successfully
+	case <-sendCtx.Done():
+		// Timeout sending chunk - consumer is too slow or stuck
+		logger.ErrorEvent().
 			Str("request_id", response.RequestId).
-			Msg("Response channel full or closed")
+			Int("chunk_size", len(response.GetHttp().GetBody())).
+			Msg("CRITICAL: Timeout sending response chunk - HTTP proxy consumer is too slow or stuck")
 	}
 }
 

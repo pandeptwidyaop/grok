@@ -19,7 +19,7 @@ import (
 // HTTPForwarder forwards HTTP requests to local service.
 type HTTPForwarder struct {
 	localAddr  string
-	httpClient *http.Client
+	httpClient *http.Client // No timeout to support large file downloads via chunked transfer
 }
 
 // NewHTTPForwarder creates a new HTTP forwarder.
@@ -37,7 +37,7 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 	return &HTTPForwarder{
 		localAddr: localAddr,
 		httpClient: &http.Client{
-			Timeout:   30 * time.Second,
+			Timeout:   0, // No timeout to support large file downloads via chunked transfer
 			Transport: transport,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				// Don't follow redirects
@@ -192,7 +192,7 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 		httpReq.Header.Set("X-Forwarded-For", req.RemoteAddr)
 	}
 
-	// Execute request
+	// Execute request (no timeout for large file downloads)
 	httpResp, err := f.httpClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("failed to execute HTTP request: %w", err)
