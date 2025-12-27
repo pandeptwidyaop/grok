@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestOrganizationBeforeCreate tests UUID generation on organization creation
+// TestOrganizationBeforeCreate tests UUID generation on organization creation.
 func TestOrganizationBeforeCreate(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -27,7 +27,7 @@ func TestOrganizationBeforeCreate(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, org.ID)
 }
 
-// TestOrganizationBeforeCreate_WithProvidedID tests that provided UUID is preserved
+// TestOrganizationBeforeCreate_WithProvidedID tests that provided UUID is preserved.
 func TestOrganizationBeforeCreate_WithProvidedID(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -46,7 +46,7 @@ func TestOrganizationBeforeCreate_WithProvidedID(t *testing.T) {
 	assert.Equal(t, providedID, org.ID)
 }
 
-// TestOrganizationUniqueSubdomain tests subdomain uniqueness constraint
+// TestOrganizationUniqueSubdomain tests subdomain uniqueness constraint.
 func TestOrganizationUniqueSubdomain(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -70,7 +70,7 @@ func TestOrganizationUniqueSubdomain(t *testing.T) {
 	assert.Contains(t, err.Error(), "UNIQUE constraint failed")
 }
 
-// TestOrganizationDefaultValues tests default values
+// TestOrganizationDefaultValues tests default values.
 func TestOrganizationDefaultValues(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -91,7 +91,7 @@ func TestOrganizationDefaultValues(t *testing.T) {
 	assert.True(t, loaded.IsActive, "IsActive should default to true")
 }
 
-// TestOrganizationWithUsers tests user relationships
+// TestOrganizationWithUsers tests user relationships.
 func TestOrganizationWithUsers(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -134,7 +134,7 @@ func TestOrganizationWithUsers(t *testing.T) {
 	assert.Equal(t, "User Test Org", loadedOrg.Name)
 }
 
-// TestOrganizationWithDomains tests domain relationships
+// TestOrganizationWithDomains tests domain relationships.
 func TestOrganizationWithDomains(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -182,7 +182,7 @@ func TestOrganizationWithDomains(t *testing.T) {
 	assert.Len(t, loadedOrg.Domains, 2)
 }
 
-// TestOrganizationWithTunnels tests tunnel relationships
+// TestOrganizationWithTunnels tests tunnel relationships.
 func TestOrganizationWithTunnels(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -249,13 +249,13 @@ func TestOrganizationWithTunnels(t *testing.T) {
 	assert.Len(t, loadedOrg.Tunnels, 2)
 }
 
-// TestOrganizationTableName tests custom table name
+// TestOrganizationTableName tests custom table name.
 func TestOrganizationTableName(t *testing.T) {
 	org := Organization{}
 	assert.Equal(t, "organizations", org.TableName())
 }
 
-// TestOrganizationUpdate tests organization updates
+// TestOrganizationUpdate tests organization updates.
 func TestOrganizationUpdate(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -285,7 +285,7 @@ func TestOrganizationUpdate(t *testing.T) {
 	assert.NotEmpty(t, loaded.UpdatedAt)
 }
 
-// TestOrganizationInactive tests inactive organization
+// TestOrganizationInactive tests inactive organization.
 func TestOrganizationInactive(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -310,7 +310,7 @@ func TestOrganizationInactive(t *testing.T) {
 	assert.False(t, loaded.IsActive)
 }
 
-// TestOrganizationRequiredFields tests required fields
+// TestOrganizationRequiredFields tests required fields.
 func TestOrganizationRequiredFields(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -333,7 +333,7 @@ func TestOrganizationRequiredFields(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tt.name, func(_ *testing.T) {
 			err := db.Create(tt.org).Error
 			// SQLite doesn't enforce NOT NULL on empty strings like PostgreSQL
 			// So we just verify it was created (constraint checking happens at app level)
@@ -342,7 +342,7 @@ func TestOrganizationRequiredFields(t *testing.T) {
 	}
 }
 
-// BenchmarkOrganizationCreate benchmarks organization creation
+// BenchmarkOrganizationCreate benchmarks organization creation.
 func BenchmarkOrganizationCreate(b *testing.B) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	db.AutoMigrate(&Organization{})

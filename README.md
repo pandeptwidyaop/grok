@@ -1,560 +1,369 @@
 # Grok - Self-Hosted Tunneling Solution
 
-<div align="center">
+**Expose your localhost to the internet with secure tunnels**
 
-![Grok Banner](https://img.shields.io/badge/Grok-Tunneling%20Solution-667eea?style=for-the-badge)
-
-**Production-ready ngrok alternative built with Go, gRPC, and React**
-
-[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat-square&logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![GitHub Issues](https://img.shields.io/github/issues/pandeptwidyaop/grok?style=flat-square)](https://github.com/pandeptwidyaop/grok/issues)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](CONTRIBUTING.md)
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Contributing](#-contributing)
-
-</div>
-
----
-
-## 📖 Overview
-
-**Grok** is a self-hosted tunneling solution that securely exposes your local services to the internet through encrypted tunnels. Perfect for:
-
-- 🚀 **Local Development** - Share your localhost with teammates
-- 🔗 **Webhook Testing** - Test webhooks from external services
-- 🔒 **Secure Access** - Access services behind firewalls/NAT
-- 🏢 **Multi-Tenancy** - Organization-based access control
-- 📊 **Real-time Monitoring** - Beautiful web dashboard
+Grok is a self-hosted alternative to ngrok that lets you share your local development server with anyone on the internet.
 
 ## ✨ Features
 
 ### Core Features
-- ⚡ **gRPC Bidirectional Streaming** - High-performance tunnel communication
-- 🌐 **Multi-Protocol Support** - HTTP/HTTPS, TCP with TLS termination
-- 🎯 **Custom & Random Subdomains** - Flexible domain allocation
-- 🔐 **JWT Authentication** - Secure token-based access control
-- 🗄️ **Database Support** - SQLite (development) & PostgreSQL (production)
-- 🔄 **Auto-Reconnection** - Resilient connections with exponential backoff
-- 📈 **Real-time Updates** - Server-Sent Events (SSE) for live dashboard
+- 🌐 **HTTP/HTTPS Tunnels** - Expose local web servers with custom subdomains
+- 🔌 **TCP Tunnels** - Expose any TCP service (SSH, databases, etc.)
+- 📁 **Static File Server** - Serve and share local directories instantly
+- 🎯 **Custom Subdomains** - Use your own subdomain names
+- 🔐 **Secure Authentication** - Token-based access control
+- 📊 **Real-time Dashboard** - Monitor tunnel traffic live
+- 🔄 **Auto-Reconnect** - Tunnels automatically recover from disconnections
 
-### Advanced Features
-- 🏢 **Organization Management** - Multi-tenant architecture with role-based access
-- 👥 **User Roles** - Super Admin, Org Admin, Org User permissions
-- 🔑 **Two-Factor Authentication (2FA)** - TOTP-based security via Google Authenticator
-- 🪝 **Webhook Routing** - Broadcast webhooks to multiple tunnels simultaneously
-- 📊 **Analytics Dashboard** - Track requests, bandwidth, tunnel statistics
-- 🔔 **Version Checker** - Auto-detect updates from GitHub releases
-- 🎨 **Modern UI** - React + Material-UI with professional design
+### Client Dashboard
+- 📈 **Live Request Monitoring** - See incoming requests in real-time
+- 🔍 **Request Inspector** - View headers, body, and response details
+- 📊 **Performance Metrics** - Track latency, throughput, and error rates
+- 💻 **Works with all tunnel types** - HTTP, TCP, and file server
 
-### Developer Experience
-- 🛠️ **Hot Reload** - Fast development with Air (backend) and Vite (frontend)
-- 📦 **Semantic Versioning** - Automated releases with GitHub Actions
-- 🔄 **Self-Update** - Built-in update command (`grok update`)
-- 🧪 **Comprehensive Testing** - Unit, integration, and E2E tests
-- 📝 **Type-Safe** - Protocol Buffers for API contracts
-- 🐳 **Docker Ready** - Easy deployment with containers
-
-## 🏗️ Architecture
-
-```
-┌──────────────┐     ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐
-│ Internet     │────▶│ Server          │────▶│ Tunnel       │────▶│ Client       │
-│ Client       │     │ (HTTP Proxy +   │     │ Manager      │     │ (gRPC)       │
-│              │◀────│  gRPC Server)   │◀────│ (sync.Map)   │◀────│              │
-└──────────────┘     └─────────────────┘     └──────────────┘     └──────────────┘
-                              │                                            │
-                              │                                            │
-                              ▼                                            ▼
-                     ┌─────────────────┐                          ┌──────────────┐
-                     │ PostgreSQL/     │                          │ Local        │
-                     │ SQLite DB       │                          │ Service      │
-                     └─────────────────┘                          │ (localhost)  │
-                                                                   └──────────────┘
-```
-
-## 📁 Project Structure
-
-```
-grok/
-├── cmd/
-│   ├── grok-server/         # Server entry point
-│   └── grok/                # Client CLI
-├── internal/
-│   ├── server/              # Server implementation
-│   │   ├── auth/           # JWT + TOTP authentication
-│   │   ├── grpc/           # gRPC tunnel service
-│   │   ├── proxy/          # HTTP/TCP reverse proxy
-│   │   ├── tunnel/         # Tunnel manager
-│   │   ├── web/            # REST API + embedded dashboard
-│   │   └── tcp/            # TCP port allocation
-│   ├── client/              # Client implementation
-│   │   ├── cli/            # Cobra CLI commands
-│   │   ├── tunnel/         # gRPC client
-│   │   └── proxy/          # Local forwarding
-│   ├── db/                  # Database models & migrations
-│   └── version/             # Version management
-├── proto/                   # Protocol Buffers definitions
-├── web/                     # React dashboard
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── contexts/       # Auth & app contexts
-│   │   └── lib/            # API client
-├── configs/                 # Configuration examples
-├── scripts/                 # Build & deployment scripts
-└── tests/                   # Integration tests
-```
+### Server Dashboard
+- 👥 **User Management** - Create and manage users
+- 🏢 **Organization Support** - Multi-tenant with role-based access
+- 🔑 **Token Management** - Generate and revoke auth tokens
+- 🪝 **Webhook Broadcasting** - Send webhooks to multiple tunnels
+- 🔐 **Two-Factor Auth (2FA)** - TOTP-based security
+- 📊 **Analytics** - Track all tunnel activity and statistics
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- **Go 1.25+** - [Install Go](https://go.dev/dl/)
-- **Node.js 18+** - [Install Node](https://nodejs.org/) (for building web dashboard)
-- **Protocol Buffers** - `brew install protobuf` or [Install protoc](https://grpc.io/docs/protoc-installation/)
-- **Database**: PostgreSQL 15+ or SQLite 3+ (SQLite included)
-
 ### Installation
 
-1. **Clone the repository**
+1. Download the latest release from [GitHub Releases](https://github.com/pandeptwidyaop/grok/releases)
+2. Or build from source:
    ```bash
    git clone https://github.com/pandeptwidyaop/grok.git
    cd grok
+   make build-all
    ```
 
-2. **Install dependencies**
-   ```bash
-   go mod download
-   make install-tools  # Install protoc-gen-go and protoc-gen-go-grpc
-   ```
+### Server Setup
 
-3. **Build everything**
-   ```bash
-   make build-all  # Builds server, client, and web dashboard
-   ```
-
-### Quick Test (5 Minutes)
-
-1. **Start the server** (Terminal 1)
+1. **Start the server**
    ```bash
    ./bin/grok-server --config configs/server.example.yaml
    ```
-   Server starts on:
-   - gRPC: `localhost:4443`
-   - HTTP Proxy: `localhost:3080`
-   - Dashboard: `http://localhost:4040`
 
-2. **Create a demo user** (Terminal 2)
+2. **Open the dashboard**: `http://localhost:4040`
+
+3. **Create a user and get auth token** from the dashboard
+
+### Client Setup
+
+1. **Configure your token**
    ```bash
-   # Open the database
-   sqlite3 grok.db
-
-   # Run this SQL to create a super admin
-   INSERT INTO users (id, email, password, name, role, is_active, created_at, updated_at)
-   VALUES (
-     lower(hex(randomblob(16))),
-     'admin@grok.local',
-     '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', -- password: "admin"
-     'Admin User',
-     'super_admin',
-     1,
-     datetime('now'),
-     datetime('now')
-   );
+   ./bin/grok config set-token grok_your_token_here
    ```
 
-3. **Open the dashboard**
-   - Navigate to `http://localhost:4040`
-   - Login with: `admin@grok.local` / `admin`
-   - Go to **Auth Tokens** → **Create Token**
-   - Copy the generated token (starts with `grok_`)
+2. **You're ready!**
 
-4. **Configure the client** (Terminal 2)
-   ```bash
-   ./bin/grok config set-token grok_your_copied_token
-   ```
+## 📖 Usage
 
-5. **Start a test HTTP server** (Terminal 3)
-   ```bash
-   python3 -m http.server 8000
-   ```
+### HTTP Tunnels
 
-6. **Create a tunnel** (Terminal 2)
-   ```bash
-   ./bin/grok http 8000
-   ```
-
-7. **Test it!** (Terminal 4)
-   ```bash
-   # Replace abc123 with your actual subdomain
-   curl http://abc123.localhost:3080
-   ```
-
-🎉 **Success!** You should see your local server's response.
-
-## 📚 Documentation
-
-### Server Configuration
-
-Create `configs/server.yaml` from the example:
-
-```yaml
-server:
-  grpc_port: 4443
-  http_port: 3080
-  api_port: 4040
-  domain: "localhost"  # Change to your domain in production
-
-database:
-  driver: "sqlite"     # or "postgres"
-  database: "grok.db"  # or PostgreSQL connection string
-
-auth:
-  jwt_secret: "your-secret-key-min-32-chars"
-
-tls:
-  auto_cert: false     # Enable for production with Let's Encrypt
-  cert_dir: "/var/lib/grok/certs"
-
-logging:
-  level: "info"
-  format: "json"
-```
-
-### Client Usage
-
-#### HTTP Tunnels
+Expose a local web server:
 
 ```bash
-# Basic tunnel with auto-generated subdomain
-./bin/grok http 3000
+# Basic tunnel (auto-generated subdomain)
+grok http 3000
 
 # Custom subdomain
-./bin/grok http 3000 --subdomain myapp
-# → https://myapp.yourdomain.com
+grok http 3000 --subdomain myapp
+# Access at: https://myapp.yourdomain.com
 
-# Named tunnel (persistent identifier)
-./bin/grok http 3000 --name my-api --subdomain api
-
-# Override server
-./bin/grok http 3000 --server tunnel.company.com:4443
+# With client dashboard for monitoring
+grok http 3000 --dashboard
+# Dashboard at: http://localhost:4041
 ```
 
-#### TCP Tunnels
+**When to use:**
+- Share your local dev server with teammates
+- Test webhooks from GitHub, Stripe, etc.
+- Demo your app before deployment
+- Access localhost from mobile devices
+
+### TCP Tunnels
+
+Expose any TCP service:
 
 ```bash
-# SSH tunnel
-./bin/grok tcp 22
+# SSH access
+grok tcp 22
 
-# MySQL tunnel
-./bin/grok tcp 3306
+# PostgreSQL database
+grok tcp 5432
 
-# PostgreSQL tunnel
-./bin/grok tcp 5432
+# MySQL database
+grok tcp 3306
+
+# With client dashboard
+grok tcp 22 --dashboard
 ```
 
-#### Webhook Broadcasting
+**When to use:**
+- Remote SSH access to your machine
+- Share database access with your team
+- Expose game servers
+- Any TCP-based service
+
+### Static File Server
+
+Share files and directories:
 
 ```bash
-# Create webhook app in dashboard first, then:
-./bin/grok webhook {webhook_app_id} localhost:3000
+# Serve current directory
+grok serve .
+
+# Serve specific directory
+grok serve ./dist
+
+# With custom subdomain
+grok serve ./website --name mysite
+
+# With authentication
+grok serve ./private --auth username:password
+
+# With client dashboard
+grok serve ./dist --dashboard
+
+# Custom 404 page
+grok serve . --404 custom404.html
 ```
+
+**When to use:**
+- Share static websites instantly
+- Distribute files to team/clients
+- Test static site deployments
+- Quick file sharing without cloud storage
+
+### Client Dashboard
+
+Monitor your tunnel traffic in real-time:
+
+```bash
+# Any command with --dashboard flag
+grok http 3000 --dashboard
+grok tcp 22 --dashboard
+grok serve . --dashboard
+```
+
+**Dashboard shows:**
+- ✅ Real-time request logs (method, path, status, duration)
+- ✅ Connection status and tunnel info
+- ✅ Performance charts (request rate, latency, throughput)
+- ✅ Request inspector (full headers and body)
+
+**Access:** `http://localhost:4041` (or custom port with `--dashboard-port`)
 
 ### Configuration Commands
 
 ```bash
-# Set auth token
-./bin/grok config set-token grok_your_token
+# Set authentication token
+grok config set-token grok_abc123...
 
 # Set server address
-./bin/grok config set-server tunnel.company.com:4443
+grok config set-server tunnel.mycompany.com:4443
 
-# View current config
-./bin/grok config show
+# View current configuration
+grok config show
 
 # Check version
-./bin/grok version
+grok version
 
 # Update to latest version
-./bin/grok update           # Interactive update
-./bin/grok update --yes     # Skip confirmation
-./bin/grok update --force   # Force re-download even if up-to-date
+grok update
 ```
 
-### Server Update
+## 🎯 Common Use Cases
+
+### 1. Local Web Development
 
 ```bash
-# Update server to latest version
-./bin/grok-server update           # Interactive update
-./bin/grok-server update --yes     # Skip confirmation
-./bin/grok-server update --force   # Force re-download
+# Frontend developer
+grok http 5173 --subdomain myproject --dashboard
 
-# Note: Stop the server before updating
-sudo systemctl stop grok-server
-./bin/grok-server update --yes
-sudo systemctl start grok-server
+# Backend API
+grok http 8000 --subdomain api --dashboard
 ```
 
-## 🎯 Use Cases
-
-### 1. Local Development Sharing
-
-```bash
-# Frontend dev server
-./bin/grok http 5173 --subdomain my-project
-
-# Share with team: https://my-project.yourdomain.com
-```
+Share your local dev server with:
+- Frontend/backend running separately
+- Designers for UI review
+- QA team for testing
+- Client for demos
 
 ### 2. Webhook Testing
 
 ```bash
-# Test Stripe, GitHub, or any webhook locally
-./bin/grok http 8000
+# Start your local webhook handler
+grok http 3000 --dashboard
 
-# Use generated URL in webhook settings
+# Use the generated URL in webhook settings:
+# GitHub webhooks
+# Stripe payment notifications
+# Twilio SMS callbacks
+# Any webhook service
 ```
 
-### 3. Database Access
+Real-time dashboard shows all incoming webhooks instantly.
+
+### 3. Mobile App Development
 
 ```bash
-# Expose PostgreSQL for remote team
-./bin/grok tcp 5432
+# Your API server
+grok http 8000 --subdomain myapi
 
-# Team connects: psql -h yourdomain.com -p {assigned_port}
+# Test from physical devices
+# No need to deploy or configure ngrok
 ```
 
-### 4. Multi-Service Development
+### 4. Database Access
 
 ```bash
-# Terminal 1: Frontend
-./bin/grok http 3000 --subdomain frontend
+# Expose PostgreSQL
+grok tcp 5432 --dashboard
 
-# Terminal 2: Backend API
-./bin/grok http 8000 --subdomain api
-
-# Terminal 3: Database
-./bin/grok tcp 5432
+# Team connects with:
+# psql -h yourdomain.com -p assigned_port -U user
 ```
 
-### 5. Organization Collaboration
+Monitor all database connections in real-time.
 
-1. Super Admin creates organization: "ACME Corp"
-2. Adds team members as Org Admin or Org User
-3. Team members create tunnels under organization subdomain
-4. All tunnels visible in organization dashboard
-
-## 🔐 Security Features
-
-### Two-Factor Authentication (2FA)
-
-1. Navigate to **Settings → Security** in dashboard
-2. Click **Enable 2FA**
-3. Scan QR code with Google Authenticator
-4. Enter 6-digit code to verify
-5. Login now requires both password and OTP code
-
-Format in authenticator: `Grok {domain}: {username}`
-
-### Role-Based Access Control (RBAC)
-
-- **Super Admin**: Full system access, manage all organizations
-- **Org Admin**: Manage organization users, view all org tunnels
-- **Org User**: Create personal tunnels, view own tunnels
-
-### Token Security
-
-- Tokens hashed with SHA256 before storage
-- JWT-based session management
-- Token scopes for granular permissions
-- Token expiration and revocation
-
-## 🧪 Development
-
-### Setup Development Environment
+### 5. Quick File Sharing
 
 ```bash
-# Install air for hot reload
-go install github.com/cosmtrek/air@latest
+# Share build artifacts
+grok serve ./dist --name builds --dashboard
 
-# Terminal 1: Backend (with hot reload)
-air
-
-# Terminal 2: Frontend (with HMR)
-cd web && npm run dev
+# Share with password
+grok serve ./confidential --auth team:secret123
 ```
 
-### Build Commands
+## 🎨 Dashboard Features
 
+### Server Dashboard (`http://localhost:4040`)
+
+**For Administrators:**
+- Create and manage users
+- Generate auth tokens
+- View all active tunnels
+- Monitor system stats
+- Manage organizations
+- Configure webhooks
+- Enable 2FA security
+
+### Client Dashboard (`http://localhost:4041`)
+
+**For Developers:**
+- See requests as they happen (SSE real-time)
+- Inspect request/response details
+- Track performance metrics
+- Filter by method, status, path
+- Export request logs
+- Monitor connection health
+- View throughput graphs
+
+**Example:** When testing webhooks, you can see the exact payload and headers instantly without checking logs.
+
+## 🔒 Security
+
+- 🔐 **Token-based authentication** - Secure access control
+- 🔑 **Two-factor authentication** - TOTP support
+- 🏢 **Organization isolation** - Multi-tenant security
+- 🔒 **TLS encryption** - All tunnel traffic encrypted
+- 👥 **Role-based access** - Admin, User, Super Admin roles
+
+## ⚙️ Advanced Options
+
+### HTTP Tunnels
 ```bash
-make help              # Show all commands
-make proto             # Generate gRPC code
-make build-all         # Build server + client + dashboard
-make build-server      # Build server only
-make build-client      # Build client only
-make test              # Run tests
-make clean             # Clean build artifacts
+grok http 3000 --subdomain myapp          # Custom subdomain
+grok http 3000 --name persistent-tunnel   # Named tunnel
+grok http 3000 --server custom.com:4443   # Custom server
+grok http 3000 --dashboard-port 8080      # Custom dashboard port
 ```
 
-### Database Migrations
-
+### TCP Tunnels
 ```bash
-# PostgreSQL
-make migrate-up        # Apply migrations
-make migrate-down      # Rollback
-
-# SQLite (auto-migrates on startup)
-./bin/grok-server      # Creates grok.db automatically
+grok tcp 22 --name ssh-server
+grok tcp 5432 --dashboard
 ```
 
-### Testing
-
+### File Server
 ```bash
-# Unit tests
-go test ./...
-
-# Integration tests
-go test -v ./tests/integration/
-
-# With coverage
-go test -cover ./...
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
+grok serve ./dist --name mysite           # Named tunnel
+grok serve . --auth user:pass             # Password protect
+grok serve . --no-gzip                    # Disable compression
+grok serve . --404 custom404.html         # Custom 404
+grok serve . --dashboard                  # With monitoring
 ```
 
-## 📦 Deployment
-
-### Docker (Recommended)
-
-```dockerfile
-# Coming soon
-docker-compose up -d
-```
-
-### Systemd Service
-
-Create `/etc/systemd/system/grok-server.service`:
-
-```ini
-[Unit]
-Description=Grok Tunnel Server
-After=network.target postgresql.service
-
-[Service]
-Type=simple
-User=grok
-WorkingDirectory=/opt/grok
-ExecStart=/opt/grok/bin/grok-server --config /opt/grok/configs/server.yaml
-Restart=always
-RestartSec=5
-Environment="DB_PASSWORD=your_secure_password"
-Environment="JWT_SECRET=your_jwt_secret_min_32_chars"
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
+### Dashboard Options
 ```bash
-sudo systemctl enable grok-server
-sudo systemctl start grok-server
-sudo systemctl status grok-server
+--dashboard              # Enable client dashboard
+--dashboard-port 8080    # Custom dashboard port
+--no-dashboard           # Explicitly disable
 ```
 
-### Production Checklist
+## 📊 System Requirements
 
-- ✅ Use PostgreSQL for production
-- ✅ Enable TLS with Let's Encrypt (`auto_cert: true`)
-- ✅ Set strong JWT secret (min 32 characters)
-- ✅ Configure proper domain DNS (wildcard A record)
-- ✅ Set up firewall rules
-- ✅ Enable 2FA for admin accounts
-- ✅ Configure rate limiting
-- ✅ Set up monitoring and logging
-- ✅ Regular database backups
+**Server:**
+- Linux, macOS, or Windows
+- 512MB RAM minimum
+- PostgreSQL or SQLite
 
-## 🛠️ Tech Stack
+**Client:**
+- Linux, macOS, or Windows
+- Any machine that can run Go binaries
 
-| Layer | Technology |
-|-------|-----------|
-| **Language** | Go 1.25+ |
-| **RPC** | gRPC, Protocol Buffers |
-| **Database** | PostgreSQL, SQLite, GORM |
-| **Authentication** | JWT (golang-jwt/jwt), TOTP (pquerna/otp) |
-| **CLI** | Cobra, Viper |
-| **Logging** | zerolog |
-| **Frontend** | React 18, TypeScript, Vite |
-| **UI Library** | Material-UI (MUI) |
-| **State Management** | TanStack Query, React Context |
-| **Real-time** | Server-Sent Events (SSE) |
-| **Build** | Make, GitHub Actions |
-| **Deployment** | Systemd, Docker (coming soon) |
+## 🆘 Troubleshooting
 
-## 🗺️ Roadmap
+**Tunnel won't connect:**
+```bash
+# Check server is running
+curl http://yourserver:4040/health
 
-### ✅ Completed
-- [x] Core tunneling (HTTP/TCP)
-- [x] Web dashboard with real-time updates
-- [x] Organization management
-- [x] Two-factor authentication
-- [x] Webhook broadcasting
-- [x] Version checker
-- [x] Custom subdomains
-- [x] Token management
+# Verify token
+grok config show
 
-### 🚧 In Progress
-- [ ] Docker & Kubernetes deployment
-- [ ] Metrics & monitoring (Prometheus)
-- [ ] Rate limiting & DDoS protection
-- [ ] Custom SSL certificates per tunnel
+# Test with verbose logging
+grok http 3000 --debug
+```
 
-### 📅 Planned
-- [ ] WebSocket support
-- [ ] Traffic replay & inspection
-- [ ] Tunnel templates
-- [ ] API documentation (OpenAPI)
-- [ ] Mobile client apps
-- [ ] Terraform provider
+**Dashboard not showing:**
+```bash
+# Ensure --dashboard flag is used
+grok http 3000 --dashboard
 
-## 🤝 Contributing
+# Check if port 4041 is available
+lsof -i :4041
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+# Try custom port
+grok http 3000 --dashboard --dashboard-port 8080
+```
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+**Can't access tunnel URL:**
+- Check DNS wildcard record: `*.yourdomain.com → server-ip`
+- Verify firewall allows ports 3080, 4040, 4443
+- Ensure tunnel is showing as "connected" in dashboard
 
-## 📄 License
+## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file
 
 ## 👨‍💻 Author
 
 **Pandept Widya**
-
 - GitHub: [@pandeptwidyaop](https://github.com/pandeptwidyaop)
-- Website: [pandeptwidya.com](https://pandeptwidya.com)
 
-## 🙏 Acknowledgments
+## 🙏 Credits
 
-- Inspired by [ngrok](https://ngrok.com)
-- Built with amazing open-source projects
-- Thanks to all contributors!
-
-## 📞 Support
-
-- 📫 **Issues**: [GitHub Issues](https://github.com/pandeptwidyaop/grok/issues)
-- 💬 **Discussions**: [GitHub Discussions](https://github.com/pandeptwidyaop/grok/discussions)
-- 📖 **Documentation**: [Wiki](https://github.com/pandeptwidyaop/grok/wiki)
+Inspired by [ngrok](https://ngrok.com) - Built with Go, gRPC, and React
 
 ---
 
-<div align="center">
-
-**Made with ❤️ by [Pandept Widya](https://github.com/pandeptwidyaop)**
-
-⭐ Star us on GitHub — it motivates us a lot!
-
-</div>
+⭐ **Star this repo if you find it useful!**

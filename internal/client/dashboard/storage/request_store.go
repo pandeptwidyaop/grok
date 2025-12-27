@@ -17,8 +17,8 @@ type RequestRecord struct {
 	StatusCode     int32             `json:"status_code"`
 	BytesIn        int64             `json:"bytes_in"`
 	BytesOut       int64             `json:"bytes_out"`
-	Duration       time.Duration     `json:"-"`               // Internal use only
-	DurationMS     float64           `json:"duration_ms"`     // milliseconds for JSON
+	Duration       time.Duration     `json:"-"`           // Internal use only
+	DurationMS     float64           `json:"duration_ms"` // milliseconds for JSON
 	StartTime      time.Time         `json:"start_time"`
 	EndTime        time.Time         `json:"end_time"`
 	Error          string            `json:"error,omitempty"`

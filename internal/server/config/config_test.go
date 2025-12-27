@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLoad_ValidConfig tests loading a valid configuration
+// TestLoad_ValidConfig tests loading a valid configuration.
 func TestLoad_ValidConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -50,7 +50,7 @@ logging:
   output: "stdout"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -91,7 +91,7 @@ logging:
 	assert.Equal(t, "stdout", cfg.Logging.Output)
 }
 
-// TestLoad_WithDefaults tests loading config with defaults
+// TestLoad_WithDefaults tests loading config with defaults.
 func TestLoad_WithDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -103,7 +103,7 @@ auth:
   admin_password: "secure-test-password-123"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -120,7 +120,7 @@ auth:
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 
-// TestLoad_MissingJWTSecret tests loading config without JWT secret
+// TestLoad_MissingJWTSecret tests loading config without JWT secret.
 func TestLoad_MissingJWTSecret(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -130,7 +130,7 @@ server:
   domain: "example.com"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -139,7 +139,7 @@ server:
 	assert.Contains(t, err.Error(), "jwt_secret is required")
 }
 
-// TestLoad_DefaultJWTSecret tests loading config with default JWT secret
+// TestLoad_DefaultJWTSecret tests loading config with default JWT secret.
 func TestLoad_DefaultJWTSecret(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -149,7 +149,7 @@ auth:
   jwt_secret: "change-this-to-a-secure-random-string"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -158,7 +158,7 @@ auth:
 	assert.Contains(t, err.Error(), "must be changed from default value")
 }
 
-// TestLoad_ShortJWTSecret tests loading config with short JWT secret
+// TestLoad_ShortJWTSecret tests loading config with short JWT secret.
 func TestLoad_ShortJWTSecret(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -168,7 +168,7 @@ auth:
   jwt_secret: "short"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -177,7 +177,7 @@ auth:
 	assert.Contains(t, err.Error(), "at least 32 characters")
 }
 
-// TestLoad_InvalidYAML tests loading invalid YAML
+// TestLoad_InvalidYAML tests loading invalid YAML.
 func TestLoad_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -187,7 +187,7 @@ this is not valid yaml: [
   - broken
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -195,14 +195,14 @@ this is not valid yaml: [
 	assert.Nil(t, cfg)
 }
 
-// TestLoad_NonExistentFile tests loading non-existent config file
+// TestLoad_NonExistentFile tests loading non-existent config file.
 func TestLoad_NonExistentFile(t *testing.T) {
 	cfg, err := Load("/nonexistent/config.yaml")
 	assert.Error(t, err)
 	assert.Nil(t, cfg)
 }
 
-// TestLoad_PostgreSQLConfig tests loading PostgreSQL configuration
+// TestLoad_PostgreSQLConfig tests loading PostgreSQL configuration.
 func TestLoad_PostgreSQLConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -222,7 +222,7 @@ database:
   ssl_mode: "require"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -237,7 +237,7 @@ database:
 	assert.Equal(t, "require", cfg.Database.SSLMode)
 }
 
-// TestLoad_TLSConfig tests loading TLS configuration
+// TestLoad_TLSConfig tests loading TLS configuration.
 func TestLoad_TLSConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -254,7 +254,7 @@ tls:
   email: "admin@example.com"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -266,7 +266,7 @@ tls:
 	assert.Equal(t, "admin@example.com", cfg.TLS.Email)
 }
 
-// TestLoad_LoggingConfig tests loading logging configuration
+// TestLoad_LoggingConfig tests loading logging configuration.
 func TestLoad_LoggingConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -286,7 +286,7 @@ logging:
   sse_log_level: "info"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -301,7 +301,7 @@ logging:
 	assert.Equal(t, "info", cfg.Logging.SSELogLevel)
 }
 
-// TestLoad_TunnelsConfig tests loading tunnels configuration
+// TestLoad_TunnelsConfig tests loading tunnels configuration.
 func TestLoad_TunnelsConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -317,7 +317,7 @@ tunnels:
   heartbeat_interval: "60s"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -328,7 +328,7 @@ tunnels:
 	assert.Equal(t, "60s", cfg.Tunnels.HeartbeatInterval)
 }
 
-// TestLoad_AllowedOrigins tests loading CORS allowed origins
+// TestLoad_AllowedOrigins tests loading CORS allowed origins.
 func TestLoad_AllowedOrigins(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -345,7 +345,7 @@ server:
     - "http://localhost:3000"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -357,7 +357,7 @@ server:
 	assert.Contains(t, cfg.Server.AllowedOrigins, "http://localhost:3000")
 }
 
-// TestLoad_EnvironmentVariables tests environment variable override
+// TestLoad_EnvironmentVariables tests environment variable override.
 func TestLoad_EnvironmentVariables(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -371,7 +371,7 @@ server:
   domain: "config-file-domain.com"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	// Set environment variable
@@ -385,7 +385,7 @@ server:
 	assert.Equal(t, "env-override-domain.com", cfg.Server.Domain)
 }
 
-// TestLoad_EnvironmentVariableJWTSecret tests JWT secret from env var
+// TestLoad_EnvironmentVariableJWTSecret tests JWT secret from env var.
 func TestLoad_EnvironmentVariableJWTSecret(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -399,7 +399,7 @@ auth:
   admin_password: "secure-test-password-123"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	// Set JWT secret via environment variable (should override config file)
@@ -413,7 +413,7 @@ auth:
 	assert.Equal(t, "environment-jwt-secret-that-is-long-enough-to-pass-validation", cfg.Auth.JWTSecret)
 }
 
-// TestValidateConfig tests config validation
+// TestValidateConfig tests config validation.
 func TestValidateConfig(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -488,7 +488,7 @@ func TestValidateConfig(t *testing.T) {
 	}
 }
 
-// TestLoad_CompleteProductionConfig tests complete production-like config
+// TestLoad_CompleteProductionConfig tests complete production-like config.
 func TestLoad_CompleteProductionConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "production.yaml")
@@ -541,7 +541,7 @@ logging:
   sse_log_level: "warn"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	cfg, err := Load(configFile)
@@ -557,7 +557,7 @@ logging:
 	assert.Equal(t, "info", cfg.Logging.Level)
 }
 
-// BenchmarkLoad benchmarks config loading
+// BenchmarkLoad benchmarks config loading.
 func BenchmarkLoad(b *testing.B) {
 	tmpDir := b.TempDir()
 	configFile := filepath.Join(tmpDir, "bench.yaml")
@@ -570,7 +570,7 @@ server:
   domain: "bench.example.com"
 `
 
-	os.WriteFile(configFile, []byte(configContent), 0644)
+	os.WriteFile(configFile, []byte(configContent), 0o644)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -578,7 +578,7 @@ server:
 	}
 }
 
-// BenchmarkValidateConfig benchmarks config validation
+// BenchmarkValidateConfig benchmarks config validation.
 func BenchmarkValidateConfig(b *testing.B) {
 	cfg := &Config{
 		Auth: AuthConfig{

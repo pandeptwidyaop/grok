@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// setupTestDB creates an in-memory SQLite database for testing
+// setupTestDB creates an in-memory SQLite database for testing.
 func setupTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -22,7 +22,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// TestUserBeforeCreate tests UUID generation on user creation
+// TestUserBeforeCreate tests UUID generation on user creation.
 func TestUserBeforeCreate(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -40,7 +40,7 @@ func TestUserBeforeCreate(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, user.ID)
 }
 
-// TestUserBeforeCreate_WithProvidedID tests that provided UUID is preserved
+// TestUserBeforeCreate_WithProvidedID tests that provided UUID is preserved.
 func TestUserBeforeCreate_WithProvidedID(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -60,7 +60,7 @@ func TestUserBeforeCreate_WithProvidedID(t *testing.T) {
 	assert.Equal(t, providedID, user.ID)
 }
 
-// TestUserUniqueEmail tests email uniqueness constraint
+// TestUserUniqueEmail tests email uniqueness constraint.
 func TestUserUniqueEmail(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -86,7 +86,7 @@ func TestUserUniqueEmail(t *testing.T) {
 	assert.Contains(t, err.Error(), "UNIQUE constraint failed")
 }
 
-// TestUserRoles tests all user role types
+// TestUserRoles tests all user role types.
 func TestUserRoles(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -110,7 +110,7 @@ func TestUserRoles(t *testing.T) {
 	}
 }
 
-// TestSuperAdminWithoutOrganization tests super admin without org affiliation
+// TestSuperAdminWithoutOrganization tests super admin without org affiliation.
 func TestSuperAdminWithoutOrganization(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -127,7 +127,7 @@ func TestSuperAdminWithoutOrganization(t *testing.T) {
 	assert.Nil(t, superAdmin.OrganizationID)
 }
 
-// TestOrgUserWithOrganization tests org user with organization
+// TestOrgUserWithOrganization tests org user with organization.
 func TestOrgUserWithOrganization(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -161,7 +161,7 @@ func TestOrgUserWithOrganization(t *testing.T) {
 	assert.Equal(t, "Test Org", loadedUser.Organization.Name)
 }
 
-// TestUserDefaultValues tests default values for user fields
+// TestUserDefaultValues tests default values for user fields.
 func TestUserDefaultValues(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -184,7 +184,7 @@ func TestUserDefaultValues(t *testing.T) {
 	assert.Equal(t, RoleOrgUser, loaded.Role, "Role should default to org_user")
 }
 
-// TestUserPasswordIsNotExposed tests that password is excluded from JSON
+// TestUserPasswordIsNotExposed tests that password is excluded from JSON.
 func TestUserPasswordIsNotExposed(t *testing.T) {
 	user := &User{
 		Email:    "test@example.com",
@@ -195,10 +195,13 @@ func TestUserPasswordIsNotExposed(t *testing.T) {
 
 	// Password field should have json:"-" tag
 	// This is checked by the struct tags, tested implicitly
+	assert.Equal(t, "test@example.com", user.Email)
+	assert.Equal(t, "Test User", user.Name)
+	assert.Equal(t, RoleOrgUser, user.Role)
 	assert.Equal(t, "secrethash", user.Password)
 }
 
-// TestUserTwoFactorFields tests 2FA related fields
+// TestUserTwoFactorFields tests 2FA related fields.
 func TestUserTwoFactorFields(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -223,13 +226,13 @@ func TestUserTwoFactorFields(t *testing.T) {
 	assert.Equal(t, "TOTPSECRETVALUE", loaded.TwoFactorSecret)
 }
 
-// TestUserTableName tests custom table name
+// TestUserTableName tests custom table name.
 func TestUserTableName(t *testing.T) {
 	user := User{}
 	assert.Equal(t, "users", user.TableName())
 }
 
-// TestUserRelationships tests all user relationships
+// TestUserRelationships tests all user relationships.
 func TestUserRelationships(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -301,7 +304,7 @@ func TestUserRelationships(t *testing.T) {
 	assert.Len(t, loadedUser.Tunnels, 1)
 }
 
-// TestUserInactiveFlag tests user inactive status
+// TestUserInactiveFlag tests user inactive status.
 func TestUserInactiveFlag(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -328,7 +331,7 @@ func TestUserInactiveFlag(t *testing.T) {
 	assert.False(t, loaded.IsActive, "User should be inactive after update")
 }
 
-// TestUserUpdate tests user updates
+// TestUserUpdate tests user updates.
 func TestUserUpdate(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -355,7 +358,7 @@ func TestUserUpdate(t *testing.T) {
 	assert.NotEmpty(t, loaded.UpdatedAt)
 }
 
-// BenchmarkUserCreate benchmarks user creation
+// BenchmarkUserCreate benchmarks user creation.
 func BenchmarkUserCreate(b *testing.B) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	db.AutoMigrate(&User{})

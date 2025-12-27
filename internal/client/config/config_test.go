@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestLoadDefaults tests loading configuration with defaults
+// TestLoadDefaults tests loading configuration with defaults.
 func TestLoadDefaults(t *testing.T) {
 	// Create a temporary directory for config
 	tmpDir := t.TempDir()
@@ -43,7 +43,7 @@ func TestLoadDefaults(t *testing.T) {
 	assert.Equal(t, 0, cfg.Reconnect.MaxAttempts)
 }
 
-// TestLoadFromFile tests loading configuration from a file
+// TestLoadFromFile tests loading configuration from a file.
 func TestLoadFromFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -72,7 +72,7 @@ reconnect:
   max_attempts: 10
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	// Load config from file
@@ -99,7 +99,7 @@ reconnect:
 	assert.Equal(t, 10, cfg.Reconnect.MaxAttempts)
 }
 
-// TestLoadPartialConfig tests loading with partial configuration
+// TestLoadPartialConfig tests loading with partial configuration.
 func TestLoadPartialConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -114,7 +114,7 @@ auth:
   token: "grok_partial"
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	// Load config from file
@@ -134,7 +134,7 @@ auth:
 	assert.True(t, cfg.Reconnect.Enabled)
 }
 
-// TestLoadInvalidConfigFile tests loading from an invalid config file
+// TestLoadInvalidConfigFile tests loading from an invalid config file.
 func TestLoadInvalidConfigFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	configFile := filepath.Join(tmpDir, "invalid.yaml")
@@ -144,7 +144,7 @@ func TestLoadInvalidConfigFile(t *testing.T) {
 this is not valid yaml: [
 `
 
-	err := os.WriteFile(configFile, []byte(configContent), 0644)
+	err := os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	// Load config should fail
@@ -152,7 +152,7 @@ this is not valid yaml: [
 	assert.Error(t, err)
 }
 
-// TestSaveToken tests saving auth token
+// TestSaveToken tests saving auth token.
 func TestSaveToken(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -174,7 +174,7 @@ func TestSaveToken(t *testing.T) {
 	assert.Equal(t, "grok_newsavedtoken", cfg.Auth.Token)
 }
 
-// TestSaveTokenMultipleTimes tests saving token multiple times
+// TestSaveTokenMultipleTimes tests saving token multiple times.
 func TestSaveTokenMultipleTimes(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -197,7 +197,7 @@ func TestSaveTokenMultipleTimes(t *testing.T) {
 	assert.Equal(t, "grok_second", cfg.Auth.Token)
 }
 
-// TestSaveServer tests saving server address
+// TestSaveServer tests saving server address.
 func TestSaveServer(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -216,7 +216,7 @@ func TestSaveServer(t *testing.T) {
 	assert.Equal(t, "custom.server.com:9443", cfg.Server.Addr)
 }
 
-// TestSetTLSCert tests setting TLS certificate
+// TestSetTLSCert tests setting TLS certificate.
 func TestSetTLSCert(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -237,7 +237,7 @@ func TestSetTLSCert(t *testing.T) {
 	assert.False(t, cfg.Server.TLSInsecure)
 }
 
-// TestSetTLSInsecure tests setting TLS insecure mode
+// TestSetTLSInsecure tests setting TLS insecure mode.
 func TestSetTLSInsecure(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -258,7 +258,7 @@ func TestSetTLSInsecure(t *testing.T) {
 	assert.Empty(t, cfg.Server.TLSCertFile) // Cert file should be cleared
 }
 
-// TestEnableTLS tests enabling TLS
+// TestEnableTLS tests enabling TLS.
 func TestEnableTLS(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -279,7 +279,7 @@ func TestEnableTLS(t *testing.T) {
 	assert.False(t, cfg.Server.TLSInsecure)
 }
 
-// TestDisableTLS tests disabling TLS
+// TestDisableTLS tests disabling TLS.
 func TestDisableTLS(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -302,7 +302,7 @@ func TestDisableTLS(t *testing.T) {
 	assert.False(t, cfg.Server.TLS)
 }
 
-// TestConfigPersistence tests that config changes persist
+// TestConfigPersistence tests that config changes persist.
 func TestConfigPersistence(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -331,7 +331,7 @@ func TestConfigPersistence(t *testing.T) {
 	assert.Equal(t, "/path/to/cert.pem", cfg.Server.TLSCertFile)
 }
 
-// TestConfigDefaultDirectory tests that config directory is created
+// TestConfigDefaultDirectory tests that config directory is created.
 func TestConfigDefaultDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -350,7 +350,7 @@ func TestConfigDefaultDirectory(t *testing.T) {
 	assert.True(t, info.IsDir())
 }
 
-// TestLoadFromMultipleSources tests config loading from file
+// TestLoadFromMultipleSources tests config loading from file.
 func TestLoadFromMultipleSources(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -360,7 +360,7 @@ func TestLoadFromMultipleSources(t *testing.T) {
 
 	// Create a config file
 	configFile := filepath.Join(tmpDir, ".grok", "config.yaml")
-	err := os.MkdirAll(filepath.Dir(configFile), 0755)
+	err := os.MkdirAll(filepath.Dir(configFile), 0o755)
 	require.NoError(t, err)
 
 	configContent := `
@@ -370,7 +370,7 @@ server:
 auth:
   token: "grok_fromfile"
 `
-	err = os.WriteFile(configFile, []byte(configContent), 0644)
+	err = os.WriteFile(configFile, []byte(configContent), 0o644)
 	require.NoError(t, err)
 
 	// Load config from file
@@ -387,7 +387,7 @@ auth:
 	assert.True(t, cfg.Reconnect.Enabled)
 }
 
-// BenchmarkLoad benchmarks config loading
+// BenchmarkLoad benchmarks config loading.
 func BenchmarkLoad(b *testing.B) {
 	tmpDir := b.TempDir()
 	configFile := filepath.Join(tmpDir, "config.yaml")
@@ -399,7 +399,7 @@ server:
 auth:
   token: "grok_bench"
 `
-	os.WriteFile(configFile, []byte(configContent), 0644)
+	os.WriteFile(configFile, []byte(configContent), 0o644)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -407,7 +407,7 @@ auth:
 	}
 }
 
-// BenchmarkSaveToken benchmarks token saving
+// BenchmarkSaveToken benchmarks token saving.
 func BenchmarkSaveToken(b *testing.B) {
 	tmpDir := b.TempDir()
 

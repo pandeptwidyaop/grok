@@ -13,37 +13,37 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// slowHandler is a handler that introduces delay
+// slowHandler is a handler that introduces delay.
 func slowHandler(delay time.Duration) grpc.UnaryHandler {
-	return func(ctx context.Context, req interface{}) (interface{}, error) {
+	return func(_ context.Context, _ interface{}) (interface{}, error) {
 		time.Sleep(delay)
 		return "success", nil
 	}
 }
 
-// errorHandler returns an error with specific code
+// errorHandler returns an error with specific code.
 func errorHandler(code codes.Code, msg string) grpc.UnaryHandler {
-	return func(ctx context.Context, req interface{}) (interface{}, error) {
+	return func(_ context.Context, _ interface{}) (interface{}, error) {
 		return nil, status.Error(code, msg)
 	}
 }
 
-// slowStreamHandler is a stream handler that introduces delay
+// slowStreamHandler is a stream handler that introduces delay.
 func slowStreamHandler(delay time.Duration) grpc.StreamHandler {
-	return func(srv interface{}, stream grpc.ServerStream) error {
+	return func(_ interface{}, _ grpc.ServerStream) error {
 		time.Sleep(delay)
 		return nil
 	}
 }
 
-// errorStreamHandler returns an error with specific code
+// errorStreamHandler returns an error with specific code.
 func errorStreamHandler(code codes.Code, msg string) grpc.StreamHandler {
-	return func(srv interface{}, stream grpc.ServerStream) error {
+	return func(_ interface{}, _ grpc.ServerStream) error {
 		return status.Error(code, msg)
 	}
 }
 
-// TestLoggingInterceptor_SuccessfulRequest tests logging for successful request
+// TestLoggingInterceptor_SuccessfulRequest tests logging for successful request.
 func TestLoggingInterceptor_SuccessfulRequest(t *testing.T) {
 	interceptor := LoggingInterceptor()
 
@@ -59,7 +59,7 @@ func TestLoggingInterceptor_SuccessfulRequest(t *testing.T) {
 	assert.Equal(t, "success", resp)
 }
 
-// TestLoggingInterceptor_FailedRequest tests logging for failed request
+// TestLoggingInterceptor_FailedRequest tests logging for failed request.
 func TestLoggingInterceptor_FailedRequest(t *testing.T) {
 	interceptor := LoggingInterceptor()
 
@@ -81,7 +81,7 @@ func TestLoggingInterceptor_FailedRequest(t *testing.T) {
 	assert.Equal(t, "internal error", st.Message())
 }
 
-// TestLoggingInterceptor_VariousErrorCodes tests different error codes
+// TestLoggingInterceptor_VariousErrorCodes tests different error codes.
 func TestLoggingInterceptor_VariousErrorCodes(t *testing.T) {
 	tests := []struct {
 		name string
@@ -135,7 +135,7 @@ func TestLoggingInterceptor_VariousErrorCodes(t *testing.T) {
 	}
 }
 
-// TestLoggingInterceptor_DurationTracking tests duration is tracked
+// TestLoggingInterceptor_DurationTracking tests duration is tracked.
 func TestLoggingInterceptor_DurationTracking(t *testing.T) {
 	interceptor := LoggingInterceptor()
 
@@ -159,7 +159,7 @@ func TestLoggingInterceptor_DurationTracking(t *testing.T) {
 	assert.GreaterOrEqual(t, elapsed, delay)
 }
 
-// TestLoggingInterceptor_MethodName tests different method names are logged
+// TestLoggingInterceptor_MethodName tests different method names are logged.
 func TestLoggingInterceptor_MethodName(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -196,7 +196,7 @@ func TestLoggingInterceptor_MethodName(t *testing.T) {
 	}
 }
 
-// TestLoggingInterceptor_PreservesError tests error is preserved
+// TestLoggingInterceptor_PreservesError tests error is preserved.
 func TestLoggingInterceptor_PreservesError(t *testing.T) {
 	interceptor := LoggingInterceptor()
 
@@ -206,7 +206,7 @@ func TestLoggingInterceptor_PreservesError(t *testing.T) {
 	}
 
 	expectedErr := errors.New("custom error")
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(_ context.Context, _ interface{}) (interface{}, error) {
 		return nil, expectedErr
 	}
 
@@ -216,7 +216,7 @@ func TestLoggingInterceptor_PreservesError(t *testing.T) {
 	assert.Equal(t, expectedErr, err)
 }
 
-// TestStreamLoggingInterceptor_SuccessfulStream tests stream logging for success
+// TestStreamLoggingInterceptor_SuccessfulStream tests stream logging for success.
 func TestStreamLoggingInterceptor_SuccessfulStream(t *testing.T) {
 	interceptor := StreamLoggingInterceptor()
 
@@ -233,7 +233,7 @@ func TestStreamLoggingInterceptor_SuccessfulStream(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestStreamLoggingInterceptor_FailedStream tests stream logging for failed stream
+// TestStreamLoggingInterceptor_FailedStream tests stream logging for failed stream.
 func TestStreamLoggingInterceptor_FailedStream(t *testing.T) {
 	interceptor := StreamLoggingInterceptor()
 
@@ -255,7 +255,7 @@ func TestStreamLoggingInterceptor_FailedStream(t *testing.T) {
 	assert.Equal(t, "stream error", st.Message())
 }
 
-// TestStreamLoggingInterceptor_StreamTypes tests different stream types
+// TestStreamLoggingInterceptor_StreamTypes tests different stream types.
 func TestStreamLoggingInterceptor_StreamTypes(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -302,7 +302,7 @@ func TestStreamLoggingInterceptor_StreamTypes(t *testing.T) {
 	}
 }
 
-// TestStreamLoggingInterceptor_DurationTracking tests stream duration tracking
+// TestStreamLoggingInterceptor_DurationTracking tests stream duration tracking.
 func TestStreamLoggingInterceptor_DurationTracking(t *testing.T) {
 	interceptor := StreamLoggingInterceptor()
 
@@ -325,7 +325,7 @@ func TestStreamLoggingInterceptor_DurationTracking(t *testing.T) {
 	assert.GreaterOrEqual(t, elapsed, delay)
 }
 
-// TestStreamLoggingInterceptor_VariousErrorCodes tests different error codes
+// TestStreamLoggingInterceptor_VariousErrorCodes tests different error codes.
 func TestStreamLoggingInterceptor_VariousErrorCodes(t *testing.T) {
 	tests := []struct {
 		name string
@@ -333,9 +333,9 @@ func TestStreamLoggingInterceptor_VariousErrorCodes(t *testing.T) {
 		msg  string
 	}{
 		{
-			name: "cancelled",
+			name: "canceled",
 			code: codes.Canceled,
-			msg:  "operation cancelled",
+			msg:  "operation canceled",
 		},
 		{
 			name: "resource exhausted",
@@ -372,7 +372,7 @@ func TestStreamLoggingInterceptor_VariousErrorCodes(t *testing.T) {
 	}
 }
 
-// TestStreamLoggingInterceptor_PreservesError tests error is preserved
+// TestStreamLoggingInterceptor_PreservesError tests error is preserved.
 func TestStreamLoggingInterceptor_PreservesError(t *testing.T) {
 	interceptor := StreamLoggingInterceptor()
 
@@ -385,7 +385,7 @@ func TestStreamLoggingInterceptor_PreservesError(t *testing.T) {
 	}
 
 	expectedErr := errors.New("custom stream error")
-	handler := func(srv interface{}, stream grpc.ServerStream) error {
+	handler := func(_ interface{}, _ grpc.ServerStream) error {
 		return expectedErr
 	}
 
@@ -395,7 +395,7 @@ func TestStreamLoggingInterceptor_PreservesError(t *testing.T) {
 	assert.Equal(t, expectedErr, err)
 }
 
-// BenchmarkLoggingInterceptor benchmarks logging interceptor
+// BenchmarkLoggingInterceptor benchmarks logging interceptor.
 func BenchmarkLoggingInterceptor(b *testing.B) {
 	interceptor := LoggingInterceptor()
 	ctx := context.Background()
@@ -409,7 +409,7 @@ func BenchmarkLoggingInterceptor(b *testing.B) {
 	}
 }
 
-// BenchmarkStreamLoggingInterceptor benchmarks stream logging interceptor
+// BenchmarkStreamLoggingInterceptor benchmarks stream logging interceptor.
 func BenchmarkStreamLoggingInterceptor(b *testing.B) {
 	interceptor := StreamLoggingInterceptor()
 	ctx := context.Background()

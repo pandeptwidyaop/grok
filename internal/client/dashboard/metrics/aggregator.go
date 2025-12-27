@@ -14,13 +14,13 @@ type Snapshot struct {
 	ActiveRequests int64     `json:"active_requests"`
 	BytesIn        int64     `json:"bytes_in"`
 	BytesOut       int64     `json:"bytes_out"`
-	AvgLatencyMS   float64   `json:"avg_latency_ms"`   // milliseconds
-	P50LatencyMS   float64   `json:"p50_latency_ms"`   // milliseconds
-	P95LatencyMS   float64   `json:"p95_latency_ms"`   // milliseconds
-	P99LatencyMS   float64   `json:"p99_latency_ms"`   // milliseconds
-	MinLatencyMS   float64   `json:"min_latency_ms"`   // milliseconds
-	MaxLatencyMS   float64   `json:"max_latency_ms"`   // milliseconds
-	RequestRate    float64   `json:"request_rate"`     // requests per second
+	AvgLatencyMS   float64   `json:"avg_latency_ms"` // milliseconds
+	P50LatencyMS   float64   `json:"p50_latency_ms"` // milliseconds
+	P95LatencyMS   float64   `json:"p95_latency_ms"` // milliseconds
+	P99LatencyMS   float64   `json:"p99_latency_ms"` // milliseconds
+	MinLatencyMS   float64   `json:"min_latency_ms"` // milliseconds
+	MaxLatencyMS   float64   `json:"max_latency_ms"` // milliseconds
+	RequestRate    float64   `json:"request_rate"`   // requests per second
 	ErrorCount     int64     `json:"error_count"`
 	Timestamp      time.Time `json:"timestamp"`
 }

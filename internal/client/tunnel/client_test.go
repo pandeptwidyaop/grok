@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pandeptwidyaop/grok/internal/client/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/pandeptwidyaop/grok/internal/client/config"
 )
 
-// TestNewClient tests client creation
+// TestNewClient tests client creation.
 func TestNewClient(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -141,7 +142,7 @@ func TestNewClient(t *testing.T) {
 	}
 }
 
-// TestIsConnected tests connection status
+// TestIsConnected tests connection status.
 func TestIsConnected(t *testing.T) {
 	client, err := NewClient(ClientConfig{
 		ServerAddr: "localhost:50051",
@@ -169,7 +170,7 @@ func TestIsConnected(t *testing.T) {
 	assert.False(t, client.IsConnected())
 }
 
-// TestGetPublicURL tests public URL getter
+// TestGetPublicURL tests public URL getter.
 func TestGetPublicURL(t *testing.T) {
 	client, err := NewClient(ClientConfig{
 		ServerAddr: "localhost:50051",
@@ -190,7 +191,7 @@ func TestGetPublicURL(t *testing.T) {
 	assert.Equal(t, "http://abc123.grok.io", client.GetPublicURL())
 }
 
-// TestGetSubdomain tests subdomain extraction
+// TestGetSubdomain tests subdomain extraction.
 func TestGetSubdomain(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -249,7 +250,7 @@ func TestGetSubdomain(t *testing.T) {
 	}
 }
 
-// TestCryptoRandFloat64 tests random number generation
+// TestCryptoRandFloat64 tests random number generation.
 func TestCryptoRandFloat64(t *testing.T) {
 	// Generate multiple random numbers
 	values := make([]float64, 100)
@@ -274,7 +275,7 @@ func TestCryptoRandFloat64(t *testing.T) {
 	assert.False(t, allSame, "random values should not all be the same")
 }
 
-// TestSetupTLSConfig tests TLS configuration
+// TestSetupTLSConfig tests TLS configuration.
 func TestSetupTLSConfig(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -351,7 +352,7 @@ func TestSetupTLSConfig(t *testing.T) {
 	}
 }
 
-// TestCreateGRPCDialOptions tests gRPC dial options creation
+// TestCreateGRPCDialOptions tests gRPC dial options creation.
 func TestCreateGRPCDialOptions(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -414,7 +415,7 @@ func TestCreateGRPCDialOptions(t *testing.T) {
 	}
 }
 
-// TestTCPDialer tests TCP dialer function
+// TestTCPDialer tests TCP dialer function.
 func TestTCPDialer(t *testing.T) {
 	// Test connection timeout with invalid address
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -431,7 +432,7 @@ func TestTCPDialer(t *testing.T) {
 	}
 }
 
-// TestSignalConnectionLost tests connection lost signaling
+// TestSignalConnectionLost tests connection lost signaling.
 func TestSignalConnectionLost(t *testing.T) {
 	connLostCh := make(chan struct{}, 1)
 
@@ -452,14 +453,14 @@ func TestSignalConnectionLost(t *testing.T) {
 	signalConnectionLost(connLostCh)
 }
 
-// BenchmarkCryptoRandFloat64 benchmarks random number generation
+// BenchmarkCryptoRandFloat64 benchmarks random number generation.
 func BenchmarkCryptoRandFloat64(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		cryptoRandFloat64()
 	}
 }
 
-// BenchmarkGetSubdomain benchmarks subdomain extraction
+// BenchmarkGetSubdomain benchmarks subdomain extraction.
 func BenchmarkGetSubdomain(b *testing.B) {
 	client, _ := NewClient(ClientConfig{
 		ServerAddr: "localhost:50051",

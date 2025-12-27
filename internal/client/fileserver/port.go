@@ -16,6 +16,9 @@ func FindAvailablePort() (int, error) {
 	defer listener.Close()
 
 	// Get the port that was allocated
-	addr := listener.Addr().(*net.TCPAddr)
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("failed to get TCP address from listener")
+	}
 	return addr.Port, nil
 }

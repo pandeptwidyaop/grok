@@ -3,13 +3,14 @@ package db
 import (
 	"testing"
 
-	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm/logger"
+
+	"github.com/pandeptwidyaop/grok/internal/db/models"
 )
 
-// TestConnect_SQLite tests SQLite database connection
+// TestConnect_SQLite tests SQLite database connection.
 func TestConnect_SQLite(t *testing.T) {
 	cfg := Config{
 		Driver:   "sqlite",
@@ -26,7 +27,7 @@ func TestConnect_SQLite(t *testing.T) {
 	assert.NoError(t, sqlDB.Ping())
 }
 
-// TestConnect_SQLiteFile tests SQLite with file path
+// TestConnect_SQLiteFile tests SQLite with file path.
 func TestConnect_SQLiteFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbFile := tmpDir + "/test.db"
@@ -45,7 +46,7 @@ func TestConnect_SQLiteFile(t *testing.T) {
 	assert.NoError(t, sqlDB.Ping())
 }
 
-// TestConnect_SQLiteCaseInsensitive tests SQLite driver name is case insensitive
+// TestConnect_SQLiteCaseInsensitive tests SQLite driver name is case insensitive.
 func TestConnect_SQLiteCaseInsensitive(t *testing.T) {
 	tests := []string{"sqlite", "SQLITE", "SQLite", "SqLiTe"}
 
@@ -63,7 +64,7 @@ func TestConnect_SQLiteCaseInsensitive(t *testing.T) {
 	}
 }
 
-// TestConnect_PostgreSQLDriverNames tests PostgreSQL driver name variations
+// TestConnect_PostgreSQLDriverNames tests PostgreSQL driver name variations.
 func TestConnect_PostgreSQLDriverNames(t *testing.T) {
 	// Note: These will fail to connect (no real postgres server)
 	// but should pass the driver name check
@@ -92,7 +93,7 @@ func TestConnect_PostgreSQLDriverNames(t *testing.T) {
 	}
 }
 
-// TestConnect_UnsupportedDriver tests unsupported database driver
+// TestConnect_UnsupportedDriver tests unsupported database driver.
 func TestConnect_UnsupportedDriver(t *testing.T) {
 	cfg := Config{
 		Driver:   "mysql",
@@ -105,7 +106,7 @@ func TestConnect_UnsupportedDriver(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported database driver")
 }
 
-// TestConnect_InvalidDriver tests completely invalid driver name
+// TestConnect_InvalidDriver tests completely invalid driver name.
 func TestConnect_InvalidDriver(t *testing.T) {
 	cfg := Config{
 		Driver:   "invalid_db_driver",
@@ -118,7 +119,7 @@ func TestConnect_InvalidDriver(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported database driver")
 }
 
-// TestConnect_LogLevels tests different SQL log levels
+// TestConnect_LogLevels tests different SQL log levels.
 func TestConnect_LogLevels(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -154,7 +155,7 @@ func TestConnect_LogLevels(t *testing.T) {
 	}
 }
 
-// TestAutoMigrate tests automatic migration
+// TestAutoMigrate tests automatic migration.
 func TestAutoMigrate(t *testing.T) {
 	cfg := Config{
 		Driver:   "sqlite",
@@ -188,7 +189,7 @@ func TestAutoMigrate(t *testing.T) {
 	}
 }
 
-// TestAutoMigrate_CreateRecords tests creating records after migration
+// TestAutoMigrate_CreateRecords tests creating records after migration.
 func TestAutoMigrate_CreateRecords(t *testing.T) {
 	cfg := Config{
 		Driver:   "sqlite",
@@ -271,7 +272,7 @@ func TestAutoMigrate_CreateRecords(t *testing.T) {
 	assert.NotEmpty(t, webhookApp.ID)
 }
 
-// TestAutoMigrate_ForeignKeys tests foreign key relationships
+// TestAutoMigrate_ForeignKeys tests foreign key relationships.
 func TestAutoMigrate_ForeignKeys(t *testing.T) {
 	cfg := Config{
 		Driver:   "sqlite",
@@ -312,7 +313,7 @@ func TestAutoMigrate_ForeignKeys(t *testing.T) {
 	assert.Equal(t, "FK Test Org", loadedUser.Organization.Name)
 }
 
-// TestAutoMigrate_MultipleRuns tests running AutoMigrate multiple times
+// TestAutoMigrate_MultipleRuns tests running AutoMigrate multiple times.
 func TestAutoMigrate_MultipleRuns(t *testing.T) {
 	cfg := Config{
 		Driver:   "sqlite",
@@ -339,7 +340,7 @@ func TestAutoMigrate_MultipleRuns(t *testing.T) {
 	assert.True(t, db.Migrator().HasTable("users"))
 }
 
-// TestConnect_EmptyConfig tests connection with empty config
+// TestConnect_EmptyConfig tests connection with empty config.
 func TestConnect_EmptyConfig(t *testing.T) {
 	cfg := Config{}
 
@@ -349,7 +350,7 @@ func TestConnect_EmptyConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported database driver")
 }
 
-// TestConnect_SQLiteWithLogLevel tests SQLite with different log levels
+// TestConnect_SQLiteWithLogLevel tests SQLite with different log levels.
 func TestConnect_SQLiteWithLogLevel(t *testing.T) {
 	cfg := Config{
 		Driver:      "sqlite",
@@ -374,7 +375,7 @@ func TestConnect_SQLiteWithLogLevel(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TestConnect_PostgreSQLDSN tests PostgreSQL DSN format
+// TestConnect_PostgreSQLDSN tests PostgreSQL DSN format.
 func TestConnect_PostgreSQLDSN(t *testing.T) {
 	// This test verifies the DSN format is correct
 	// It will fail to connect (no server), but should create valid DSN
@@ -395,7 +396,7 @@ func TestConnect_PostgreSQLDSN(t *testing.T) {
 	}
 }
 
-// BenchmarkConnect benchmarks database connection
+// BenchmarkConnect benchmarks database connection.
 func BenchmarkConnect(b *testing.B) {
 	cfg := Config{
 		Driver:   "sqlite",
@@ -413,7 +414,7 @@ func BenchmarkConnect(b *testing.B) {
 	}
 }
 
-// BenchmarkAutoMigrate benchmarks auto migration
+// BenchmarkAutoMigrate benchmarks auto migration.
 func BenchmarkAutoMigrate(b *testing.B) {
 	cfg := Config{
 		Driver:   "sqlite",

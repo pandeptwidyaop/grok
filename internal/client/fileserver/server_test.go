@@ -30,10 +30,10 @@ func setupTestDir(t *testing.T) string {
 
 	for path, content := range files {
 		fullPath := filepath.Join(tmpDir, path)
-		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 			t.Fatalf("Failed to create directory: %v", err)
 		}
-		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 			t.Fatalf("Failed to write file: %v", err)
 		}
 	}
@@ -161,13 +161,13 @@ func TestDirectoryListing(t *testing.T) {
 
 	// Create a directory without index.html
 	noIndexDir := filepath.Join(tmpDir, "noindex")
-	if err := os.Mkdir(noIndexDir, 0755); err != nil {
+	if err := os.Mkdir(noIndexDir, 0o755); err != nil {
 		t.Fatalf("Failed to create directory: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(noIndexDir, "file1.txt"), []byte("content1"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(noIndexDir, "file1.txt"), []byte("content1"), 0o644); err != nil {
 		t.Fatalf("Failed to write file: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(noIndexDir, "file2.txt"), []byte("content2"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(noIndexDir, "file2.txt"), []byte("content2"), 0o644); err != nil {
 		t.Fatalf("Failed to write file: %v", err)
 	}
 
@@ -301,10 +301,10 @@ func TestGzipCompression(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		acceptEncoding   string
-		wantContentEnc   string
-		wantCompressed   bool
+		name           string
+		acceptEncoding string
+		wantContentEnc string
+		wantCompressed bool
 	}{
 		{
 			name:           "with gzip support",

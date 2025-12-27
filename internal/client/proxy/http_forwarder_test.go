@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
-	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 )
 
-// TestNewHTTPForwarder tests HTTP forwarder creation
+// TestNewHTTPForwarder tests HTTP forwarder creation.
 func TestNewHTTPForwarder(t *testing.T) {
 	forwarder := NewHTTPForwarder("localhost:3000")
 
@@ -25,7 +26,7 @@ func TestNewHTTPForwarder(t *testing.T) {
 	assert.Equal(t, 30*time.Second, forwarder.httpClient.Timeout)
 }
 
-// TestHTTPForwarder_Forward_SimpleGET tests forwarding a simple GET request
+// TestHTTPForwarder_Forward_SimpleGET tests forwarding a simple GET request.
 func TestHTTPForwarder_Forward_SimpleGET(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +57,7 @@ func TestHTTPForwarder_Forward_SimpleGET(t *testing.T) {
 	assert.Equal(t, "Hello, World!", string(resp.Body))
 }
 
-// TestHTTPForwarder_Forward_POST tests forwarding a POST request with body
+// TestHTTPForwarder_Forward_POST tests forwarding a POST request with body.
 func TestHTTPForwarder_Forward_POST(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +91,7 @@ func TestHTTPForwarder_Forward_POST(t *testing.T) {
 	assert.Equal(t, `{"status":"created"}`, string(resp.Body))
 }
 
-// TestHTTPForwarder_Forward_QueryString tests forwarding with query string
+// TestHTTPForwarder_Forward_QueryString tests forwarding with query string.
 func TestHTTPForwarder_Forward_QueryString(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/search", r.URL.Path)
@@ -116,7 +117,7 @@ func TestHTTPForwarder_Forward_QueryString(t *testing.T) {
 	assert.Equal(t, int32(200), resp.StatusCode)
 }
 
-// TestHTTPForwarder_Forward_Headers tests forwarding with custom headers
+// TestHTTPForwarder_Forward_Headers tests forwarding with custom headers.
 func TestHTTPForwarder_Forward_Headers(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
@@ -149,7 +150,7 @@ func TestHTTPForwarder_Forward_Headers(t *testing.T) {
 	assert.Equal(t, "response-value", resp.Headers["X-Response-Header"].Values[0])
 }
 
-// TestHTTPForwarder_Forward_XForwardedFor tests X-Forwarded-For header injection
+// TestHTTPForwarder_Forward_XForwardedFor tests X-Forwarded-For header injection.
 func TestHTTPForwarder_Forward_XForwardedFor(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "192.168.1.1:12345", r.Header.Get("X-Forwarded-For"))
@@ -173,7 +174,7 @@ func TestHTTPForwarder_Forward_XForwardedFor(t *testing.T) {
 	assert.Equal(t, int32(200), resp.StatusCode)
 }
 
-// TestHTTPForwarder_Forward_HostHeader tests Host header override
+// TestHTTPForwarder_Forward_HostHeader tests Host header override.
 func TestHTTPForwarder_Forward_HostHeader(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "example.com", r.Host)
@@ -198,9 +199,9 @@ func TestHTTPForwarder_Forward_HostHeader(t *testing.T) {
 	assert.Equal(t, int32(200), resp.StatusCode)
 }
 
-// TestHTTPForwarder_Forward_4xxError tests forwarding 4xx error responses
+// TestHTTPForwarder_Forward_4xxError tests forwarding 4xx error responses.
 func TestHTTPForwarder_Forward_4xxError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Not Found"))
 	}))
@@ -222,9 +223,9 @@ func TestHTTPForwarder_Forward_4xxError(t *testing.T) {
 	assert.Equal(t, "Not Found", string(resp.Body))
 }
 
-// TestHTTPForwarder_Forward_5xxError tests forwarding 5xx error responses
+// TestHTTPForwarder_Forward_5xxError tests forwarding 5xx error responses.
 func TestHTTPForwarder_Forward_5xxError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Internal Server Error"))
 	}))
@@ -246,7 +247,7 @@ func TestHTTPForwarder_Forward_5xxError(t *testing.T) {
 	assert.Equal(t, "Internal Server Error", string(resp.Body))
 }
 
-// TestHTTPForwarder_Forward_Redirect tests that redirects are not followed
+// TestHTTPForwarder_Forward_Redirect tests that redirects are not followed.
 func TestHTTPForwarder_Forward_Redirect(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/redirected", http.StatusFound)
@@ -271,7 +272,7 @@ func TestHTTPForwarder_Forward_Redirect(t *testing.T) {
 	assert.Equal(t, "/redirected", resp.Headers["Location"].Values[0])
 }
 
-// TestHTTPForwarder_Forward_InvalidLocalAddr tests error when local service unreachable
+// TestHTTPForwarder_Forward_InvalidLocalAddr tests error when local service unreachable.
 func TestHTTPForwarder_Forward_InvalidLocalAddr(t *testing.T) {
 	// Use an invalid address that will fail to connect
 	forwarder := NewHTTPForwarder("localhost:99999")
@@ -289,10 +290,10 @@ func TestHTTPForwarder_Forward_InvalidLocalAddr(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to execute HTTP request")
 }
 
-// TestHTTPForwarder_Forward_ContextCanceled tests context cancellation
+// TestHTTPForwarder_Forward_ContextCanceled tests context cancellation.
 func TestHTTPForwarder_Forward_ContextCanceled(t *testing.T) {
 	// Create server with delay
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(2 * time.Second)
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -317,12 +318,12 @@ func TestHTTPForwarder_Forward_ContextCanceled(t *testing.T) {
 	assert.Nil(t, resp)
 }
 
-// TestHTTPForwarder_ForwardChunked tests chunked response streaming
+// TestHTTPForwarder_ForwardChunked tests chunked response streaming.
 func TestHTTPForwarder_ForwardChunked(t *testing.T) {
 	// Create large response (larger than ChunkSize)
 	largeBody := strings.Repeat("A", ChunkSize+1000)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(largeBody))
@@ -342,7 +343,7 @@ func TestHTTPForwarder_ForwardChunked(t *testing.T) {
 	var chunks []*tunnelv1.HTTPResponse
 	var receivedData []byte
 
-	err := forwarder.ForwardChunked(context.Background(), req, func(resp *tunnelv1.HTTPResponse, isLast bool) error {
+	err := forwarder.ForwardChunked(context.Background(), req, func(resp *tunnelv1.HTTPResponse, _ bool) error {
 		chunks = append(chunks, resp)
 		receivedData = append(receivedData, resp.Body...)
 		return nil
@@ -361,9 +362,9 @@ func TestHTTPForwarder_ForwardChunked(t *testing.T) {
 	}
 }
 
-// TestHTTPForwarder_ForwardChunked_SmallResponse tests chunked with small response
+// TestHTTPForwarder_ForwardChunked_SmallResponse tests chunked with small response.
 func TestHTTPForwarder_ForwardChunked_SmallResponse(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Small response"))
 	}))
@@ -379,7 +380,7 @@ func TestHTTPForwarder_ForwardChunked_SmallResponse(t *testing.T) {
 	}
 
 	var chunks []*tunnelv1.HTTPResponse
-	err := forwarder.ForwardChunked(context.Background(), req, func(resp *tunnelv1.HTTPResponse, isLast bool) error {
+	err := forwarder.ForwardChunked(context.Background(), req, func(resp *tunnelv1.HTTPResponse, _ bool) error {
 		chunks = append(chunks, resp)
 		return nil
 	})
@@ -389,9 +390,9 @@ func TestHTTPForwarder_ForwardChunked_SmallResponse(t *testing.T) {
 	assert.Equal(t, "Small response", string(chunks[0].Body))
 }
 
-// TestHTTPForwarder_ForwardChunked_SendError tests chunk send callback error
+// TestHTTPForwarder_ForwardChunked_SendError tests chunk send callback error.
 func TestHTTPForwarder_ForwardChunked_SendError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Test response"))
 	}))
@@ -407,7 +408,7 @@ func TestHTTPForwarder_ForwardChunked_SendError(t *testing.T) {
 	}
 
 	// Callback returns error
-	err := forwarder.ForwardChunked(context.Background(), req, func(resp *tunnelv1.HTTPResponse, isLast bool) error {
+	err := forwarder.ForwardChunked(context.Background(), req, func(_ *tunnelv1.HTTPResponse, _ bool) error {
 		return fmt.Errorf("send error")
 	})
 
@@ -415,7 +416,7 @@ func TestHTTPForwarder_ForwardChunked_SendError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to send chunk")
 }
 
-// TestIsWebSocketUpgrade tests WebSocket upgrade detection
+// TestIsWebSocketUpgrade tests WebSocket upgrade detection.
 func TestIsWebSocketUpgrade(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -505,7 +506,7 @@ func TestIsWebSocketUpgrade(t *testing.T) {
 	}
 }
 
-// TestHTTPForwarder_ForwardWebSocketUpgrade tests WebSocket upgrade handling
+// TestHTTPForwarder_ForwardWebSocketUpgrade tests WebSocket upgrade handling.
 func TestHTTPForwarder_ForwardWebSocketUpgrade(t *testing.T) {
 	// Create a simple TCP server that responds to WebSocket upgrade
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -565,7 +566,7 @@ func TestHTTPForwarder_ForwardWebSocketUpgrade(t *testing.T) {
 	assert.Equal(t, "Upgrade", resp.Headers["Connection"].Values[0])
 }
 
-// TestHTTPForwarder_ForwardWebSocketUpgrade_ConnectError tests connection error
+// TestHTTPForwarder_ForwardWebSocketUpgrade_ConnectError tests connection error.
 func TestHTTPForwarder_ForwardWebSocketUpgrade_ConnectError(t *testing.T) {
 	forwarder := NewHTTPForwarder("localhost:99999")
 
@@ -586,9 +587,9 @@ func TestHTTPForwarder_ForwardWebSocketUpgrade_ConnectError(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to connect to local service")
 }
 
-// BenchmarkHTTPForwarder_Forward benchmarks HTTP forwarding
+// BenchmarkHTTPForwarder_Forward benchmarks HTTP forwarding.
 func BenchmarkHTTPForwarder_Forward(b *testing.B) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	}))
@@ -609,11 +610,11 @@ func BenchmarkHTTPForwarder_Forward(b *testing.B) {
 	}
 }
 
-// BenchmarkHTTPForwarder_ForwardChunked benchmarks chunked forwarding
+// BenchmarkHTTPForwarder_ForwardChunked benchmarks chunked forwarding.
 func BenchmarkHTTPForwarder_ForwardChunked(b *testing.B) {
 	largeBody := strings.Repeat("A", ChunkSize+1000)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(largeBody))
 	}))
@@ -630,7 +631,7 @@ func BenchmarkHTTPForwarder_ForwardChunked(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		forwarder.ForwardChunked(context.Background(), req, func(resp *tunnelv1.HTTPResponse, isLast bool) error {
+		forwarder.ForwardChunked(context.Background(), req, func(_ *tunnelv1.HTTPResponse, _ bool) error {
 			return nil
 		})
 	}

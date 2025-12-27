@@ -66,7 +66,6 @@ func (s *TokenService) ValidateToken(ctx context.Context, token string) (*models
 		Where("token_hash = ? AND is_active = ?", tokenHash, true).
 		Preload("User").
 		First(&authToken).Error
-
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, pkgerrors.ErrInvalidToken
@@ -117,7 +116,6 @@ func (s *TokenService) ListTokens(ctx context.Context, userID uuid.UUID) ([]mode
 		Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Find(&tokens).Error
-
 	if err != nil {
 		return nil, pkgerrors.Wrap(err, "failed to list tokens")
 	}
@@ -132,7 +130,6 @@ func (s *TokenService) GetTokenByID(ctx context.Context, tokenID uuid.UUID) (*mo
 		Where("id = ?", tokenID).
 		Preload("User").
 		First(&token).Error
-
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, pkgerrors.ErrInvalidToken
@@ -150,7 +147,6 @@ func (s *TokenService) GetUserByID(ctx context.Context, userID uuid.UUID) (*mode
 		Where("id = ?", userID).
 		Preload("Organization").
 		First(&user).Error
-
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, pkgerrors.ErrUserNotFound

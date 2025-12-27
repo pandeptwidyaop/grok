@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/pandeptwidyaop/grok/internal/client/config"
 	"github.com/pandeptwidyaop/grok/internal/client/dashboard"
 	"github.com/pandeptwidyaop/grok/internal/client/fileserver"
 	"github.com/pandeptwidyaop/grok/internal/client/tunnel"
@@ -18,11 +19,11 @@ import (
 )
 
 var (
-	serveName     string
-	serveAuth     string
-	serveNoGzip   bool
-	serveNoIndex  bool
-	serve404      string
+	serveName    string
+	serveAuth    string
+	serveNoGzip  bool
+	serveNoIndex bool
+	serve404     string
 )
 
 // serveCmd represents the serve command.
@@ -63,40 +64,94 @@ func init() {
 	serveCmd.Flags().BoolVar(&serveNoIndex, "no-index", false, "disable automatic index.html fallback")
 }
 
-func runServe(cmd *cobra.Command, args []string) error {
-	// Determine directory to serve
+// validateServeDirectory validates and returns the absolute path of the directory to serve.
+func validateServeDirectory(args []string) (string, error) {
 	dir := "."
 	if len(args) > 0 {
 		dir = args[0]
 	}
 
-	// Get absolute path
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		return fmt.Errorf("invalid directory path: %w", err)
+		return "", fmt.Errorf("invalid directory path: %w", err)
 	}
 
-	// Verify directory exists
 	info, err := os.Stat(absDir)
 	if err != nil {
-		return fmt.Errorf("cannot access directory: %w", err)
+		return "", fmt.Errorf("cannot access directory: %w", err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("path is not a directory: %s", absDir)
+		return "", fmt.Errorf("path is not a directory: %s", absDir)
 	}
 
-	// Parse basic auth credentials
-	var authUser, authPass string
-	if serveAuth != "" {
-		parts := strings.SplitN(serveAuth, ":", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid auth format, expected username:password")
-		}
-		authUser, authPass = parts[0], parts[1]
+	return absDir, nil
+}
 
-		if authUser == "" || authPass == "" {
-			return fmt.Errorf("username and password cannot be empty")
-		}
+// parseBasicAuthCredentials parses basic auth credentials from the format "username:password".
+func parseBasicAuthCredentials(authStr string) (string, string, error) {
+	if authStr == "" {
+		return "", "", nil
+	}
+
+	parts := strings.SplitN(authStr, ":", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid auth format, expected username:password")
+	}
+
+	authUser, authPass := parts[0], parts[1]
+	if authUser == "" || authPass == "" {
+		return "", "", fmt.Errorf("username and password cannot be empty")
+	}
+
+	return authUser, authPass, nil
+}
+
+// applyConfigOverrides applies command-line flag overrides to the config.
+func applyConfigOverrides(cmd *cobra.Command, cfg *config.Config) (dashboardEnabled bool, dashboardPort int) {
+	if serverFlag, _ := cmd.Flags().GetString("server"); serverFlag != "" {
+		cfg.Server.Addr = serverFlag
+	}
+	if tokenFlag, _ := cmd.Flags().GetString("token"); tokenFlag != "" {
+		cfg.Auth.Token = tokenFlag
+	}
+
+	dashboardEnabled = cfg.Dashboard.Enabled
+	dashboardPort = cfg.Dashboard.Port
+
+	if noDashboard, _ := cmd.Flags().GetBool("no-dashboard"); noDashboard {
+		dashboardEnabled = false
+	} else if dashboardFlag, _ := cmd.Flags().GetBool("dashboard"); !dashboardFlag {
+		dashboardEnabled = false
+	}
+
+	if portFlag, _ := cmd.Flags().GetInt("dashboard-port"); portFlag != 4041 {
+		dashboardPort = portFlag
+	}
+
+	return dashboardEnabled, dashboardPort
+}
+
+// buildDashboardConfig creates dashboard configuration if enabled.
+func buildDashboardConfig(enabled bool, port int, cfg *config.Config) dashboard.Config {
+	dashboardCfg := dashboard.Config{}
+	if enabled {
+		dashboardCfg.Port = port
+		dashboardCfg.MaxRequests = cfg.Dashboard.MaxRequests
+		dashboardCfg.MaxBodySize = cfg.Dashboard.MaxBodySize
+		dashboardCfg.EnableSSE = true
+	}
+	return dashboardCfg
+}
+
+func runServe(cmd *cobra.Command, args []string) error {
+	absDir, err := validateServeDirectory(args)
+	if err != nil {
+		return err
+	}
+
+	authUser, authPass, err := parseBasicAuthCredentials(serveAuth)
+	if err != nil {
+		return err
 	}
 
 	// Find an available port for the local file server
@@ -136,35 +191,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Get config with overrides from flags
 	cfg := GetConfig()
-	if serverFlag, _ := cmd.Flags().GetString("server"); serverFlag != "" {
-		cfg.Server.Addr = serverFlag
-	}
-	if tokenFlag, _ := cmd.Flags().GetString("token"); tokenFlag != "" {
-		cfg.Auth.Token = tokenFlag
-	}
-
-	// Get dashboard flags
-	dashboardEnabled := cfg.Dashboard.Enabled
-	dashboardPort := cfg.Dashboard.Port
-
-	if noDashboard, _ := cmd.Flags().GetBool("no-dashboard"); noDashboard {
-		dashboardEnabled = false
-	} else if dashboardFlag, _ := cmd.Flags().GetBool("dashboard"); !dashboardFlag {
-		dashboardEnabled = false
-	}
-
-	if portFlag, _ := cmd.Flags().GetInt("dashboard-port"); portFlag != 4041 {
-		dashboardPort = portFlag
-	}
-
-	// Build dashboard config
-	dashboardCfg := dashboard.Config{}
-	if dashboardEnabled {
-		dashboardCfg.Port = dashboardPort
-		dashboardCfg.MaxRequests = cfg.Dashboard.MaxRequests
-		dashboardCfg.MaxBodySize = cfg.Dashboard.MaxBodySize
-		dashboardCfg.EnableSSE = true
-	}
+	dashboardEnabled, dashboardPort := applyConfigOverrides(cmd, cfg)
+	dashboardCfg := buildDashboardConfig(dashboardEnabled, dashboardPort, cfg)
 
 	// Create tunnel client
 	client, err := tunnel.NewClient(tunnel.ClientConfig{

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestPredefinedErrors tests that all predefined errors are defined
+// TestPredefinedErrors tests that all predefined errors are defined.
 func TestPredefinedErrors(t *testing.T) {
 	tests := []struct {
 		name string
@@ -40,7 +40,7 @@ func TestPredefinedErrors(t *testing.T) {
 	}
 }
 
-// TestPredefinedErrorsAreUnique tests that predefined errors are unique instances
+// TestPredefinedErrorsAreUnique tests that predefined errors are unique instances.
 func TestPredefinedErrorsAreUnique(t *testing.T) {
 	// Each error should be a unique instance
 	assert.NotEqual(t, ErrUnauthorized, ErrInvalidToken)
@@ -48,7 +48,7 @@ func TestPredefinedErrorsAreUnique(t *testing.T) {
 	assert.NotEqual(t, ErrTunnelNotFound, ErrSubdomainTaken)
 }
 
-// TestPredefinedErrorsWithErrorsIs tests using errors.Is with predefined errors
+// TestPredefinedErrorsWithErrorsIs tests using errors.Is with predefined errors.
 func TestPredefinedErrorsWithErrorsIs(t *testing.T) {
 	// Wrap a predefined error
 	wrappedErr := fmt.Errorf("context: %w", ErrUnauthorized)
@@ -62,7 +62,7 @@ func TestPredefinedErrorsWithErrorsIs(t *testing.T) {
 	assert.False(t, errors.Is(ErrTokenExpired, ErrUserNotFound))
 }
 
-// TestAppError_Error tests AppError.Error() method
+// TestAppError_Error tests AppError.Error() method.
 func TestAppError_Error(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -105,7 +105,7 @@ func TestAppError_Error(t *testing.T) {
 	}
 }
 
-// TestAppError_Unwrap tests AppError.Unwrap() method
+// TestAppError_Unwrap tests AppError.Unwrap() method.
 func TestAppError_Unwrap(t *testing.T) {
 	underlyingErr := errors.New("underlying error")
 	appErr := &AppError{
@@ -122,7 +122,7 @@ func TestAppError_Unwrap(t *testing.T) {
 	assert.True(t, errors.Is(appErr, underlyingErr))
 }
 
-// TestAppError_UnwrapNil tests AppError.Unwrap() with no underlying error
+// TestAppError_UnwrapNil tests AppError.Unwrap() with no underlying error.
 func TestAppError_UnwrapNil(t *testing.T) {
 	appErr := &AppError{
 		Code:    "TEST_002",
@@ -135,7 +135,7 @@ func TestAppError_UnwrapNil(t *testing.T) {
 	assert.Nil(t, unwrapped)
 }
 
-// TestNewAppError tests NewAppError constructor
+// TestNewAppError tests NewAppError constructor.
 func TestNewAppError(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -180,7 +180,7 @@ func TestNewAppError(t *testing.T) {
 	}
 }
 
-// TestWrap tests Wrap function
+// TestWrap tests Wrap function.
 func TestWrap(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -238,7 +238,7 @@ func TestWrap(t *testing.T) {
 	}
 }
 
-// TestWrapChain tests wrapping errors multiple times
+// TestWrapChain tests wrapping errors multiple times.
 func TestWrapChain(t *testing.T) {
 	original := errors.New("original")
 	wrapped1 := Wrap(original, "level 1")
@@ -261,7 +261,7 @@ func TestWrapChain(t *testing.T) {
 	assert.Contains(t, msg, "original")
 }
 
-// TestAppErrorAsError tests using AppError as a regular error
+// TestAppErrorAsError tests using AppError as a regular error.
 func TestAppErrorAsError(t *testing.T) {
 	appErr := NewAppError("TEST", "test message", nil)
 
@@ -277,7 +277,7 @@ func TestAppErrorAsError(t *testing.T) {
 	assert.Equal(t, "test message", targetErr.Message)
 }
 
-// TestAppErrorWithPredefinedErrors tests combining AppError with predefined errors
+// TestAppErrorWithPredefinedErrors tests combining AppError with predefined errors.
 func TestAppErrorWithPredefinedErrors(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -308,7 +308,7 @@ func TestAppErrorWithPredefinedErrors(t *testing.T) {
 	}
 }
 
-// TestErrorComposition tests complex error composition
+// TestErrorComposition tests complex error composition.
 func TestErrorComposition(t *testing.T) {
 	// Start with a predefined error
 	baseErr := ErrLocalServiceUnreachable
@@ -339,7 +339,7 @@ func TestErrorComposition(t *testing.T) {
 	assert.Contains(t, msg, "local service unreachable")
 }
 
-// BenchmarkNewAppError benchmarks AppError creation
+// BenchmarkNewAppError benchmarks AppError creation.
 func BenchmarkNewAppError(b *testing.B) {
 	baseErr := errors.New("test error")
 
@@ -349,7 +349,7 @@ func BenchmarkNewAppError(b *testing.B) {
 	}
 }
 
-// BenchmarkWrap benchmarks Wrap function
+// BenchmarkWrap benchmarks Wrap function.
 func BenchmarkWrap(b *testing.B) {
 	baseErr := errors.New("test error")
 
@@ -359,7 +359,7 @@ func BenchmarkWrap(b *testing.B) {
 	}
 }
 
-// BenchmarkAppErrorError benchmarks Error() method
+// BenchmarkAppErrorError benchmarks Error() method.
 func BenchmarkAppErrorError(b *testing.B) {
 	appErr := NewAppError("CODE", "message", errors.New("test"))
 

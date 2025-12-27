@@ -5,8 +5,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/pandeptwidyaop/grok/internal/db/models"
-	"github.com/pandeptwidyaop/grok/internal/server/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -15,9 +13,12 @@ import (
 	"google.golang.org/grpc/status"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/pandeptwidyaop/grok/internal/db/models"
+	"github.com/pandeptwidyaop/grok/internal/server/auth"
 )
 
-// setupTestDB creates an in-memory SQLite database for testing
+// setupTestDB creates an in-memory SQLite database for testing.
 func setupTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -29,7 +30,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// createTestUser creates a test user
+// createTestUser creates a test user.
 func createTestUser(t *testing.T, db *gorm.DB) *models.User {
 	user := &models.User{
 		Email:    "test@example.com",
@@ -42,24 +43,24 @@ func createTestUser(t *testing.T, db *gorm.DB) *models.User {
 	return user
 }
 
-// createTestToken creates a test auth token
-func createTestToken(t *testing.T, db *gorm.DB, tokenService *auth.TokenService, userID uuid.UUID) (string, *models.AuthToken) {
+// createTestToken creates a test auth token.
+func createTestToken(t *testing.T, _ *gorm.DB, tokenService *auth.TokenService, userID uuid.UUID) (string, *models.AuthToken) {
 	token, authToken, err := tokenService.CreateToken(context.Background(), userID, "test-token", nil)
 	require.NoError(t, err)
 	return authToken, token
 }
 
-// mockHandler is a mock gRPC handler
-func mockHandler(ctx context.Context, req interface{}) (interface{}, error) {
+// mockHandler is a mock gRPC handler.
+func mockHandler(_ context.Context, _ interface{}) (interface{}, error) {
 	return "success", nil
 }
 
-// mockStreamHandler is a mock gRPC stream handler
-func mockStreamHandler(srv interface{}, stream grpc.ServerStream) error {
+// mockStreamHandler is a mock gRPC stream handler.
+func mockStreamHandler(_ interface{}, _ grpc.ServerStream) error {
 	return nil
 }
 
-// mockServerStream implements grpc.ServerStream for testing
+// mockServerStream implements grpc.ServerStream for testing.
 type mockServerStream struct {
 	grpc.ServerStream
 	ctx context.Context
@@ -69,7 +70,7 @@ func (m *mockServerStream) Context() context.Context {
 	return m.ctx
 }
 
-// TestAuthInterceptor_ValidToken tests auth interceptor with valid token
+// TestAuthInterceptor_ValidToken tests auth interceptor with valid token.
 func TestAuthInterceptor_ValidToken(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -100,7 +101,7 @@ func TestAuthInterceptor_ValidToken(t *testing.T) {
 	_ = authToken
 }
 
-// TestAuthInterceptor_MissingToken tests auth interceptor without token
+// TestAuthInterceptor_MissingToken tests auth interceptor without token.
 func TestAuthInterceptor_MissingToken(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -126,7 +127,7 @@ func TestAuthInterceptor_MissingToken(t *testing.T) {
 	assert.Contains(t, st.Message(), "missing or invalid authentication token")
 }
 
-// TestAuthInterceptor_InvalidToken tests auth interceptor with invalid token
+// TestAuthInterceptor_InvalidToken tests auth interceptor with invalid token.
 func TestAuthInterceptor_InvalidToken(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -155,7 +156,7 @@ func TestAuthInterceptor_InvalidToken(t *testing.T) {
 	assert.Contains(t, st.Message(), "invalid authentication token")
 }
 
-// TestAuthInterceptor_SkipAuth tests that health check skips auth
+// TestAuthInterceptor_SkipAuth tests that health check skips auth.
 func TestAuthInterceptor_SkipAuth(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -177,7 +178,7 @@ func TestAuthInterceptor_SkipAuth(t *testing.T) {
 	assert.Equal(t, "success", resp)
 }
 
-// TestExtractToken tests token extraction from metadata
+// TestExtractToken tests token extraction from metadata.
 func TestExtractToken(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -221,7 +222,7 @@ func TestExtractToken(t *testing.T) {
 	}
 }
 
-// TestSkipAuth tests skip auth logic
+// TestSkipAuth tests skip auth logic.
 func TestSkipAuth(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -253,7 +254,7 @@ func TestSkipAuth(t *testing.T) {
 	}
 }
 
-// TestStreamAuthInterceptor_ValidToken tests stream auth with valid token
+// TestStreamAuthInterceptor_ValidToken tests stream auth with valid token.
 func TestStreamAuthInterceptor_ValidToken(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -279,7 +280,7 @@ func TestStreamAuthInterceptor_ValidToken(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestStreamAuthInterceptor_MissingToken tests stream auth without token
+// TestStreamAuthInterceptor_MissingToken tests stream auth without token.
 func TestStreamAuthInterceptor_MissingToken(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -303,7 +304,7 @@ func TestStreamAuthInterceptor_MissingToken(t *testing.T) {
 	assert.Equal(t, codes.Unauthenticated, st.Code())
 }
 
-// TestStreamAuthInterceptor_SkipAuth tests stream skips auth for health check
+// TestStreamAuthInterceptor_SkipAuth tests stream skips auth for health check.
 func TestStreamAuthInterceptor_SkipAuth(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -324,7 +325,7 @@ func TestStreamAuthInterceptor_SkipAuth(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestAuthServerStream_Context tests wrapped stream context
+// TestAuthServerStream_Context tests wrapped stream context.
 func TestAuthServerStream_Context(t *testing.T) {
 	originalCtx := context.Background()
 	wrappedCtx := context.WithValue(originalCtx, userIDKey, uuid.New())
@@ -336,7 +337,7 @@ func TestAuthServerStream_Context(t *testing.T) {
 	assert.Equal(t, wrappedCtx, stream.Context())
 }
 
-// TestAuthInterceptor_ContextValues tests that user ID is added to context
+// TestAuthInterceptor_ContextValues tests that user ID is added to context.
 func TestAuthInterceptor_ContextValues(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -357,7 +358,7 @@ func TestAuthInterceptor_ContextValues(t *testing.T) {
 
 	// Custom handler that checks context values
 	var capturedCtx context.Context
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, _ interface{}) (interface{}, error) {
 		capturedCtx = ctx
 		return "success", nil
 	}
@@ -375,7 +376,7 @@ func TestAuthInterceptor_ContextValues(t *testing.T) {
 	assert.Equal(t, authToken.ID, tokenID)
 }
 
-// BenchmarkAuthInterceptor benchmarks auth interceptor
+// BenchmarkAuthInterceptor benchmarks auth interceptor.
 func BenchmarkAuthInterceptor(b *testing.B) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	db.AutoMigrate(&models.User{}, &models.AuthToken{})

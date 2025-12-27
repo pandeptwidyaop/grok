@@ -5,20 +5,21 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
-	"github.com/pandeptwidyaop/grok/internal/db/models"
-	"github.com/pandeptwidyaop/grok/internal/server/auth"
-	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
-	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/db/models"
+	"github.com/pandeptwidyaop/grok/internal/server/auth"
+	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
+	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 )
 
-// setupTestDB creates an in-memory SQLite database for testing
+// setupTestDB creates an in-memory SQLite database for testing.
 func setupTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
@@ -36,7 +37,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// setupTestTunnelService creates a test tunnel service with all dependencies
+// setupTestTunnelService creates a test tunnel service with all dependencies.
 func setupTestTunnelService(t *testing.T) (*TunnelService, *gorm.DB, *auth.TokenService, *tunnel.Manager) {
 	db := setupTestDB(t)
 
@@ -52,7 +53,7 @@ func setupTestTunnelService(t *testing.T) (*TunnelService, *gorm.DB, *auth.Token
 	return service, db, tokenService, tm
 }
 
-// createTestUser creates a test user in the database
+// createTestUser creates a test user in the database.
 func createTestUser(t *testing.T, db *gorm.DB, username string, orgID *uuid.UUID) *models.User {
 	user := &models.User{
 		Name:           username,
@@ -66,14 +67,14 @@ func createTestUser(t *testing.T, db *gorm.DB, username string, orgID *uuid.UUID
 	return user
 }
 
-// createTestToken creates a test auth token for a user
-func createTestToken(t *testing.T, db *gorm.DB, tokenService *auth.TokenService, userID uuid.UUID, name string) (string, *models.AuthToken) {
+// createTestToken creates a test auth token for a user.
+func createTestToken(t *testing.T, _ *gorm.DB, tokenService *auth.TokenService, userID uuid.UUID, name string) (string, *models.AuthToken) {
 	token, tokenString, err := tokenService.CreateToken(context.Background(), userID, name, nil)
 	require.NoError(t, err)
 	return tokenString, token
 }
 
-// TestNewTunnelService tests tunnel service initialization
+// TestNewTunnelService tests tunnel service initialization.
 func TestNewTunnelService(t *testing.T) {
 	service, _, tokenService, tm := setupTestTunnelService(t)
 
@@ -82,7 +83,7 @@ func TestNewTunnelService(t *testing.T) {
 	assert.Equal(t, tokenService, service.tokenService)
 }
 
-// TestParseRegistrationData tests registration data parsing
+// TestParseRegistrationData tests registration data parsing.
 func TestParseRegistrationData(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -159,7 +160,7 @@ func TestParseRegistrationData(t *testing.T) {
 	}
 }
 
-// TestDetermineProtocolFromURL tests URL protocol detection
+// TestDetermineProtocolFromURL tests URL protocol detection.
 func TestDetermineProtocolFromURL(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -201,7 +202,7 @@ func TestDetermineProtocolFromURL(t *testing.T) {
 	}
 }
 
-// TestDetermineProtocol tests protocol determination from request
+// TestDetermineProtocol tests protocol determination from request.
 func TestDetermineProtocol(t *testing.T) {
 	service, _, _, _ := setupTestTunnelService(t)
 
@@ -240,7 +241,7 @@ func TestDetermineProtocol(t *testing.T) {
 	}
 }
 
-// TestCreateTunnel tests tunnel creation
+// TestCreateTunnel tests tunnel creation.
 func TestCreateTunnel(t *testing.T) {
 	service, db, tokenService, _ := setupTestTunnelService(t)
 
@@ -366,7 +367,7 @@ func TestCreateTunnel(t *testing.T) {
 	}
 }
 
-// TestCreateTunnel_SubdomainTaken tests subdomain conflict handling
+// TestCreateTunnel_SubdomainTaken tests subdomain conflict handling.
 func TestCreateTunnel_SubdomainTaken(t *testing.T) {
 	service, db, tokenService, _ := setupTestTunnelService(t)
 
@@ -402,7 +403,7 @@ func TestCreateTunnel_SubdomainTaken(t *testing.T) {
 	assert.Equal(t, codes.AlreadyExists, st.Code())
 }
 
-// TestAllocateSubdomainForTunnel tests subdomain allocation logic
+// TestAllocateSubdomainForTunnel tests subdomain allocation logic.
 func TestAllocateSubdomainForTunnel(t *testing.T) {
 	service, db, _, _ := setupTestTunnelService(t)
 	ctx := context.Background()
@@ -473,7 +474,7 @@ func TestAllocateSubdomainForTunnel(t *testing.T) {
 	}
 }
 
-// TestAllocateSubdomainForTunnel_OfflineTunnelReuse tests offline tunnel subdomain reuse
+// TestAllocateSubdomainForTunnel_OfflineTunnelReuse tests offline tunnel subdomain reuse.
 func TestAllocateSubdomainForTunnel_OfflineTunnelReuse(t *testing.T) {
 	service, db, _, _ := setupTestTunnelService(t)
 	ctx := context.Background()
@@ -503,7 +504,7 @@ func TestAllocateSubdomainForTunnel_OfflineTunnelReuse(t *testing.T) {
 	assert.Equal(t, "myapp", customPart)
 }
 
-// TestCreateTunnel_InvalidToken tests handling of invalid tokens
+// TestCreateTunnel_InvalidToken tests handling of invalid tokens.
 func TestCreateTunnel_InvalidToken(t *testing.T) {
 	service, _, _, _ := setupTestTunnelService(t)
 
@@ -523,7 +524,7 @@ func TestCreateTunnel_InvalidToken(t *testing.T) {
 	assert.Contains(t, st.Message(), "invalid authentication token")
 }
 
-// TestCreateTunnel_WithOrganization tests tunnel creation for org users
+// TestCreateTunnel_WithOrganization tests tunnel creation for org users.
 func TestCreateTunnel_WithOrganization(t *testing.T) {
 	service, db, tokenService, _ := setupTestTunnelService(t)
 
@@ -554,7 +555,7 @@ func TestCreateTunnel_WithOrganization(t *testing.T) {
 	assert.Contains(t, resp.PublicUrl, "orgapp-testorg.grok.io")
 }
 
-// BenchmarkCreateTunnel benchmarks tunnel creation
+// BenchmarkCreateTunnel benchmarks tunnel creation.
 func BenchmarkCreateTunnel(b *testing.B) {
 	service, db, tokenService, _ := setupTestTunnelService(&testing.T{})
 	user := createTestUser(&testing.T{}, db, "benchuser", nil)
@@ -572,7 +573,7 @@ func BenchmarkCreateTunnel(b *testing.B) {
 	}
 }
 
-// BenchmarkParseRegistrationData benchmarks registration parsing
+// BenchmarkParseRegistrationData benchmarks registration parsing.
 func BenchmarkParseRegistrationData(b *testing.B) {
 	data := "myapp|grok_abc123|localhost:3000|http://myapp.grok.io|my-tunnel"
 
@@ -582,12 +583,12 @@ func BenchmarkParseRegistrationData(b *testing.B) {
 	}
 }
 
-// Helper function to create string pointer
+// Helper function to create string pointer.
 func strPtr(s string) *string {
 	return &s
 }
 
-// TestDetermineProtocol_WithTLS tests protocol determination with TLS enabled
+// TestDetermineProtocol_WithTLS tests protocol determination with TLS enabled.
 func TestDetermineProtocol_WithTLS(t *testing.T) {
 	db := setupTestDB(t)
 	tokenService := auth.NewTokenService(db)
@@ -601,7 +602,7 @@ func TestDetermineProtocol_WithTLS(t *testing.T) {
 	assert.Equal(t, "https", result)
 }
 
-// TestAllocateSubdomainForTunnel_ReservedSubdomains tests reserved subdomain rejection
+// TestAllocateSubdomainForTunnel_ReservedSubdomains tests reserved subdomain rejection.
 func TestAllocateSubdomainForTunnel_ReservedSubdomains(t *testing.T) {
 	service, db, _, _ := setupTestTunnelService(t)
 	ctx := context.Background()

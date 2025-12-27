@@ -136,7 +136,7 @@ func SaveToken(token string) error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -171,7 +171,7 @@ func SaveServer(addr string) error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -206,7 +206,7 @@ func SetTLSCert(certPath string) error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -243,7 +243,7 @@ func SetTLSInsecure(insecure bool) error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -283,7 +283,7 @@ func EnableTLS() error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -320,7 +320,7 @@ func DisableTLS() error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 

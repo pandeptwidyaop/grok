@@ -195,7 +195,6 @@ func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdoma
 		Joins("JOIN organizations ON organizations.id = webhook_apps.organization_id").
 		Where("webhook_apps.name || '-' || organizations.subdomain = ?", appOrgPart).
 		First(&webhookApp).Error
-
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return "", "", "", fmt.Errorf("webhook app not found for subdomain: %s", webhookSubdomain)

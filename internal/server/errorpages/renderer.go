@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	// Template cache for performance (compiled once at startup)
+	// Template cache for performance (compiled once at startup).
 	templateCache = make(map[string]*template.Template)
 	cacheMu       sync.RWMutex
 	initOnce      sync.Once

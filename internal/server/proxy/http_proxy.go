@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -153,40 +152,71 @@ func isWebSocketUpgrade(r *http.Request) bool {
 		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
 }
 
-// proxyRequestChunked proxies request and streams response chunks directly to client.
-// Returns: (requestBytes, responseBytes, statusCode, error).
-func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w http.ResponseWriter) (int64, int64, int, error) {
-	// Generate request ID
-	requestID := utils.GenerateRequestID()
-
-	// Read request body with size limit to prevent memory exhaustion
-	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBodySize+1)) // +1 to detect if limit exceeded
+// readAndValidateRequestBody reads and validates request body size.
+func (p *HTTPProxy) readAndValidateRequestBody(r *http.Request) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBodySize+1))
 	if err != nil {
-		return 0, 0, 0, pkgerrors.Wrap(err, "failed to read request body")
+		return nil, pkgerrors.Wrap(err, "failed to read request body")
 	}
 	defer r.Body.Close()
 
-	// Check if request body exceeded the limit
 	if int64(len(body)) > MaxRequestBodySize {
-		return 0, 0, 0, pkgerrors.NewAppError("REQUEST_TOO_LARGE", "request body exceeds maximum size of 10MB", nil)
+		return nil, pkgerrors.NewAppError("REQUEST_TOO_LARGE", "request body exceeds maximum size of 10MB", nil)
 	}
+	return body, nil
+}
 
-	// Calculate request size (headers + body)
-	requestBytes := int64(len(body))
+// calculateRequestSize calculates total request size including headers.
+func (p *HTTPProxy) calculateRequestSize(r *http.Request, bodySize int) int64 {
+	size := int64(bodySize)
 	for key, values := range r.Header {
 		for _, val := range values {
-			requestBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+			size += int64(len(key) + len(val) + 4)
 		}
 	}
-	requestBytes += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20) // Method, path, query, protocol
+	size += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20)
+	return size
+}
 
-	// Convert HTTP headers to proto format
-	headers := make(map[string]*tunnelv1.HeaderValues)
-	for key, values := range r.Header {
-		headers[key] = &tunnelv1.HeaderValues{
-			Values: values,
+// convertHeadersToProto converts HTTP headers to protobuf format.
+func (p *HTTPProxy) convertHeadersToProto(headers http.Header) map[string]*tunnelv1.HeaderValues {
+	protoHeaders := make(map[string]*tunnelv1.HeaderValues)
+	for key, values := range headers {
+		protoHeaders[key] = &tunnelv1.HeaderValues{Values: values}
+	}
+	return protoHeaders
+}
+
+// writeResponseHeaders writes HTTP response headers and status code.
+// Returns bytes written.
+func (p *HTTPProxy) writeResponseHeaders(w http.ResponseWriter, httpResp *tunnelv1.HTTPResponse) int64 {
+	bytesWritten := int64(0)
+
+	for key, headerVals := range httpResp.Headers {
+		for _, val := range headerVals.Values {
+			w.Header().Add(key, val)
+			bytesWritten += int64(len(key) + len(val) + 4)
 		}
 	}
+
+	w.WriteHeader(int(httpResp.StatusCode))
+	bytesWritten += 20 // Status line overhead
+
+	return bytesWritten
+}
+
+// proxyRequestChunked proxies request and streams response chunks directly to client.
+// Returns: (requestBytes, responseBytes, statusCode, error).
+func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w http.ResponseWriter) (int64, int64, int, error) {
+	requestID := utils.GenerateRequestID()
+
+	body, err := p.readAndValidateRequestBody(r)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	requestBytes := p.calculateRequestSize(r, len(body))
+	headers := p.convertHeadersToProto(r.Header)
 
 	// Create proxy request
 	proxyReq := &tunnelv1.ProxyRequest{
@@ -243,19 +273,7 @@ func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w h
 			// Write headers on first chunk
 			if !headersWritten {
 				statusCode = int(httpResp.StatusCode)
-
-				// Write response headers
-				for key, headerVals := range httpResp.Headers {
-					for _, val := range headerVals.Values {
-						w.Header().Add(key, val)
-						responseBytes += int64(len(key) + len(val) + 4)
-					}
-				}
-
-				// Write status code
-				w.WriteHeader(statusCode)
-				responseBytes += 20 // Status line overhead
-
+				responseBytes += p.writeResponseHeaders(w, httpResp)
 				headersWritten = true
 			}
 
@@ -296,39 +314,6 @@ func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w h
 			return requestBytes, responseBytes, statusCode, pkgerrors.ErrRequestTimeout
 		}
 	}
-}
-
-// Returns: bytes written.
-func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) int64 {
-	// Calculate response size (headers + body)
-	responseBytes := int64(len(resp.Body))
-	for key, headerVals := range resp.Headers {
-		for _, val := range headerVals.Values {
-			responseBytes += int64(len(key) + len(val) + 4) // key: value\r\n
-		}
-	}
-	responseBytes += 20 // Status line overhead
-
-	// Write headers
-	for key, headerVals := range resp.Headers {
-		for _, val := range headerVals.Values {
-			w.Header().Add(key, val)
-		}
-	}
-
-	// Write status code
-	w.WriteHeader(int(resp.StatusCode))
-
-	// Write body
-	if len(resp.Body) > 0 {
-		if _, err := io.Copy(w, bytes.NewReader(resp.Body)); err != nil {
-			logger.ErrorEvent().
-				Err(err).
-				Msg("Failed to write response body")
-		}
-	}
-
-	return responseBytes
 }
 
 // handleWebhookRequest handles webhook broadcast requests.

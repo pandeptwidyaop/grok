@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 )
 
-// TestNewTCPForwarder tests TCP forwarder creation
+// TestNewTCPForwarder tests TCP forwarder creation.
 func TestNewTCPForwarder(t *testing.T) {
 	forwarder := NewTCPForwarder("localhost:22")
 
@@ -21,7 +22,7 @@ func TestNewTCPForwarder(t *testing.T) {
 	assert.Equal(t, "localhost:22", forwarder.localAddr)
 }
 
-// TestTCPForwarder_Forward_NewConnection tests creating new connection
+// TestTCPForwarder_Forward_NewConnection tests creating new connection.
 func TestTCPForwarder_Forward_NewConnection(t *testing.T) {
 	// Create test TCP server
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -65,7 +66,7 @@ func TestTCPForwarder_Forward_NewConnection(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_Forward_ExistingConnection tests reusing existing connection
+// TestTCPForwarder_Forward_ExistingConnection tests reusing existing connection.
 func TestTCPForwarder_Forward_ExistingConnection(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -114,7 +115,7 @@ func TestTCPForwarder_Forward_ExistingConnection(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_Forward_CloseSignal tests connection close with empty data
+// TestTCPForwarder_Forward_CloseSignal tests connection close with empty data.
 func TestTCPForwarder_Forward_CloseSignal(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -155,7 +156,7 @@ func TestTCPForwarder_Forward_CloseSignal(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_Forward_InvalidLocalAddr tests connection error
+// TestTCPForwarder_Forward_InvalidLocalAddr tests connection error.
 func TestTCPForwarder_Forward_InvalidLocalAddr(t *testing.T) {
 	forwarder := NewTCPForwarder("localhost:99999")
 
@@ -171,7 +172,7 @@ func TestTCPForwarder_Forward_InvalidLocalAddr(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to get connection")
 }
 
-// TestTCPForwarder_Forward_WriteToClosed tests writing to closed connection
+// TestTCPForwarder_Forward_WriteToClosed tests writing to closed connection.
 func TestTCPForwarder_Forward_WriteToClosed(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -211,7 +212,7 @@ func TestTCPForwarder_Forward_WriteToClosed(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_StartReadLoop tests TCP read loop
+// TestTCPForwarder_StartReadLoop tests TCP read loop.
 func TestTCPForwarder_StartReadLoop(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -248,9 +249,9 @@ func TestTCPForwarder_StartReadLoop(t *testing.T) {
 	var responses []*tunnelv1.TCPData
 	var responseMu sync.Mutex
 
-	sendResponse := func(data *tunnelv1.TCPData) error {
+	sendResponse := func(receivedData *tunnelv1.TCPData) error {
 		responseMu.Lock()
-		responses = append(responses, data)
+		responses = append(responses, receivedData)
 		responseMu.Unlock()
 		return nil
 	}
@@ -280,7 +281,7 @@ func TestTCPForwarder_StartReadLoop(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_StartReadLoop_EOF tests read loop handling EOF
+// TestTCPForwarder_StartReadLoop_EOF tests read loop handling EOF.
 func TestTCPForwarder_StartReadLoop_EOF(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -311,9 +312,9 @@ func TestTCPForwarder_StartReadLoop_EOF(t *testing.T) {
 	var receivedClose bool
 	var closeMu sync.Mutex
 
-	sendResponse := func(data *tunnelv1.TCPData) error {
+	sendResponse := func(receivedData *tunnelv1.TCPData) error {
 		closeMu.Lock()
-		if len(data.Data) == 0 {
+		if len(receivedData.Data) == 0 {
 			receivedClose = true
 		}
 		closeMu.Unlock()
@@ -333,7 +334,7 @@ func TestTCPForwarder_StartReadLoop_EOF(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_StartReadLoop_SendError tests read loop handling send error
+// TestTCPForwarder_StartReadLoop_SendError tests read loop handling send error.
 func TestTCPForwarder_StartReadLoop_SendError(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -365,7 +366,7 @@ func TestTCPForwarder_StartReadLoop_SendError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Send callback that returns error
-	sendResponse := func(data *tunnelv1.TCPData) error {
+	sendResponse := func(_ *tunnelv1.TCPData) error {
 		return io.EOF // Simulate send error
 	}
 
@@ -381,7 +382,7 @@ func TestTCPForwarder_StartReadLoop_SendError(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_StartReadLoop_ContextCancel tests context cancellation
+// TestTCPForwarder_StartReadLoop_ContextCancel tests context cancellation.
 func TestTCPForwarder_StartReadLoop_ContextCancel(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -413,7 +414,7 @@ func TestTCPForwarder_StartReadLoop_ContextCancel(t *testing.T) {
 	// Start read loop with cancelable context
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go forwarder.StartReadLoop(ctx, "req-1", func(data *tunnelv1.TCPData) error {
+	go forwarder.StartReadLoop(ctx, "req-1", func(_ *tunnelv1.TCPData) error {
 		return nil
 	})
 
@@ -430,12 +431,12 @@ func TestTCPForwarder_StartReadLoop_ContextCancel(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_StartReadLoop_NonexistentConnection tests read loop on missing connection
-func TestTCPForwarder_StartReadLoop_NonexistentConnection(t *testing.T) {
+// TestTCPForwarder_StartReadLoop_NonexistentConnection tests read loop on missing connection.
+func TestTCPForwarder_StartReadLoop_NonexistentConnection(_ *testing.T) {
 	forwarder := NewTCPForwarder("localhost:12345")
 
 	// Try to start read loop on connection that doesn't exist
-	sendResponse := func(data *tunnelv1.TCPData) error {
+	sendResponse := func(_ *tunnelv1.TCPData) error {
 		return nil
 	}
 
@@ -445,7 +446,7 @@ func TestTCPForwarder_StartReadLoop_NonexistentConnection(t *testing.T) {
 	// No crash = success
 }
 
-// TestTCPForwarder_Close tests closing all connections
+// TestTCPForwarder_Close tests closing all connections.
 func TestTCPForwarder_Close(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -483,7 +484,7 @@ func TestTCPForwarder_Close(t *testing.T) {
 
 	// Verify connections exist
 	count := 0
-	forwarder.connections.Range(func(key, value interface{}) bool {
+	forwarder.connections.Range(func(_, _ interface{}) bool {
 		count++
 		return true
 	})
@@ -494,7 +495,7 @@ func TestTCPForwarder_Close(t *testing.T) {
 
 	// Verify all connections closed
 	count = 0
-	forwarder.connections.Range(func(key, value interface{}) bool {
+	forwarder.connections.Range(func(_, _ interface{}) bool {
 		count++
 		return true
 	})
@@ -503,15 +504,15 @@ func TestTCPForwarder_Close(t *testing.T) {
 	serverWg.Wait()
 }
 
-// TestTCPForwarder_Close_EmptyConnections tests closing with no connections
-func TestTCPForwarder_Close_EmptyConnections(t *testing.T) {
+// TestTCPForwarder_Close_EmptyConnections tests closing with no connections.
+func TestTCPForwarder_Close_EmptyConnections(_ *testing.T) {
 	forwarder := NewTCPForwarder("localhost:12345")
 
 	// Should not panic
 	forwarder.Close()
 }
 
-// TestTCPForwarder_MultipleConnections tests managing multiple concurrent connections
+// TestTCPForwarder_MultipleConnections tests managing multiple concurrent connections.
 func TestTCPForwarder_MultipleConnections(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -561,7 +562,7 @@ func TestTCPForwarder_MultipleConnections(t *testing.T) {
 
 	// Verify all connections created
 	count := 0
-	forwarder.connections.Range(func(key, value interface{}) bool {
+	forwarder.connections.Range(func(_, _ interface{}) bool {
 		count++
 		return true
 	})
@@ -571,7 +572,7 @@ func TestTCPForwarder_MultipleConnections(t *testing.T) {
 	serverWg.Wait()
 }
 
-// BenchmarkTCPForwarder_Forward benchmarks TCP forwarding
+// BenchmarkTCPForwarder_Forward benchmarks TCP forwarding.
 func BenchmarkTCPForwarder_Forward(b *testing.B) {
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer listener.Close()

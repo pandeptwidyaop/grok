@@ -47,7 +47,7 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 }
 
 const (
-	// ChunkSize is the size of each chunk for streaming large responses (4MB)
+	// ChunkSize is the size of each chunk for streaming large responses (4MB).
 	ChunkSize = 4 * 1024 * 1024
 )
 

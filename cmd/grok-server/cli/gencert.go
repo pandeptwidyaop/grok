@@ -106,12 +106,12 @@ func generateCertificate() error {
 
 	// Create output directory if not exists
 	certDir := filepath.Dir(certOutput)
-	if err := os.MkdirAll(certDir, 0755); err != nil {
+	if err := os.MkdirAll(certDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create cert directory: %w", err)
 	}
 
 	keyDir := filepath.Dir(keyOutput)
-	if err := os.MkdirAll(keyDir, 0755); err != nil {
+	if err := os.MkdirAll(keyDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create key directory: %w", err)
 	}
 
@@ -127,7 +127,7 @@ func generateCertificate() error {
 	}
 
 	// Write private key to file
-	keyFile, err := os.OpenFile(keyOutput, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyFile, err := os.OpenFile(keyOutput, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to create key file: %w", err)
 	}

@@ -33,7 +33,7 @@ func Setup(cfg Config) error {
 		if cfg.File == "" {
 			cfg.File = "grok.log"
 		}
-		file, err := os.OpenFile(cfg.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		file, err := os.OpenFile(cfg.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 		if err != nil {
 			return err
 		}

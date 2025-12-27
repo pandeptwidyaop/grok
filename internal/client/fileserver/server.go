@@ -166,7 +166,7 @@ func (s *Server) serveDirectory(w http.ResponseWriter, r *http.Request, dirPath,
 }
 
 // serveDirectoryListing generates and serves an HTML directory listing.
-func (s *Server) serveDirectoryListing(w http.ResponseWriter, r *http.Request, dirPath, urlPath string) {
+func (s *Server) serveDirectoryListing(w http.ResponseWriter, _ *http.Request, dirPath, urlPath string) {
 	// Read directory contents
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
@@ -188,7 +188,7 @@ func (s *Server) serveDirectoryListing(w http.ResponseWriter, r *http.Request, d
 		URL          string
 	}
 
-	var files []FileInfo
+	files := make([]FileInfo, 0, len(entries))
 	for _, entry := range entries {
 		// Skip hidden files
 		if strings.HasPrefix(entry.Name(), ".") {

@@ -71,7 +71,6 @@ func (pp *PortPool) loadAllocatedPorts() error {
 	err := pp.db.Where("remote_port IS NOT NULL AND (status = ? OR (is_persistent = ? AND status = ?))",
 		"active", true, "offline").
 		Find(&tunnels).Error
-
 	if err != nil {
 		return err
 	}

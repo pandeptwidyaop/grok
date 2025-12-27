@@ -14,9 +14,7 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-var (
-	tcpSavedName string
-)
+var tcpSavedName string
 
 // tcpCmd represents the tcp command.
 var tcpCmd = &cobra.Command{

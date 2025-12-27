@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSetup_DefaultLevel tests logger setup with default level
+// TestSetup_DefaultLevel tests logger setup with default level.
 func TestSetup_DefaultLevel(t *testing.T) {
 	cfg := Config{
 		Level:  "info",
@@ -27,7 +26,7 @@ func TestSetup_DefaultLevel(t *testing.T) {
 	assert.Equal(t, zerolog.InfoLevel, zerolog.GlobalLevel())
 }
 
-// TestSetup_DebugLevel tests logger setup with debug level
+// TestSetup_DebugLevel tests logger setup with debug level.
 func TestSetup_DebugLevel(t *testing.T) {
 	cfg := Config{
 		Level:  "debug",
@@ -41,7 +40,7 @@ func TestSetup_DebugLevel(t *testing.T) {
 	assert.Equal(t, zerolog.DebugLevel, zerolog.GlobalLevel())
 }
 
-// TestSetup_WarnLevel tests logger setup with warn level
+// TestSetup_WarnLevel tests logger setup with warn level.
 func TestSetup_WarnLevel(t *testing.T) {
 	cfg := Config{
 		Level:  "warn",
@@ -55,7 +54,7 @@ func TestSetup_WarnLevel(t *testing.T) {
 	assert.Equal(t, zerolog.WarnLevel, zerolog.GlobalLevel())
 }
 
-// TestSetup_ErrorLevel tests logger setup with error level
+// TestSetup_ErrorLevel tests logger setup with error level.
 func TestSetup_ErrorLevel(t *testing.T) {
 	cfg := Config{
 		Level:  "error",
@@ -69,7 +68,7 @@ func TestSetup_ErrorLevel(t *testing.T) {
 	assert.Equal(t, zerolog.ErrorLevel, zerolog.GlobalLevel())
 }
 
-// TestSetup_InvalidLevel tests logger setup with invalid level
+// TestSetup_InvalidLevel tests logger setup with invalid level.
 func TestSetup_InvalidLevel(t *testing.T) {
 	cfg := Config{
 		Level:  "invalid",
@@ -84,7 +83,7 @@ func TestSetup_InvalidLevel(t *testing.T) {
 	assert.Equal(t, zerolog.InfoLevel, zerolog.GlobalLevel())
 }
 
-// TestSetup_JSONFormat tests logger setup with JSON format
+// TestSetup_JSONFormat tests logger setup with JSON format.
 func TestSetup_JSONFormat(t *testing.T) {
 	cfg := Config{
 		Level:  "info",
@@ -100,7 +99,7 @@ func TestSetup_JSONFormat(t *testing.T) {
 	assert.NotNil(t, logger)
 }
 
-// TestSetup_TextFormat tests logger setup with text format
+// TestSetup_TextFormat tests logger setup with text format.
 func TestSetup_TextFormat(t *testing.T) {
 	cfg := Config{
 		Level:  "info",
@@ -115,7 +114,7 @@ func TestSetup_TextFormat(t *testing.T) {
 	assert.NotNil(t, logger)
 }
 
-// TestSetup_FileOutput tests logger setup with file output
+// TestSetup_FileOutput tests logger setup with file output.
 func TestSetup_FileOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 	logFile := filepath.Join(tmpDir, "test.log")
@@ -142,7 +141,7 @@ func TestSetup_FileOutput(t *testing.T) {
 	assert.Contains(t, string(content), "test message")
 }
 
-// TestSetup_FileOutputDefaultName tests logger setup with file output but no filename
+// TestSetup_FileOutputDefaultName tests logger setup with file output but no filename.
 func TestSetup_FileOutputDefaultName(t *testing.T) {
 	// Change to temp directory to avoid creating files in project
 	tmpDir := t.TempDir()
@@ -167,7 +166,7 @@ func TestSetup_FileOutputDefaultName(t *testing.T) {
 	assert.FileExists(t, "grok.log")
 }
 
-// TestGet tests Get function
+// TestGet tests Get function.
 func TestGet(t *testing.T) {
 	// Setup logger first
 	cfg := Config{
@@ -184,7 +183,7 @@ func TestGet(t *testing.T) {
 	logger.Info().Msg("test")
 }
 
-// TestInfoEvent tests InfoEvent function
+// TestInfoEvent tests InfoEvent function.
 func TestInfoEvent(t *testing.T) {
 	cfg := Config{Level: "info", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -196,7 +195,7 @@ func TestInfoEvent(t *testing.T) {
 	event.Str("key", "value").Msg("test")
 }
 
-// TestDebugEvent tests DebugEvent function
+// TestDebugEvent tests DebugEvent function.
 func TestDebugEvent(t *testing.T) {
 	cfg := Config{Level: "debug", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -207,7 +206,7 @@ func TestDebugEvent(t *testing.T) {
 	event.Str("key", "value").Msg("test")
 }
 
-// TestErrorEvent tests ErrorEvent function
+// TestErrorEvent tests ErrorEvent function.
 func TestErrorEvent(t *testing.T) {
 	cfg := Config{Level: "info", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -218,7 +217,7 @@ func TestErrorEvent(t *testing.T) {
 	event.Str("key", "value").Msg("test")
 }
 
-// TestWarnEvent tests WarnEvent function
+// TestWarnEvent tests WarnEvent function.
 func TestWarnEvent(t *testing.T) {
 	cfg := Config{Level: "info", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -229,7 +228,7 @@ func TestWarnEvent(t *testing.T) {
 	event.Str("key", "value").Msg("test")
 }
 
-// TestWithField tests WithField function
+// TestWithField tests WithField function.
 func TestWithField(t *testing.T) {
 	cfg := Config{Level: "info", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -241,7 +240,7 @@ func TestWithField(t *testing.T) {
 	logger.Info().Msg("test with field")
 }
 
-// TestWithFields tests WithFields function
+// TestWithFields tests WithFields function.
 func TestWithFields(t *testing.T) {
 	cfg := Config{Level: "info", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -258,7 +257,7 @@ func TestWithFields(t *testing.T) {
 	logger.Info().Msg("test with multiple fields")
 }
 
-// TestLoggingFunctions tests simple logging functions
+// TestLoggingFunctions tests simple logging functions.
 func TestLoggingFunctions(t *testing.T) {
 	// Capture output for verification
 	tmpDir := t.TempDir()
@@ -299,7 +298,7 @@ func TestLoggingFunctions(t *testing.T) {
 	assert.Contains(t, logContent, `"level":"warn"`)
 }
 
-// TestLogLevelFiltering tests that log levels are properly filtered
+// TestLogLevelFiltering tests that log levels are properly filtered.
 func TestLogLevelFiltering(t *testing.T) {
 	tmpDir := t.TempDir()
 	logFile := filepath.Join(tmpDir, "level_test.log")
@@ -336,7 +335,7 @@ func TestLogLevelFiltering(t *testing.T) {
 	assert.Contains(t, logContent, "error message")
 }
 
-// TestEventChaining tests event method chaining
+// TestEventChaining tests event method chaining.
 func TestEventChaining(t *testing.T) {
 	tmpDir := t.TempDir()
 	logFile := filepath.Join(tmpDir, "chain_test.log")
@@ -371,7 +370,7 @@ func TestEventChaining(t *testing.T) {
 	assert.Contains(t, logContent, "chained event")
 }
 
-// TestMultipleSetups tests calling Setup multiple times
+// TestMultipleSetups tests calling Setup multiple times.
 func TestMultipleSetups(t *testing.T) {
 	// First setup
 	cfg1 := Config{
@@ -394,7 +393,7 @@ func TestMultipleSetups(t *testing.T) {
 	assert.Equal(t, zerolog.ErrorLevel, zerolog.GlobalLevel())
 }
 
-// TestTextFormatOutput tests text format produces human-readable output
+// TestTextFormatOutput tests text format produces human-readable output.
 func TestTextFormatOutput(t *testing.T) {
 	tmpDir := t.TempDir()
 	logFile := filepath.Join(tmpDir, "text_test.log")
@@ -427,7 +426,7 @@ func TestTextFormatOutput(t *testing.T) {
 	assert.Greater(t, len(lines), 0)
 }
 
-// BenchmarkInfo benchmarks Info logging
+// BenchmarkInfo benchmarks Info logging.
 func BenchmarkInfo(b *testing.B) {
 	cfg := Config{Level: "info", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -442,7 +441,7 @@ func BenchmarkInfo(b *testing.B) {
 	}
 }
 
-// BenchmarkInfoEvent benchmarks InfoEvent with chaining
+// BenchmarkInfoEvent benchmarks InfoEvent with chaining.
 func BenchmarkInfoEvent(b *testing.B) {
 	cfg := Config{Level: "info", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -456,7 +455,7 @@ func BenchmarkInfoEvent(b *testing.B) {
 	}
 }
 
-// BenchmarkWithFields benchmarks WithFields
+// BenchmarkWithFields benchmarks WithFields.
 func BenchmarkWithFields(b *testing.B) {
 	cfg := Config{Level: "info", Format: "json", Output: "stdout"}
 	Setup(cfg)
@@ -474,20 +473,4 @@ func BenchmarkWithFields(b *testing.B) {
 		logger := WithFields(fields)
 		logger.Info().Msg("benchmark")
 	}
-}
-
-// captureOutput captures stdout/stderr output for testing
-func captureOutput(f func()) string {
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	f()
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	buf.ReadFrom(r)
-	return buf.String()
 }

@@ -238,7 +238,7 @@ func (u *Updater) extractBinary(tarGzPath string) (string, error) {
 			}
 
 			// Make it executable
-			if err := os.Chmod(extractedPath, 0755); err != nil {
+			if err := os.Chmod(extractedPath, 0o755); err != nil {
 				return "", fmt.Errorf("failed to make binary executable: %w", err)
 			}
 
@@ -271,7 +271,7 @@ func (u *Updater) replaceBinary(newBinaryPath string) error {
 	}
 
 	// Make it executable
-	if err := os.Chmod(u.binaryPath, 0755); err != nil {
+	if err := os.Chmod(u.binaryPath, 0o755); err != nil {
 		// Restore backup on failure
 		os.Remove(u.binaryPath)
 		if restoreErr := os.Rename(backupPath, u.binaryPath); restoreErr != nil {

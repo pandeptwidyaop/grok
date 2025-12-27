@@ -224,7 +224,6 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 
 		return nil
 	})
-
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
