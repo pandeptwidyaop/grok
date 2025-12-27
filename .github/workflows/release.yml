@@ -13,6 +13,8 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  packages: write  # Required for Docker image push
+  id-token: write  # Required for Docker attestation
 
 jobs:
   # Job 1: Determine next version using semantic-release (dry-run)
@@ -305,3 +307,14 @@ jobs:
             conventional-changelog-conventionalcommits
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Job 4: Build and push Docker images with semantic versioning
+  docker:
+    name: Build and Push Docker Images
+    needs: [version, release]
+    if: needs.version.outputs.new_release_published == 'true'
+    uses: ./.github/workflows/docker-release.yml
+    with:
+      version: ${{ needs.version.outputs.new_release_version }}
+      is_prerelease: ${{ contains(needs.version.outputs.new_release_version, '-') }}
+    secrets: inherit
