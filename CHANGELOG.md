@@ -1,3 +1,10 @@
+## [1.1.0-alpha.7](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.6...v1.1.0-alpha.7) (2025-12-27)
+
+### Bug Fixes
+
+* **csrf:** add SPA support with automatic token refresh ([7d8b231](https://github.com/pandeptwidyaop/grok/commit/7d8b231be438c17149ffe60b4ecff5bcc2ce1f2d))
+* resolve large file download issues with blocking send and backpressure ([fb21149](https://github.com/pandeptwidyaop/grok/commit/fb211492a97c538db4f4204305279ed465765c4e)), closes [#11](https://github.com/pandeptwidyaop/grok/issues/11)
+
 ## [1.1.0-alpha.6](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.5...v1.1.0-alpha.6) (2025-12-27)
 
 ### Features
