@@ -228,13 +228,26 @@ func (s *Server) serveDirectoryListing(w http.ResponseWriter, r *http.Request, d
 
 	// Add parent directory link if not root
 	if urlPath != "/" {
-		parentURL := path.Dir(urlPath)
-		if parentURL != urlPath {
+		// Strip trailing slash before getting parent directory
+		// path.Dir("/foo/bar/") returns "/foo/bar" instead of "/foo"
+		cleanPath := strings.TrimSuffix(urlPath, "/")
+		parentURL := path.Dir(cleanPath)
+
+		// Only add parent link if we actually went up a directory
+		if parentURL != cleanPath && parentURL != "/" {
 			files = append([]FileInfo{{
 				Name:  "..",
 				IsDir: true,
 				Size:  "-",
 				URL:   parentURL + "/",
+			}}, files...)
+		} else if parentURL == "/" {
+			// Special case: parent is root
+			files = append([]FileInfo{{
+				Name:  "..",
+				IsDir: true,
+				Size:  "-",
+				URL:   "/",
 			}}, files...)
 		}
 	}
