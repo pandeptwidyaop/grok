@@ -20,6 +20,8 @@ import {
   Select,
   MenuItem,
   Paper,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   ArrowLeft,
@@ -38,6 +40,8 @@ export default function OrganizationDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [formData, setFormData] = useState({
@@ -484,7 +488,7 @@ export default function OrganizationDetail() {
       </Card>
 
       {/* Edit Organization Dialog */}
-      <Dialog open={isEditOpen} onClose={() => setIsEditOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={isEditOpen} onClose={() => setIsEditOpen(false)} maxWidth="sm" fullWidth fullScreen={isMobile}>
         <DialogTitle>Edit Organization</DialogTitle>
         <form onSubmit={handleSubmit}>
           <DialogContent>
@@ -526,6 +530,7 @@ export default function OrganizationDetail() {
         }
         maxWidth="xs"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Reset Password</DialogTitle>
         <DialogContent>
@@ -568,6 +573,7 @@ export default function OrganizationDetail() {
         onClose={() => setDeleteDialog({ isOpen: false, id: '', name: '', type: 'org' })}
         maxWidth="xs"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Confirm Deletion</DialogTitle>
         <DialogContent>

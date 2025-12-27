@@ -22,6 +22,9 @@ import {
   TableHead,
   TableRow,
   Paper,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { Building2, Plus, Eye } from 'lucide-react';
 import { toast } from 'sonner';
@@ -31,6 +34,8 @@ import { formatRelativeTime } from '@/lib/utils';
 export default function OrganizationList() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -71,9 +76,9 @@ export default function OrganizationList() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Box sx={{ display: 'flex', alignItems: { xs: 'flex-start', md: 'center' }, justifyContent: 'space-between', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
+          <Typography variant={isMobile ? 'h5' : 'h4'} sx={{ fontWeight: 700, mb: 0.5 }}>
             Organizations
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -82,11 +87,16 @@ export default function OrganizationList() {
         </Box>
         <Button
           variant="contained"
-          startIcon={<Plus size={16} />}
+          startIcon={!isMobile && <Plus size={16} />}
           onClick={() => setIsCreateOpen(true)}
-          sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5568d3' } }}
+          sx={{
+            bgcolor: '#667eea',
+            '&:hover': { bgcolor: '#5568d3' },
+            width: { xs: '100%', md: 'auto' }
+          }}
+          fullWidth={isMobile}
         >
-          Create Organization
+          {isMobile ? <Plus size={16} /> : 'Create Organization'}
         </Button>
       </Box>
 
@@ -116,7 +126,91 @@ export default function OrganizationList() {
                 No organizations yet. Create your first one!
               </Typography>
             </Box>
+          ) : isMobile ? (
+            /* Mobile Card View */
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {organizations.map((org) => (
+                <Card
+                  key={org.id}
+                  variant="outlined"
+                  sx={{
+                    cursor: 'pointer',
+                    transition: 'box-shadow 0.2s',
+                    '&:hover': {
+                      boxShadow: 3,
+                    },
+                  }}
+                  onClick={() => navigate(`/organizations/${org.id}`)}
+                >
+                  <CardContent sx={{ p: 2 }}>
+                    {/* Header: Name & Status */}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <Building2 size={18} style={{ color: '#667eea', flexShrink: 0 }} />
+                          <Typography variant="body1" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
+                            {org.name}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label={org.full_domain}
+                          color="secondary"
+                          variant="outlined"
+                          size="small"
+                          sx={{ fontFamily: 'monospace', fontSize: '0.7rem', fontWeight: 500 }}
+                        />
+                      </Box>
+                      <Chip
+                        label={org.is_active ? 'Active' : 'Inactive'}
+                        color={org.is_active ? 'success' : 'default'}
+                        variant="outlined"
+                        size="small"
+                        sx={{ flexShrink: 0 }}
+                      />
+                    </Box>
+
+                    {/* Description */}
+                    {org.description && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Description
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {org.description}
+                        </Typography>
+                      </Box>
+                    )}
+
+                    <Divider sx={{ my: 1.5 }} />
+
+                    {/* Footer: Created & Action */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Created
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {formatRelativeTime(org.created_at)}
+                        </Typography>
+                      </Box>
+                      <IconButton
+                        size="medium"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/organizations/${org.id}`);
+                        }}
+                        color="primary"
+                        sx={{ minWidth: 44, minHeight: 44 }}
+                      >
+                        <Eye size={20} />
+                      </IconButton>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
           ) : (
+            /* Desktop Table View */
             <TableContainer component={Paper} variant="outlined">
               <Table>
                 <TableHead>
@@ -208,6 +302,7 @@ export default function OrganizationList() {
         }}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Create Organization</DialogTitle>
         <form onSubmit={handleSubmit}>
