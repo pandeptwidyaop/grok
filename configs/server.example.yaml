@@ -90,3 +90,4 @@ logging:
   format: "json"     # json, text
   output: "stdout"   # stdout, file
   # file: "/var/log/grok/server.log"
+  sql_log_level: "silent"  # GORM SQL query logging: silent (default, no logs), error, warn, info (all queries)

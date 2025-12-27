@@ -314,13 +314,14 @@ func runServer() error {
 		Msg("Starting Grok server")
 
 	database, err := db.Connect(db.Config{
-		Driver:   cfg.Database.Driver,
-		Host:     cfg.Database.Host,
-		Port:     cfg.Database.Port,
-		Database: cfg.Database.Database,
-		Username: cfg.Database.Username,
-		Password: cfg.Database.Password,
-		SSLMode:  cfg.Database.SSLMode,
+		Driver:      cfg.Database.Driver,
+		Host:        cfg.Database.Host,
+		Port:        cfg.Database.Port,
+		Database:    cfg.Database.Database,
+		Username:    cfg.Database.Username,
+		Password:    cfg.Database.Password,
+		SSLMode:     cfg.Database.SSLMode,
+		SQLLogLevel: cfg.Logging.SQLLogLevel,
 	})
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Failed to connect to database: %v", err))

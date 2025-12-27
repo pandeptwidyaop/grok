@@ -14,13 +14,14 @@ import (
 
 // Config holds database configuration.
 type Config struct {
-	Driver   string // "postgres" or "sqlite"
-	Host     string // for postgres
-	Port     int    // for postgres
-	Database string // database name for postgres, file path for sqlite
-	Username string // for postgres
-	Password string // for postgres
-	SSLMode  string // for postgres
+	Driver      string // "postgres" or "sqlite"
+	Host        string // for postgres
+	Port        int    // for postgres
+	Database    string // database name for postgres, file path for sqlite
+	Username    string // for postgres
+	Password    string // for postgres
+	SSLMode     string // for postgres
+	SQLLogLevel string // GORM log level: "silent", "error", "warn", "info"
 }
 
 // Connect establishes a connection to the database.
@@ -45,8 +46,21 @@ func Connect(cfg Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("unsupported database driver: %s (supported: sqlite, postgres)", cfg.Driver)
 	}
 
+	// Parse SQL log level from config (default to Silent)
+	logLevel := logger.Silent
+	switch strings.ToLower(cfg.SQLLogLevel) {
+	case "info":
+		logLevel = logger.Info
+	case "warn":
+		logLevel = logger.Warn
+	case "error":
+		logLevel = logger.Error
+	case "silent", "":
+		logLevel = logger.Silent
+	}
+
 	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logLevel),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
