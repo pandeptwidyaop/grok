@@ -1,3 +1,9 @@
+## [1.0.0-alpha.11](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.10...v1.0.0-alpha.11) (2025-12-27)
+
+### Bug Fixes
+
+* **lint:** fix golangci-lint issues in TLS tests ([298d9e4](https://github.com/pandeptwidyaop/grok/commit/298d9e49d4dca5dc71dff95ad7fc69d218ea23b3))
+
 ## [1.0.0-alpha.10](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.9...v1.0.0-alpha.10) (2025-12-27)
 
 ### Features
