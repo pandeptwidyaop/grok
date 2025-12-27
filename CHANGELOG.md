@@ -1,3 +1,13 @@
+## [1.0.0-alpha.12](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.11...v1.0.0-alpha.12) (2025-12-27)
+
+### Features
+
+* **ui:** add comprehensive mobile optimization and critical fixes ([7cc8bd8](https://github.com/pandeptwidyaop/grok/commit/7cc8bd862dd7a5c04d575eb86926b9d58601f2d4))
+
+### Bug Fixes
+
+* webhook URL parsing and subdomain validation improvements ([ac4ef11](https://github.com/pandeptwidyaop/grok/commit/ac4ef1158d6d3d4e955cc8b45e5ad63692bbf786))
+
 ## [1.0.0-alpha.11](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.10...v1.0.0-alpha.11) (2025-12-27)
 
 ### Bug Fixes
