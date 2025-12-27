@@ -44,24 +44,25 @@ func (c *CSRFProtection) GenerateToken() (string, error) {
 }
 
 // ValidateToken checks if a CSRF token is valid.
+// Tokens are single-use and deleted after successful validation.
 func (c *CSRFProtection) ValidateToken(token string) bool {
 	if token == "" {
 		return false
 	}
 
-	c.mu.RLock()
-	expiry, exists := c.tokens[token]
-	c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	expiry, exists := c.tokens[token]
 	if !exists {
 		return false
 	}
 
+	// Always delete token after validation attempt (single-use)
+	delete(c.tokens, token)
+
 	// Check if expired
 	if time.Now().After(expiry) {
-		c.mu.Lock()
-		delete(c.tokens, token)
-		c.mu.Unlock()
 		return false
 	}
 
@@ -70,6 +71,8 @@ func (c *CSRFProtection) ValidateToken(token string) bool {
 
 // Protect wraps an HTTP handler with CSRF validation.
 // Only validates for state-changing methods (POST, PUT, PATCH, DELETE).
+// For SPAs, a new CSRF token is returned in the X-CSRF-Token response header
+// after successful validation, allowing the client to use it for subsequent requests.
 func (c *CSRFProtection) Protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Only validate CSRF for state-changing methods
@@ -80,6 +83,12 @@ func (c *CSRFProtection) Protect(next http.Handler) http.Handler {
 			if !c.ValidateToken(csrfToken) {
 				http.Error(w, "Invalid or missing CSRF token", http.StatusForbidden)
 				return
+			}
+
+			// Generate new token for SPA to use in next request
+			newToken, err := c.GenerateToken()
+			if err == nil {
+				w.Header().Set("X-CSRF-Token", newToken)
 			}
 		}
 

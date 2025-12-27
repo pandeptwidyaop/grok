@@ -12,6 +12,14 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
+// tcpBufferPool pools 32KB buffers for TCP read operations to reduce GC pressure.
+var tcpBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32*1024) // 32KB
+		return &buf
+	},
+}
+
 // TCPConnection represents a persistent TCP connection to local service.
 type TCPConnection struct {
 	conn            net.Conn
@@ -139,7 +147,11 @@ func (f *TCPForwarder) StartReadLoop(ctx context.Context, requestID string, send
 			Msg("Invalid connection type in read loop")
 		return
 	}
-	buffer := make([]byte, 32*1024) // 32KB buffer
+
+	// Get buffer from pool
+	bufPtr := tcpBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
+	buffer := *bufPtr
+	defer tcpBufferPool.Put(bufPtr)
 
 	for {
 		select {

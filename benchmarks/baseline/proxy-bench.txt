@@ -1,0 +1,7 @@
+goos: darwin
+goarch: arm64
+BenchmarkHTTPForwarder_Forward-11           	{"level":"debug","method":"GET","url":"http://127.0.0.1:57353/test","time":"2025-12-28T00:51:09+08:00","message":"Forwarding HTTP request to local service"}
+BenchmarkHTTPForwarder_ForwardChunked-11    	{"level":"debug","method":"GET","url":"http://127.0.0.1:57385/large","time":"2025-12-28T00:51:13+08:00","message":"Forwarding HTTP request to local service (chunked)"}
+BenchmarkTCPForwarder_Forward-11            	{"level":"info","request_id":"bench-req","local_addr":"127.0.0.1:57429","time":"2025-12-28T00:51:20+08:00","message":"Established new TCP connection to local service"}
+PASS
+ok  	github.com/pandeptwidyaop/grok/internal/client/proxy	29.239s

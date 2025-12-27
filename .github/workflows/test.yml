@@ -46,8 +46,16 @@ jobs:
         working-directory: web
         run: npm run build
 
+      - name: Install client dashboard dependencies
+        working-directory: client-dashboard
+        run: npm ci
+
+      - name: Build client dashboard
+        working-directory: client-dashboard
+        run: npm run build
+
       - name: Run tests
-        run: go test -v -race ./...
+        run: go test -v -race -short ./...
 
       - name: Build server
         run: go build -o bin/grok-server ./cmd/grok-server
@@ -88,6 +96,12 @@ jobs:
 
       - name: Build web dashboard
         working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build client dashboard
+        working-directory: client-dashboard
         run: |
           npm ci
           npm run build

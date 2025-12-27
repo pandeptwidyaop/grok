@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
@@ -18,7 +19,7 @@ import (
 // HTTPForwarder forwards HTTP requests to local service.
 type HTTPForwarder struct {
 	localAddr  string
-	httpClient *http.Client
+	httpClient *http.Client // No timeout to support large file downloads via chunked transfer
 }
 
 // NewHTTPForwarder creates a new HTTP forwarder.
@@ -36,7 +37,7 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 	return &HTTPForwarder{
 		localAddr: localAddr,
 		httpClient: &http.Client{
-			Timeout:   30 * time.Second,
+			Timeout:   0, // No timeout to support large file downloads via chunked transfer
 			Transport: transport,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				// Don't follow redirects
@@ -46,13 +47,33 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 	}
 }
 
+const (
+	// ChunkSize is the size of each chunk for streaming large responses (4MB).
+	ChunkSize = 4 * 1024 * 1024
+)
+
+// httpChunkedBufferPool pools 4MB buffers for chunked HTTP responses to reduce GC pressure.
+var httpChunkedBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, ChunkSize) // 4MB
+		return &buf
+	},
+}
+
 // Forward forwards a gRPC HTTP request to local service.
+// For small responses, returns complete response. For large responses, this is deprecated - use ForwardChunked.
 func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) (*tunnelv1.HTTPResponse, error) {
-	// Build URL
-	url := fmt.Sprintf("http://%s%s", f.localAddr, req.Path)
+	// Build URL using strings.Builder to reduce allocations
+	var urlBuilder strings.Builder
+	urlBuilder.Grow(len("http://") + len(f.localAddr) + len(req.Path) + 1 + len(req.QueryString))
+	urlBuilder.WriteString("http://")
+	urlBuilder.WriteString(f.localAddr)
+	urlBuilder.WriteString(req.Path)
 	if req.QueryString != "" {
-		url += "?" + req.QueryString
+		urlBuilder.WriteByte('?')
+		urlBuilder.WriteString(req.QueryString)
 	}
+	url := urlBuilder.String()
 
 	logger.DebugEvent().
 		Str("method", req.Method).
@@ -101,7 +122,7 @@ func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) 
 	}
 
 	// Convert response headers
-	headers := make(map[string]*tunnelv1.HeaderValues)
+	headers := make(map[string]*tunnelv1.HeaderValues, len(httpResp.Header))
 	for name, values := range httpResp.Header {
 		headers[name] = &tunnelv1.HeaderValues{
 			Values: values,
@@ -120,6 +141,126 @@ func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) 
 		Headers:    headers,
 		Body:       respBody,
 	}, nil
+}
+
+// ForwardChunked forwards HTTP request and sends response in chunks via callback.
+// This is memory-efficient for large responses as it streams data in 4MB chunks.
+// The sendChunk callback is called for each chunk with (response, isLastChunk).
+func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRequest, sendChunk func(*tunnelv1.HTTPResponse, bool) error) error {
+	// Build URL using strings.Builder to reduce allocations
+	var urlBuilder strings.Builder
+	urlBuilder.Grow(len("http://") + len(f.localAddr) + len(req.Path) + 1 + len(req.QueryString))
+	urlBuilder.WriteString("http://")
+	urlBuilder.WriteString(f.localAddr)
+	urlBuilder.WriteString(req.Path)
+	if req.QueryString != "" {
+		urlBuilder.WriteByte('?')
+		urlBuilder.WriteString(req.QueryString)
+	}
+	url := urlBuilder.String()
+
+	logger.DebugEvent().
+		Str("method", req.Method).
+		Str("url", url).
+		Msg("Forwarding HTTP request to local service (chunked)")
+
+	// Create HTTP request
+	var bodyReader io.Reader
+	if len(req.Body) > 0 {
+		bodyReader = bytes.NewReader(req.Body)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, req.Method, url, bodyReader)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	// Set headers
+	for name, headerVals := range req.Headers {
+		for _, val := range headerVals.Values {
+			httpReq.Header.Add(name, val)
+		}
+	}
+
+	// Override Host header if present
+	if host := httpReq.Header.Get("Host"); host != "" {
+		httpReq.Host = host
+	}
+
+	// Set X-Forwarded headers
+	if req.RemoteAddr != "" {
+		httpReq.Header.Set("X-Forwarded-For", req.RemoteAddr)
+	}
+
+	// Execute request (no timeout for large file downloads)
+	httpResp, err := f.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to execute HTTP request: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	// Convert response headers
+	headers := make(map[string]*tunnelv1.HeaderValues, len(httpResp.Header))
+	for name, values := range httpResp.Header {
+		headers[name] = &tunnelv1.HeaderValues{
+			Values: values,
+		}
+	}
+
+	logger.InfoEvent().
+		Int("status", httpResp.StatusCode).
+		Msg("Received response from local service, streaming in chunks")
+
+	// Get buffer from pool
+	bufPtr := httpChunkedBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
+	buffer := *bufPtr
+	defer httpChunkedBufferPool.Put(bufPtr)
+
+	totalBytes := 0
+
+	for {
+		n, err := httpResp.Body.Read(buffer)
+		if n > 0 {
+			totalBytes += n
+
+			// Create chunk response
+			chunk := &tunnelv1.HTTPResponse{
+				StatusCode: int32(httpResp.StatusCode), //nolint:gosec // Safe conversion
+				Headers:    headers,
+				Body:       append([]byte(nil), buffer[:n]...),
+			}
+
+			// Check if this is the last chunk
+			isLast := (err == io.EOF)
+
+			// Send chunk via callback
+			if sendErr := sendChunk(chunk, isLast); sendErr != nil {
+				return fmt.Errorf("failed to send chunk: %w", sendErr)
+			}
+
+			logger.DebugEvent().
+				Int("chunk_size", n).
+				Int("total_bytes", totalBytes).
+				Bool("is_last", isLast).
+				Msg("Sent response chunk")
+
+			// Clear headers after first chunk (only send headers once)
+			headers = nil
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read response body: %w", err)
+		}
+	}
+
+	logger.InfoEvent().
+		Int("total_bytes", totalBytes).
+		Msg("Completed chunked response streaming")
+
+	return nil
 }
 
 // IsWebSocketUpgrade checks if the request is a WebSocket upgrade request.
@@ -208,7 +349,8 @@ func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnel
 	}
 
 	// Read headers
-	headers := make(map[string]*tunnelv1.HeaderValues)
+	// Pre-allocate with typical WebSocket upgrade header count (~8 headers)
+	headers := make(map[string]*tunnelv1.HeaderValues, 8)
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {

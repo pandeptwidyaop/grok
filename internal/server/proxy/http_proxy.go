@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -17,15 +16,27 @@ import (
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
+	"github.com/pandeptwidyaop/grok/internal/server/errorpages"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/utils"
 )
 
+// wsServerBufferPool pools 32KB buffers for WebSocket read operations to reduce GC pressure.
+var wsServerBufferPool = sync.Pool{
+	New: func() interface{} {
+		buf := make([]byte, 32*1024) // 32KB
+		return &buf
+	},
+}
+
 const (
 	// DefaultRequestTimeout is the default timeout for proxied requests.
 	DefaultRequestTimeout = 30 * time.Second
+	// MaxRequestBodySize is the maximum allowed request body size (10MB).
+	// This prevents memory exhaustion from large request bodies.
+	MaxRequestBodySize = 10 * 1024 * 1024 // 10MB
 )
 
 // HTTPProxy handles HTTP reverse proxying.
@@ -68,7 +79,8 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Msg("Failed to route request")
 
 		if err == pkgerrors.ErrTunnelNotFound {
-			http.Error(w, "Tunnel not found", http.StatusNotFound)
+			subdomain := strings.Split(r.Host, ".")[0]
+			errorpages.TunnelNotFound(w, r, subdomain)
 		} else {
 			http.Error(w, "Bad gateway", http.StatusBadGateway)
 		}
@@ -84,8 +96,8 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Proxy regular HTTP request through tunnel
-	resp, reqBytes, err := p.proxyRequest(r, tun)
+	// Proxy regular HTTP request through tunnel (chunked streaming)
+	reqBytes, respBytes, statusCode, err := p.proxyRequestChunked(r, tun, w)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -97,9 +109,6 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
-
-	// Write response
-	respBytes := p.writeResponse(w, resp)
 
 	// Update tunnel statistics
 	tun.UpdateStats(reqBytes, respBytes)
@@ -116,7 +125,6 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Log request based on configured level
 	duration := time.Since(start)
-	statusCode := int(resp.StatusCode)
 
 	shouldLog := p.shouldLogHTTPRequest(statusCode)
 	if shouldLog {
@@ -139,11 +147,11 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Dur("duration", duration).
 			Int64("bytes_in", reqBytes).
 			Int64("bytes_out", respBytes).
-			Msg("Request proxied")
+			Msg("Request proxied (chunked)")
 	}
 
 	// Save request log to database (async)
-	go p.saveRequestLog(tun.ID, r, int(resp.StatusCode), duration, reqBytes, respBytes)
+	go p.saveRequestLog(tun.ID, r, statusCode, duration, reqBytes, respBytes)
 }
 
 // isWebSocketUpgrade checks if the request is a WebSocket upgrade request.
@@ -152,34 +160,71 @@ func isWebSocketUpgrade(r *http.Request) bool {
 		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
 }
 
-// Returns: (response, requestBytes, error).
-func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, int64, error) {
-	// Generate request ID
-	requestID := utils.GenerateRequestID()
-
-	// Read request body
-	body, err := io.ReadAll(r.Body)
+// readAndValidateRequestBody reads and validates request body size.
+func (p *HTTPProxy) readAndValidateRequestBody(r *http.Request) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBodySize+1))
 	if err != nil {
-		return nil, 0, pkgerrors.Wrap(err, "failed to read request body")
+		return nil, pkgerrors.Wrap(err, "failed to read request body")
 	}
 	defer r.Body.Close()
 
-	// Calculate request size (headers + body)
-	requestBytes := int64(len(body))
+	if int64(len(body)) > MaxRequestBodySize {
+		return nil, pkgerrors.NewAppError("REQUEST_TOO_LARGE", "request body exceeds maximum size of 10MB", nil)
+	}
+	return body, nil
+}
+
+// calculateRequestSize calculates total request size including headers.
+func (p *HTTPProxy) calculateRequestSize(r *http.Request, bodySize int) int64 {
+	size := int64(bodySize)
 	for key, values := range r.Header {
 		for _, val := range values {
-			requestBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+			size += int64(len(key) + len(val) + 4)
 		}
 	}
-	requestBytes += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20) // Method, path, query, protocol
+	size += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20)
+	return size
+}
 
-	// Convert HTTP headers to proto format
-	headers := make(map[string]*tunnelv1.HeaderValues)
-	for key, values := range r.Header {
-		headers[key] = &tunnelv1.HeaderValues{
-			Values: values,
+// convertHeadersToProto converts HTTP headers to protobuf format.
+func (p *HTTPProxy) convertHeadersToProto(headers http.Header) map[string]*tunnelv1.HeaderValues {
+	protoHeaders := make(map[string]*tunnelv1.HeaderValues, len(headers))
+	for key, values := range headers {
+		protoHeaders[key] = &tunnelv1.HeaderValues{Values: values}
+	}
+	return protoHeaders
+}
+
+// writeResponseHeaders writes HTTP response headers and status code.
+// Returns bytes written.
+func (p *HTTPProxy) writeResponseHeaders(w http.ResponseWriter, httpResp *tunnelv1.HTTPResponse) int64 {
+	bytesWritten := int64(0)
+
+	for key, headerVals := range httpResp.Headers {
+		for _, val := range headerVals.Values {
+			w.Header().Add(key, val)
+			bytesWritten += int64(len(key) + len(val) + 4)
 		}
 	}
+
+	w.WriteHeader(int(httpResp.StatusCode))
+	bytesWritten += 20 // Status line overhead
+
+	return bytesWritten
+}
+
+// proxyRequestChunked proxies request and streams response chunks directly to client.
+// Returns: (requestBytes, responseBytes, statusCode, error).
+func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w http.ResponseWriter) (int64, int64, int, error) {
+	requestID := utils.GenerateRequestID()
+
+	body, err := p.readAndValidateRequestBody(r)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
+	requestBytes := p.calculateRequestSize(r, len(body))
+	headers := p.convertHeadersToProto(r.Header)
 
 	// Create proxy request
 	proxyReq := &tunnelv1.ProxyRequest{
@@ -197,8 +242,9 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 		},
 	}
 
-	// Create response channel
-	responseCh := make(chan *tunnelv1.ProxyResponse, 1)
+	// Create response channel for receiving chunks
+	// Buffer size 50 for performance (blocking send with backpressure supports unlimited file size)
+	responseCh := make(chan *tunnelv1.ProxyResponse, 50)
 	tun.ResponseMap.Store(requestID, responseCh)
 	defer tun.ResponseMap.Delete(requestID)
 
@@ -210,57 +256,74 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 	}
 
 	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
-		return nil, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
+		return 0, 0, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
 	}
 
-	// Wait for response with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultRequestTimeout)
+	// Wait for response chunks and stream directly to client
+	// No timeout for chunked streaming to support large file downloads
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	select {
-	case proxyResp := <-responseCh:
-		// Got response
-		if httpResp := proxyResp.GetHttp(); httpResp != nil {
-			return httpResp, requestBytes, nil
+	responseBytes := int64(0)
+	headersWritten := false
+	statusCode := 0
+
+	for {
+		select {
+		case proxyResp := <-responseCh:
+			if proxyResp == nil {
+				return requestBytes, responseBytes, statusCode, pkgerrors.NewAppError("INVALID_RESPONSE", "received nil response", nil)
+			}
+
+			httpResp := proxyResp.GetHttp()
+			if httpResp == nil {
+				return requestBytes, responseBytes, statusCode, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
+			}
+
+			// Write headers on first chunk
+			if !headersWritten {
+				statusCode = int(httpResp.StatusCode)
+				responseBytes += p.writeResponseHeaders(w, httpResp)
+				headersWritten = true
+			}
+
+			// Write chunk body
+			if len(httpResp.Body) > 0 {
+				n, err := w.Write(httpResp.Body)
+				if err != nil {
+					logger.ErrorEvent().
+						Err(err).
+						Str("request_id", requestID).
+						Msg("Failed to write response chunk to client")
+					return requestBytes, responseBytes, statusCode, pkgerrors.Wrap(err, "failed to write response chunk")
+				}
+				responseBytes += int64(n)
+
+				logger.DebugEvent().
+					Str("request_id", requestID).
+					Int("chunk_size", n).
+					Bool("end_of_stream", proxyResp.EndOfStream).
+					Msg("Wrote response chunk to client")
+			}
+
+			// Flush to ensure chunk is sent immediately
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+
+			// Check if this is the last chunk
+			if proxyResp.EndOfStream {
+				logger.DebugEvent().
+					Str("request_id", requestID).
+					Int64("total_bytes", responseBytes).
+					Msg("Completed streaming chunked response")
+				return requestBytes, responseBytes, statusCode, nil
+			}
+
+		case <-ctx.Done():
+			return requestBytes, responseBytes, statusCode, pkgerrors.ErrRequestTimeout
 		}
-		return nil, 0, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
-
-	case <-ctx.Done():
-		return nil, 0, pkgerrors.ErrRequestTimeout
 	}
-}
-
-// Returns: bytes written.
-func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) int64 {
-	// Calculate response size (headers + body)
-	responseBytes := int64(len(resp.Body))
-	for key, headerVals := range resp.Headers {
-		for _, val := range headerVals.Values {
-			responseBytes += int64(len(key) + len(val) + 4) // key: value\r\n
-		}
-	}
-	responseBytes += 20 // Status line overhead
-
-	// Write headers
-	for key, headerVals := range resp.Headers {
-		for _, val := range headerVals.Values {
-			w.Header().Add(key, val)
-		}
-	}
-
-	// Write status code
-	w.WriteHeader(int(resp.StatusCode))
-
-	// Write body
-	if len(resp.Body) > 0 {
-		if _, err := io.Copy(w, bytes.NewReader(resp.Body)); err != nil {
-			logger.ErrorEvent().
-				Err(err).
-				Msg("Failed to write response body")
-		}
-	}
-
-	return responseBytes
 }
 
 // handleWebhookRequest handles webhook broadcast requests.
@@ -273,7 +336,7 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 			Str("host", r.Host).
 			Str("path", r.URL.Path).
 			Msg("Invalid webhook URL format")
-		http.Error(w, "Invalid webhook URL", http.StatusBadRequest)
+		errorpages.InvalidWebhookURL(w, r.Host+r.URL.Path)
 		return
 	}
 
@@ -443,7 +506,7 @@ func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request,
 	requestID := utils.GenerateRequestID()
 
 	// Convert HTTP headers to proto format for upgrade request
-	headers := make(map[string]*tunnelv1.HeaderValues)
+	headers := make(map[string]*tunnelv1.HeaderValues, len(r.Header))
 	for key, values := range r.Header {
 		headers[key] = &tunnelv1.HeaderValues{
 			Values: values,
@@ -560,7 +623,12 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 	// Client -> Tunnel (read from HTTP connection, send to gRPC stream)
 	go func() {
 		defer wg.Done()
-		buffer := make([]byte, 32*1024) // 32KB buffer
+
+		// Get buffer from pool
+		bufPtr := wsServerBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
+		buffer := *bufPtr
+		defer wsServerBufferPool.Put(bufPtr)
+
 		sequence := int64(0)
 
 		for {
@@ -575,8 +643,10 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 
 			if n > 0 {
 				// Send data to tunnel via gRPC stream
+				// CRITICAL: Must copy buffer data before sending to avoid data corruption
+				// when buffer is reused in next Read() iteration
 				tcpData := &tunnelv1.TCPData{
-					Data:     buffer[:n],
+					Data:     append([]byte(nil), buffer[:n]...),
 					Sequence: sequence,
 				}
 				sequence++

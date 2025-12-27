@@ -106,6 +106,92 @@ func TestValidateWebhookPath(t *testing.T) {
 	}
 }
 
+func TestNormalizeWebhookAppName(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"already lowercase", "payment-app", "payment-app"},
+		{"uppercase to lowercase", "Payment-App", "payment-app"},
+		{"mixed case", "PaymentApp123", "paymentapp123"},
+		{"all caps", "STRIPE", "stripe"},
+		{"with hyphens", "My-Webhook-App", "my-webhook-app"},
+		{"empty", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NormalizeWebhookAppName(tt.input)
+			if result != tt.expected {
+				t.Errorf("NormalizeWebhookAppName(%q) = %q; want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSanitizeWebhookPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"simple path", "/webhook", "/webhook"},
+		{"path with segments", "/api/v1/webhook", "/api/v1/webhook"},
+		{"trailing slash kept", "/webhook/", "/webhook/"},
+		{"multiple slashes normalized", "/webhook///", "/webhook/"},
+		{"no leading slash", "webhook", "/webhook"},
+		{"path with query params kept", "/webhook?token=abc", "/webhook?token=abc"},
+		{"empty string", "", "/"},
+		{"just slash", "/", "/"},
+		{"spaces not trimmed", "  /webhook  ", "/  /webhook  "},
+		{"complex path", "/api/v2/stripe/payment", "/api/v2/stripe/payment"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := SanitizeWebhookPath(tt.input)
+			if result != tt.expected {
+				t.Errorf("SanitizeWebhookPath(%q) = %q; want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestValidateWebhookAppNameOrError(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		shouldErr bool
+	}{
+		// Valid cases
+		{"valid name", "payment-app", false},
+		{"valid with numbers", "app123", false},
+		{"valid min length", "abc", false},
+
+		// Invalid cases
+		{"too short", "ab", true},
+		{"too long", strings.Repeat("a", 51), true},
+		{"reserved: admin", "admin", true},
+		{"reserved: api", "api", true},
+		{"starts with hyphen", "-payment", true},
+		{"special characters", "payment@app", true},
+		{"empty", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateWebhookAppNameOrError(tt.input)
+			if tt.shouldErr && err == nil {
+				t.Errorf("ValidateWebhookAppNameOrError(%q) should return error but got nil", tt.input)
+			}
+			if !tt.shouldErr && err != nil {
+				t.Errorf("ValidateWebhookAppNameOrError(%q) should not return error but got: %v", tt.input, err)
+			}
+		})
+	}
+}
+
 // Benchmark tests.
 func BenchmarkIsValidWebhookAppName(b *testing.B) {
 	for i := 0; i < b.N; i++ {
@@ -116,5 +202,23 @@ func BenchmarkIsValidWebhookAppName(b *testing.B) {
 func BenchmarkValidateWebhookPath(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ValidateWebhookPath("/stripe/payment_intent")
+	}
+}
+
+func BenchmarkNormalizeWebhookAppName(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NormalizeWebhookAppName("Payment-App-123")
+	}
+}
+
+func BenchmarkSanitizeWebhookPath(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		SanitizeWebhookPath("/stripe/webhook/")
+	}
+}
+
+func BenchmarkValidateWebhookAppNameOrError(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		ValidateWebhookAppNameOrError("payment-app-123")
 	}
 }

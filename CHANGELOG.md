@@ -1,4 +1,79 @@
-## [1.1.0](https://github.com/pandeptwidyaop/grok/compare/v1.0.0...v1.1.0) (2025-12-27)
+## [1.1.0-alpha.8](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.7...v1.1.0-alpha.8) (2025-12-27)
+
+### Bug Fixes
+
+* **dashboard:** capture and display request/response headers and body ([cb68ebc](https://github.com/pandeptwidyaop/grok/commit/cb68ebc82433fd13d3a0ed87b8e8ed6d0d2788f9))
+* **dashboard:** prevent table overflow across all table views ([cf55d53](https://github.com/pandeptwidyaop/grok/commit/cf55d537846a6b1b142c996cdd6b7d366b349f5f))
+* **dashboard:** prevent table overflow with long tunnel addresses ([d11164d](https://github.com/pandeptwidyaop/grok/commit/d11164d90192531c2f210fcfc2abb362b6679ec8))
+
+### Performance Improvements
+
+* **dashboard:** eliminate struct copying in request storage (80-90% allocation reduction) ([8212639](https://github.com/pandeptwidyaop/grok/commit/8212639bcc7a1c9aed7f0c90dae7f6e21a3a3464))
+
+## [1.1.0-alpha.7](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.6...v1.1.0-alpha.7) (2025-12-27)
+
+### Bug Fixes
+
+* **csrf:** add SPA support with automatic token refresh ([7d8b231](https://github.com/pandeptwidyaop/grok/commit/7d8b231be438c17149ffe60b4ecff5bcc2ce1f2d))
+* resolve large file download issues with blocking send and backpressure ([fb21149](https://github.com/pandeptwidyaop/grok/commit/fb211492a97c538db4f4204305279ed465765c4e)), closes [#11](https://github.com/pandeptwidyaop/grok/issues/11)
+
+## [1.1.0-alpha.6](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.5...v1.1.0-alpha.6) (2025-12-27)
+
+### Features
+
+* **perf:** Phase 1 - Buffer pooling + WebSocket bug fix ([f5e120b](https://github.com/pandeptwidyaop/grok/commit/f5e120b34eb8d7435e3a00881359ec2f5294e91b))
+* **perf:** Phase 2 - strings.Builder for reduced allocations ([f23fae2](https://github.com/pandeptwidyaop/grok/commit/f23fae25490d334c06921bcfc03ba1987eaf0189))
+
+## [1.1.0-alpha.5](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.4...v1.1.0-alpha.5) (2025-12-27)
+
+### Bug Fixes
+
+* avoid copying mutex in RequestRecord (copylocks) ([b9d0c48](https://github.com/pandeptwidyaop/grok/commit/b9d0c4884cd4b1ec5e72536de8168a9395570edb))
+
+## [1.1.0-alpha.4](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.3...v1.1.0-alpha.4) (2025-12-27)
+
+### Bug Fixes
+
+* resolve data races in dashboard, fileserver, and SSE handler ([de4e6c5](https://github.com/pandeptwidyaop/grok/commit/de4e6c57581ed1affd5351d9cb7ec20dc11010f5))
+
+## [1.1.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.2...v1.1.0-alpha.3) (2025-12-27)
+
+### Bug Fixes
+
+* **cli:** add dashboard support to serve command ([40fad13](https://github.com/pandeptwidyaop/grok/commit/40fad13abdc6dbc17299e879511671bf2fca1068))
+* **dashboard:** enable real-time SSE updates for request log ([5da55d7](https://github.com/pandeptwidyaop/grok/commit/5da55d720e2d50e6d8c697137dda9f38d2340a83))
+* **fileserver:** fix parent directory (..) navigation in directory listing ([20239af](https://github.com/pandeptwidyaop/grok/commit/20239afe05fb1b36ff30ad7c3077005d05da0470))
+
+### Code Refactoring
+
+* fix all linting issues and reduce cyclomatic complexity ([6180e61](https://github.com/pandeptwidyaop/grok/commit/6180e61cb7a8cd30c8829d43c38a41a032bb1380))
+
+## [1.1.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.2...v1.1.0-alpha.3) (2025-12-27)
+
+### Bug Fixes
+
+* **cli:** add dashboard support to serve command ([40fad13](https://github.com/pandeptwidyaop/grok/commit/40fad13abdc6dbc17299e879511671bf2fca1068))
+* **dashboard:** enable real-time SSE updates for request log ([5da55d7](https://github.com/pandeptwidyaop/grok/commit/5da55d720e2d50e6d8c697137dda9f38d2340a83))
+* **fileserver:** fix parent directory (..) navigation in directory listing ([20239af](https://github.com/pandeptwidyaop/grok/commit/20239afe05fb1b36ff30ad7c3077005d05da0470))
+
+### Code Refactoring
+
+* fix all linting issues and reduce cyclomatic complexity ([6180e61](https://github.com/pandeptwidyaop/grok/commit/6180e61cb7a8cd30c8829d43c38a41a032bb1380))
+
+## [1.1.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.1...v1.1.0-alpha.2) (2025-12-27)
+
+### Features
+
+* **cli:** add static file server command with directory listing ([ad2e23e](https://github.com/pandeptwidyaop/grok/commit/ad2e23e679b694db84fa6e1a5da0f49b3e84ecf7))
+* **client:** add real-time monitoring dashboard with SSE and React UI ([51bc303](https://github.com/pandeptwidyaop/grok/commit/51bc303c7836650d1344e8f298acfa127709c27d))
+* **server:** add content negotiation and JSON support for error pages ([303cb6f](https://github.com/pandeptwidyaop/grok/commit/303cb6fc9d2a7377073622e9f41fa5b4a39ba7b5))
+* **server:** add HTML error pages for tunnel not found and invalid webhook ([34834f8](https://github.com/pandeptwidyaop/grok/commit/34834f8c623b294e6c3308a16e6021603cc68ec0))
+
+### Bug Fixes
+
+* **dashboard:** show "Show all tunnels" switch when no active tunnels ([3021a91](https://github.com/pandeptwidyaop/grok/commit/3021a912ae31a10c88d52a527d7208dd47ee27e3))
+
+## [1.1.0-alpha.1](https://github.com/pandeptwidyaop/grok/compare/v1.0.0...v1.1.0-alpha.1) (2025-12-27)
 
 ### Features
 

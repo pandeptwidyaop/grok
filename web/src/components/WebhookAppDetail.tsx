@@ -29,6 +29,7 @@ import {
   CircularProgress,
   Paper,
   FormHelperText,
+  Tooltip,
 } from '@mui/material';
 import {
   ArrowLeft,
@@ -405,10 +406,22 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                               {route.tunnel?.subdomain || 'Unknown'}
                             </Typography>
                           </TableCell>
-                          <TableCell>
-                            <Box component="code" sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>
-                              {route.tunnel?.local_addr || 'N/A'}
-                            </Box>
+                          <TableCell sx={{ maxWidth: 200 }}>
+                            <Tooltip title={route.tunnel?.local_addr || 'N/A'} arrow>
+                              <Box
+                                component="code"
+                                sx={{
+                                  fontSize: '0.875rem',
+                                  fontFamily: 'monospace',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  display: 'block',
+                                }}
+                              >
+                                {route.tunnel?.local_addr || 'N/A'}
+                              </Box>
+                            </Tooltip>
                           </TableCell>
                           <TableCell>
                             <TextField
@@ -518,10 +531,22 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                         <TableCell>
                           <Chip label={event.method} variant="outlined" size="small" />
                         </TableCell>
-                        <TableCell>
-                          <Box component="code" sx={{ fontSize: '0.875rem', fontFamily: 'monospace' }}>
-                            {event.request_path}
-                          </Box>
+                        <TableCell sx={{ maxWidth: 300 }}>
+                          <Tooltip title={event.request_path} arrow>
+                            <Box
+                              component="code"
+                              sx={{
+                                fontSize: '0.875rem',
+                                fontFamily: 'monospace',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                display: 'block',
+                              }}
+                            >
+                              {event.request_path}
+                            </Box>
+                          </Tooltip>
                         </TableCell>
                         <TableCell>
                           <Chip

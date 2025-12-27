@@ -120,6 +120,21 @@ func validateConfig(cfg *Config) error {
 		return fmt.Errorf("auth.jwt_secret must be at least 32 characters long for security")
 	}
 
+	// Admin password must be set and not be weak/default
+	if cfg.Auth.AdminPassword == "" {
+		return fmt.Errorf("auth.admin_password is required (set via config file or GROK_AUTH_ADMIN_PASSWORD environment variable)")
+	}
+	// Check for common weak passwords
+	weakPasswords := []string{"admin123", "password", "admin", "12345678", "password123"}
+	for _, weak := range weakPasswords {
+		if cfg.Auth.AdminPassword == weak {
+			return fmt.Errorf("auth.admin_password must not be a common weak password (current: %s). Use a strong password with at least 12 characters", weak)
+		}
+	}
+	if len(cfg.Auth.AdminPassword) < 12 {
+		return fmt.Errorf("auth.admin_password must be at least 12 characters long for security")
+	}
+
 	return nil
 }
 
@@ -153,7 +168,7 @@ func setDefaults() {
 
 	// Auth defaults
 	viper.SetDefault("auth.admin_username", "admin")
-	viper.SetDefault("auth.admin_password", "admin123") // Change in production!
+	// Note: auth.admin_password must be set via config file or GROK_AUTH_ADMIN_PASSWORD environment variable
 
 	// Tunnel defaults
 	viper.SetDefault("tunnels.max_per_user", 5)

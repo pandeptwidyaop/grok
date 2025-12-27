@@ -1,0 +1,56 @@
+--- a/pkg/utils/crypto_test.go
++++ b/pkg/utils/crypto_test.go
+@@ -7,32 +7,36 @@ import (
+ 
+ // TestGenerateRandomToken tests random token generation
+ func TestGenerateRandomToken(t *testing.T) {
+-	token1 := GenerateRandomToken()
+-	token2 := GenerateRandomToken()
++	token1, err := GenerateRandomToken(32)
++	if err != nil {
++		t.Fatalf("GenerateRandomToken() unexpected error: %v", err)
++	}
++	token2, err := GenerateRandomToken(32)
++	if err != nil {
++		t.Fatalf("GenerateRandomToken() unexpected error: %v", err)
++	}
+ 
+ 	// Tokens should be unique
+ 	if token1 == token2 {
+ 		t.Errorf("GenerateRandomToken() should generate unique tokens, got same: %s", token1)
+ 	}
+ 
+-	// Tokens should be hex encoded (32 bytes = 64 hex chars)
++	// Tokens should be hex encoded (32 bytes * 2 = 64 hex chars)
+ 	if len(token1) != 64 {
+ 		t.Errorf("GenerateRandomToken() length = %d; want 64", len(token1))
+ 	}
+ 
+-	if len(token2) != 64 {
+-		t.Errorf("GenerateRandomToken() length = %d; want 64", len(token2))
+-	}
+-
+ 	// Should only contain hex characters (0-9, a-f)
+ 	for _, r := range token1 {
+ 		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+ 			t.Errorf("GenerateRandomToken() contains non-hex character: %c", r)
+ 		}
+ 	}
++	
++	// Test with different length
++	token3, err := GenerateRandomToken(16)
++	if err != nil || len(token3) != 32 {
++		t.Errorf("GenerateRandomToken(16) should produce 32 hex chars, got %d", len(token3))
++	}
+ }
+ 
+ // TestGenerateRequestID tests request ID generation
+@@ -323,7 +327,11 @@ func BenchmarkGenerateRandomToken(b *testing.B) {
+ 	for i := 0; i < b.N; i++ {
+-		GenerateRandomToken()
++		_, err := GenerateRandomToken(32)
++		if err != nil {
++			b.Fatal(err)
++		}
+ 	}
+ }

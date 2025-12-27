@@ -25,6 +25,7 @@ import {
   Divider,
   useMediaQuery,
   useTheme,
+  Tooltip,
 } from '@mui/material';
 import { Building2, Plus, Eye } from 'lucide-react';
 import { toast } from 'sonner';
@@ -253,10 +254,20 @@ export default function OrganizationList() {
                           sx={{ fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 500 }}
                         />
                       </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 250 }}>
-                          {org.description || '—'}
-                        </Typography>
+                      <TableCell sx={{ maxWidth: 250 }}>
+                        <Tooltip title={org.description || '—'} arrow>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                            sx={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {org.description || '—'}
+                          </Typography>
+                        </Tooltip>
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" color="text.secondary">

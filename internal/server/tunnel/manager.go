@@ -411,7 +411,6 @@ func (m *Manager) UnregisterTunnel(ctx context.Context, tunnelID uuid.UUID) erro
 			"status":          "offline",
 			"disconnected_at": now,
 		}).Error
-
 	if err != nil {
 		return pkgerrors.Wrap(err, "failed to update tunnel status")
 	}
@@ -484,7 +483,6 @@ func (m *Manager) SaveTunnelStats(ctx context.Context, tunnelID uuid.UUID) error
 			"requests_count":   requestsCount,
 			"last_activity_at": time.Now(),
 		}).Error
-
 	if err != nil {
 		return pkgerrors.Wrap(err, "failed to save tunnel stats")
 	}
@@ -534,7 +532,6 @@ func (m *Manager) checkUserTunnelLimit(ctx context.Context, userID uuid.UUID) er
 		Model(&models.Tunnel{}).
 		Where("user_id = ? AND status = ?", userID, "active").
 		Count(&count).Error
-
 	if err != nil {
 		return pkgerrors.Wrap(err, "failed to count user tunnels")
 	}
@@ -637,7 +634,6 @@ func (m *Manager) FindOfflineTunnelBySavedName(ctx context.Context, userID uuid.
 			userID, savedName, true, []string{"offline", "disconnected"}).
 		Preload("Domain").
 		First(&tunnel).Error
-
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil // Not an error, just not found
@@ -718,7 +714,6 @@ func (m *Manager) ReactivateTunnel(ctx context.Context, offlineTunnel *models.Tu
 			"disconnected_at":  nil,
 			"last_activity_at": time.Now(),
 		}).Error
-
 	if err != nil {
 		return nil, pkgerrors.Wrap(err, "failed to reactivate tunnel")
 	}
@@ -804,7 +799,6 @@ func (m *Manager) startPeriodicStatsUpdater() {
 					"requests_count":   requestsCount,
 					"last_activity_at": time.Now(),
 				}).Error
-
 			if err != nil {
 				logger.WarnEvent().
 					Err(err).

@@ -110,13 +110,29 @@ function TunnelList() {
     return (
       <Card>
         <CardContent sx={{ py: 4 }}>
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Active Tunnels
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              No active tunnels. Start a tunnel using the CLI client.
-            </Typography>
+          <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Active Tunnels
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {showAll ? 'No tunnels found.' : 'No active tunnels. Start a tunnel using the CLI client.'}
+              </Typography>
+            </Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showAll}
+                  onChange={(e) => setShowAll(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={
+                <Typography variant="body2" color="text.secondary">
+                  Show all tunnels
+                </Typography>
+              }
+            />
           </Box>
         </CardContent>
       </Card>
@@ -458,14 +474,25 @@ function TunnelList() {
                           }}
                         />
                       </TableCell>
-                      <TableCell onClick={() => handleViewDetails(tunnel.id)}>
-                        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.875rem' }}>
-                          {tunnel.local_addr}
-                        </Typography>
+                      <TableCell onClick={() => handleViewDetails(tunnel.id)} sx={{ maxWidth: 200 }}>
+                        <Tooltip title={tunnel.local_addr} arrow>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontSize: '0.875rem',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {tunnel.local_addr}
+                          </Typography>
+                        </Tooltip>
                       </TableCell>
-                      <TableCell onClick={() => handleViewDetails(tunnel.id)}>
+                      <TableCell onClick={() => handleViewDetails(tunnel.id)} sx={{ maxWidth: 250 }}>
                         {tunnel.tunnel_type?.toLowerCase() === 'tcp' ? (
-                          <Box>
+                          <Tooltip title={tunnel.public_url} arrow>
                             <Box
                               component="code"
                               sx={{
@@ -475,29 +502,41 @@ function TunnelList() {
                                 borderRadius: 1,
                                 fontSize: '0.875rem',
                                 fontFamily: 'monospace',
+                                display: 'block',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
                               }}
                             >
                               {tunnel.public_url}
                             </Box>
-                          </Box>
+                          </Tooltip>
                         ) : (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                fontFamily: 'monospace',
-                                fontSize: '0.875rem',
-                                color: 'primary.main',
-                              }}
-                            >
-                              {tunnel.public_url}
-                            </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                            <Tooltip title={tunnel.public_url} arrow>
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.875rem',
+                                  color: 'primary.main',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  flex: 1,
+                                  minWidth: 0,
+                                }}
+                              >
+                                {tunnel.public_url}
+                              </Typography>
+                            </Tooltip>
                             <IconButton
                               size="small"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleCopyUrl(tunnel.public_url);
                               }}
+                              sx={{ flexShrink: 0 }}
                             >
                               {copiedUrl === tunnel.public_url ? (
                                 <Check size={16} style={{ color: '#4caf50' }} />

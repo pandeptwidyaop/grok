@@ -14,6 +14,7 @@ type Config struct {
 	Auth      AuthConfig      `mapstructure:"auth"`
 	Logging   LoggingConfig   `mapstructure:"logging"`
 	Reconnect ReconnectConfig `mapstructure:"reconnect"`
+	Dashboard DashboardConfig `mapstructure:"dashboard"`
 }
 
 // ServerConfig holds server connection settings.
@@ -43,6 +44,14 @@ type ReconnectConfig struct {
 	MaxDelay      int  `mapstructure:"max_delay"`      // seconds
 	BackoffFactor int  `mapstructure:"backoff_factor"` // multiplier
 	MaxAttempts   int  `mapstructure:"max_attempts"`   // 0 = infinite
+}
+
+// DashboardConfig holds dashboard settings.
+type DashboardConfig struct {
+	Enabled     bool  `mapstructure:"enabled"`       // Enable dashboard
+	Port        int   `mapstructure:"port"`          // Dashboard port (default: 4041)
+	MaxRequests int   `mapstructure:"max_requests"`  // Max requests to store (default: 1000)
+	MaxBodySize int64 `mapstructure:"max_body_size"` // Max body size to capture in bytes (default: 102400 = 100KB)
 }
 
 // Load loads configuration from file.
@@ -108,6 +117,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("reconnect.max_delay", 30)
 	v.SetDefault("reconnect.backoff_factor", 2)
 	v.SetDefault("reconnect.max_attempts", 0) // infinite
+
+	// Dashboard defaults
+	v.SetDefault("dashboard.enabled", true)
+	v.SetDefault("dashboard.port", 4041)
+	v.SetDefault("dashboard.max_requests", 1000)
+	v.SetDefault("dashboard.max_body_size", 102400) // 100KB
 }
 
 // SaveToken saves auth token to config file.
@@ -121,7 +136,7 @@ func SaveToken(token string) error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -156,7 +171,7 @@ func SaveServer(addr string) error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -191,7 +206,7 @@ func SetTLSCert(certPath string) error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -228,7 +243,7 @@ func SetTLSInsecure(insecure bool) error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -268,7 +283,7 @@ func EnableTLS() error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 
@@ -305,7 +320,7 @@ func DisableTLS() error {
 	configFile := filepath.Join(configDir, "config.yaml")
 
 	// Create config directory if not exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config dir: %w", err)
 	}
 

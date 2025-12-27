@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>400 - Bad Request</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .error-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 60px 40px;
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .error-code {
+            font-size: 120px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1;
+            margin-bottom: 20px;
+        }
+
+        .error-message {
+            font-size: 24px;
+            color: #2d3748;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .error-description {
+            font-size: 16px;
+            color: #718096;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+
+        .error-details {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 24px;
+            font-size: 14px;
+            color: #4a5568;
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+
+        .footer {
+            margin-top: 40px;
+            padding-top: 24px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 14px;
+            color: #a0aec0;
+        }
+
+        .footer a {
+            color: #f5576c;
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Mobile responsive */
+        @media (max-width: 640px) {
+            .error-container {
+                padding: 40px 24px;
+            }
+
+            .error-code {
+                font-size: 80px;
+            }
+
+            .error-message {
+                font-size: 20px;
+            }
+
+            .error-description {
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="error-container">
+        <div class="error-code">400</div>
+        <div class="error-message">Invalid Webhook URL</div>
+        <div class="error-description">
+            The webhook URL format is incorrect. Please check your webhook configuration.
+        </div>
+        {{if .URL}}
+        <div class="error-details">
+            Requested: {{.URL}}
+        </div>
+        {{end}}
+        <div class="footer">
+            Powered by Grok
+        </div>
+    </div>
+</body>
+</html>
