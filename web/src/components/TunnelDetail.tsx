@@ -65,7 +65,7 @@ function TunnelDetail() {
     enabled: !!id,
   });
 
-  // Fetch request logs (only for HTTP tunnels)
+  // Fetch request logs (only for HTTP/HTTPS tunnels, not TCP)
   const { data: logsData, isLoading: logsLoading } = useQuery({
     queryKey: ['tunnel-logs', id, page, pathFilter],
     queryFn: async () => {
@@ -77,7 +77,7 @@ function TunnelDetail() {
       });
       return response.data;
     },
-    enabled: !!id && tunnel?.tunnel_type?.toLowerCase() === 'http',
+    enabled: !!id && tunnel?.tunnel_type?.toLowerCase() !== 'tcp',
   });
 
   const logs = logsData?.logs || [];
@@ -355,8 +355,8 @@ function TunnelDetail() {
         </CardContent>
       </Card>
 
-      {/* HTTP Request Logs (only for HTTP tunnels) */}
-      {tunnel.tunnel_type?.toLowerCase() === 'http' && (
+      {/* HTTP Request Logs (only for HTTP/HTTPS tunnels, not TCP) */}
+      {tunnel.tunnel_type?.toLowerCase() !== 'tcp' && (
         <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

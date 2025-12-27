@@ -14,6 +14,8 @@ import {
   ToggleButtonGroup,
   ToggleButton,
   Tooltip,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   ChevronDown,
@@ -46,6 +48,8 @@ function GettingStarted() {
   });
   const [copiedSteps, setCopiedSteps] = useState<{ [key: string]: boolean }>({});
   const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>('stable');
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   // Server configuration
   const serverDomain = window.location.hostname;
@@ -128,11 +132,11 @@ function GettingStarted() {
       sx={{
         position: 'relative',
         bgcolor: '#1e1e1e',
-        p: 2,
+        p: { xs: '8px 8px 44px 8px', sm: 2 },
         borderRadius: 1,
         my: 2,
         fontFamily: 'monospace',
-        fontSize: '0.875rem',
+        fontSize: { xs: '0.75rem', sm: '0.875rem' },
         color: '#d4d4d4',
         overflow: 'auto',
       }}
@@ -143,10 +147,13 @@ function GettingStarted() {
         onClick={() => handleCopy(code, step)}
         sx={{
           position: 'absolute',
-          top: 8,
-          right: 8,
+          top: { xs: 'auto', sm: 8 },
+          bottom: { xs: 4, sm: 'auto' },
+          right: { xs: 4, sm: 8 },
           minWidth: 'auto',
+          minHeight: 44,
           color: copiedSteps[step] ? '#4ade80' : '#9ca3af',
+          fontSize: { xs: '0.75rem', sm: '0.875rem' },
           '&:hover': {
             bgcolor: 'rgba(255,255,255,0.1)',
           },
@@ -154,7 +161,14 @@ function GettingStarted() {
       >
         {copiedSteps[step] ? 'Copied!' : 'Copy'}
       </Button>
-      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+      <pre
+        style={{
+          margin: 0,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          paddingRight: isMobile ? 0 : '100px',
+        }}
+      >
         {code}
       </pre>
     </Box>
@@ -184,21 +198,31 @@ function GettingStarted() {
               exclusive
               onChange={(_, newChannel) => newChannel && setReleaseChannel(newChannel)}
               size="small"
-              sx={{ mb: 2 }}
+              sx={{
+                mb: 2,
+                display: 'flex',
+                width: { xs: '100%', sm: 'auto' },
+                '& .MuiToggleButton-root': {
+                  flex: { xs: 1, sm: 'initial' },
+                  minHeight: 44,
+                  px: { xs: 1.5, sm: 3 },
+                  fontSize: { xs: '0.8125rem', sm: '0.875rem' },
+                },
+              }}
             >
               <Tooltip title="Stable production-ready releases">
-                <ToggleButton value="stable" sx={{ px: 3 }}>
-                  <CheckCircle2 size={16} style={{ marginRight: 6 }} />
+                <ToggleButton value="stable">
+                  <CheckCircle2 size={16} style={{ marginRight: isMobile ? 4 : 6 }} />
                   Stable
                 </ToggleButton>
               </Tooltip>
               <Tooltip title="Beta testing releases (may have bugs)">
-                <ToggleButton value="beta" sx={{ px: 3 }}>
+                <ToggleButton value="beta">
                   Beta
                 </ToggleButton>
               </Tooltip>
               <Tooltip title="Alpha experimental releases (unstable)">
-                <ToggleButton value="alpha" sx={{ px: 3 }}>
+                <ToggleButton value="alpha">
                   Alpha
                 </ToggleButton>
               </Tooltip>
@@ -218,13 +242,24 @@ function GettingStarted() {
             )}
           </Box>
 
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 2,
+            }}
+          >
             <Button
               variant="contained"
               startIcon={<Download size={18} />}
               href={osInfo.downloadUrl}
               disabled={osInfo.os === 'unknown' || !osInfo.downloadUrl}
-              sx={{ bgcolor: releaseChannel !== 'stable' ? '#f59e0b' : '#667eea', '&:hover': { bgcolor: releaseChannel !== 'stable' ? '#d97706' : '#5568d3' } }}
+              sx={{
+                bgcolor: releaseChannel !== 'stable' ? '#f59e0b' : '#667eea',
+                '&:hover': { bgcolor: releaseChannel !== 'stable' ? '#d97706' : '#5568d3' },
+                minHeight: 44,
+                width: { xs: '100%', sm: 'auto' },
+              }}
             >
               Download {releaseChannel !== 'stable' ? releaseChannel.toUpperCase() : ''} for {osInfo.os} ({osInfo.arch})
             </Button>
@@ -232,6 +267,10 @@ function GettingStarted() {
               variant="outlined"
               href={`https://github.com/pandeptwidyaop/grok/releases${releaseChannel === 'stable' ? '/latest' : ''}`}
               target="_blank"
+              sx={{
+                minHeight: 44,
+                width: { xs: '100%', sm: 'auto' },
+              }}
             >
               View All {releaseChannel !== 'stable' ? releaseChannel.charAt(0).toUpperCase() + releaseChannel.slice(1) : ''} Releases
             </Button>

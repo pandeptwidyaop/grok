@@ -186,12 +186,18 @@ func (h *Handler) HandleSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no") // Disable nginx buffering
 
+	// Prevent response compression which can interfere with SSE
+	w.Header().Set("Content-Encoding", "identity")
+
 	// CORS headers - allow specific origin for credentials
 	origin := r.Header.Get("Origin")
 	if origin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Credentials", "true")
 	}
+
+	// Write header immediately to establish the connection
+	w.WriteHeader(http.StatusOK)
 
 	// Generate client ID
 	clientID := fmt.Sprintf("client_%d", time.Now().UnixNano())

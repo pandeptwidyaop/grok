@@ -203,15 +203,20 @@ func createHTTPServers(
 	}
 
 	apiServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Server.APIPort),
-		Handler:      apiHandler.CORSMiddleware(apiMux),
+		Addr:    fmt.Sprintf(":%d", cfg.Server.APIPort),
+		Handler: apiHandler.CORSMiddleware(apiMux),
+		// Longer timeouts for SSE connections
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 0, // No write timeout for SSE (long-lived connections)
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// Enable TLS for API server if TLS is configured
 	if tlsMgr != nil && tlsMgr.IsEnabled() {
-		apiServer.TLSConfig = tlsMgr.GetTLSConfig()
+		tlsConfig := tlsMgr.GetTLSConfig()
+		// Disable HTTP/2 to avoid SSE compatibility issues
+		tlsConfig.NextProtos = []string{"http/1.1"}
+		apiServer.TLSConfig = tlsConfig
 	}
 
 	return httpServer, httpsServer, apiServer

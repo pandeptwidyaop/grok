@@ -24,6 +24,9 @@ import {
   DialogContent,
   DialogActions,
   DialogContentText,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { Key, Trash2, Copy, Check } from 'lucide-react';
 import { api, type AuthToken } from '@/lib/api';
@@ -37,6 +40,8 @@ function TokenManager() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [tokenToDelete, setTokenToDelete] = useState<AuthToken | null>(null);
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { data: tokens, isLoading } = useQuery({
     queryKey: ['tokens'],
@@ -102,7 +107,13 @@ function TokenManager() {
               Generate a new authentication token for the Grok client
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 2,
+            }}
+          >
             <TextField
               fullWidth
               placeholder="Token name (e.g., laptop, server)"
@@ -115,7 +126,11 @@ function TokenManager() {
               variant="contained"
               onClick={handleCreate}
               disabled={!newTokenName.trim()}
-              sx={{ whiteSpace: 'nowrap' }}
+              sx={{
+                whiteSpace: 'nowrap',
+                minHeight: 44,
+                width: { xs: '100%', sm: 'auto' },
+              }}
             >
               Create Token
             </Button>
@@ -214,7 +229,105 @@ function TokenManager() {
                 Create a token above to start using the Grok client
               </Typography>
             </Box>
+          ) : isMobile ? (
+            /* Mobile Card View */
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {tokens.map((token: AuthToken) => (
+                <Card
+                  key={token.id}
+                  variant="outlined"
+                  sx={{
+                    transition: 'box-shadow 0.2s',
+                    '&:hover': {
+                      boxShadow: 3,
+                    },
+                  }}
+                >
+                  <CardContent sx={{ p: 2 }}>
+                    {/* Header: Name & Status */}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <Key size={18} style={{ color: '#667eea', flexShrink: 0 }} />
+                          <Typography variant="body1" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
+                            {token.name}
+                          </Typography>
+                        </Box>
+                      </Box>
+                      {token.is_active ? (
+                        <Chip label="Active" color="success" variant="outlined" size="small" sx={{ flexShrink: 0 }} />
+                      ) : (
+                        <Chip label="Inactive" color="default" variant="outlined" size="small" sx={{ flexShrink: 0 }} />
+                      )}
+                    </Box>
+
+                    {/* Organization */}
+                    {token.organization_name && (
+                      <Box sx={{ mb: 2 }}>
+                        <Chip
+                          label={token.organization_name}
+                          color="secondary"
+                          variant="outlined"
+                          size="small"
+                          sx={{ fontWeight: 500 }}
+                        />
+                      </Box>
+                    )}
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Owner */}
+                    <Box sx={{ mb: 1.5 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Owner
+                      </Typography>
+                      <Typography variant="body2">
+                        {token.owner_name || token.owner_email || '—'}
+                      </Typography>
+                    </Box>
+
+                    {/* Last Used */}
+                    <Box sx={{ mb: 1.5 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Last Used
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {token.last_used_at ? formatRelativeTime(token.last_used_at) : 'Never'}
+                      </Typography>
+                    </Box>
+
+                    {/* Created */}
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        Created
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatRelativeTime(token.created_at)}
+                      </Typography>
+                    </Box>
+
+                    {/* Actions */}
+                    <Box sx={{ pt: 1 }}>
+                      <Button
+                        fullWidth
+                        variant="outlined"
+                        color="error"
+                        startIcon={<Trash2 size={18} />}
+                        onClick={() => {
+                          setTokenToDelete(token);
+                          setDeleteDialogOpen(true);
+                        }}
+                        sx={{ minHeight: 44 }}
+                      >
+                        Delete Token
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
           ) : (
+            /* Desktop Table View */
             <TableContainer component={Paper} variant="outlined">
               <Table>
                 <TableHead>
@@ -307,6 +420,7 @@ function TokenManager() {
         onClose={() => setDeleteDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
       >
         <DialogTitle>Delete Token</DialogTitle>
         <DialogContent>
