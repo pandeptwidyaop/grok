@@ -1,3 +1,15 @@
+## [1.1.0-alpha.8](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.7...v1.1.0-alpha.8) (2025-12-27)
+
+### Bug Fixes
+
+* **dashboard:** capture and display request/response headers and body ([cb68ebc](https://github.com/pandeptwidyaop/grok/commit/cb68ebc82433fd13d3a0ed87b8e8ed6d0d2788f9))
+* **dashboard:** prevent table overflow across all table views ([cf55d53](https://github.com/pandeptwidyaop/grok/commit/cf55d537846a6b1b142c996cdd6b7d366b349f5f))
+* **dashboard:** prevent table overflow with long tunnel addresses ([d11164d](https://github.com/pandeptwidyaop/grok/commit/d11164d90192531c2f210fcfc2abb362b6679ec8))
+
+### Performance Improvements
+
+* **dashboard:** eliminate struct copying in request storage (80-90% allocation reduction) ([8212639](https://github.com/pandeptwidyaop/grok/commit/8212639bcc7a1c9aed7f0c90dae7f6e21a3a3464))
+
 ## [1.1.0-alpha.7](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.6...v1.1.0-alpha.7) (2025-12-27)
 
 ### Bug Fixes
