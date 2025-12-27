@@ -1,3 +1,19 @@
+## [1.0.0-alpha.15](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.14...v1.0.0-alpha.15) (2025-12-27)
+
+### Features
+
+* add configurable SQL query logging level ([aabc755](https://github.com/pandeptwidyaop/grok/commit/aabc7557d88db32bd3e87b635f8b9eb4c5eb478e))
+* add HTTP request logging middleware and fix SSE support ([925c2ae](https://github.com/pandeptwidyaop/grok/commit/925c2ae8ebb29829084d14cb5944de3420747b6c))
+* **dashboard:** add mobile responsive design for organization pages ([94656a4](https://github.com/pandeptwidyaop/grok/commit/94656a48955d3b85797a15df9a4f6d6df91f29df))
+* **dashboard:** add mobile responsive design improvements ([02d64ac](https://github.com/pandeptwidyaop/grok/commit/02d64ac4126e57d33ad2791cfb200a324c39294e))
+* **dashboard:** auto-hide inactive tunnels and add show all filter ([b0da82d](https://github.com/pandeptwidyaop/grok/commit/b0da82da0e27e60492ecf4eda4a1f263a088850b))
+* **dashboard:** complete mobile responsive design for organization detail page ([331c989](https://github.com/pandeptwidyaop/grok/commit/331c989fb28ad7479129ea7cafe55b5e4a96dc80))
+* enable gRPC compression and fix SSE reconnection issues ([c2051c6](https://github.com/pandeptwidyaop/grok/commit/c2051c6f4e1eff1094e0b7c5565b168bef928b92))
+
+### Bug Fixes
+
+* **dashboard:** resolve CSRF token persistence across page refreshes ([7d42f91](https://github.com/pandeptwidyaop/grok/commit/7d42f916b6ea2a3ec31119d7cc0b1d016ff785a4))
+
 ## [1.0.0-alpha.14](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.13...v1.0.0-alpha.14) (2025-12-27)
 
 ### Features
