@@ -123,8 +123,8 @@ func TestRequestStore_RecordStartAndCompletion(t *testing.T) {
 			Path:       "/api/users",
 			RemoteAddr: "192.168.1.1",
 			Protocol:   "http",
-			Headers: map[string]string{
-				"User-Agent": "Mozilla/5.0",
+			Headers: map[string][]string{
+				"User-Agent": {"Mozilla/5.0"},
 			},
 		},
 	}

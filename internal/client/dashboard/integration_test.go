@@ -233,9 +233,9 @@ func TestDashboardIntegration(t *testing.T) {
 				Path:       "/api/data",
 				RemoteAddr: "192.168.1.1:5678",
 				Protocol:   "http",
-				Headers: map[string]string{
-					"Content-Type": "application/json",
-					"User-Agent":   "TestClient/1.0",
+				Headers: map[string][]string{
+					"Content-Type": {"application/json"},
+					"User-Agent":   {"TestClient/1.0"},
 				},
 			},
 		})

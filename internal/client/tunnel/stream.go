@@ -23,16 +23,16 @@ var wsClientBufferPool = sync.Pool{
 	},
 }
 
-// convertHeaders converts protobuf headers (map[string]*HeaderValues) to simplified map[string]string.
-// Takes the first value for each header key.
-func convertHeaders(pbHeaders map[string]*tunnelv1.HeaderValues) map[string]string {
+// convertHeaders converts protobuf headers (map[string]*HeaderValues) to map[string][]string.
+// Preserves all values for each header key to support multi-value headers.
+func convertHeaders(pbHeaders map[string]*tunnelv1.HeaderValues) map[string][]string {
 	if len(pbHeaders) == 0 {
 		return nil
 	}
-	headers := make(map[string]string, len(pbHeaders))
+	headers := make(map[string][]string, len(pbHeaders))
 	for key, values := range pbHeaders {
 		if values != nil && len(values.Values) > 0 {
-			headers[key] = values.Values[0] // Take first value
+			headers[key] = values.Values
 		}
 	}
 	return headers
@@ -216,7 +216,7 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 	// Track total bytes sent for logging
 	totalBytesSent := 0
 	var statusCode int32
-	var responseHeaders map[string]string
+	var responseHeaders map[string][]string
 	var responseBody []byte
 	const maxBodyCapture = 1024 * 1024 // Capture up to 1MB of response body for dashboard
 

@@ -10,25 +10,25 @@ import (
 
 // RequestRecord represents a stored HTTP/TCP request with response data.
 type RequestRecord struct {
-	mu              sync.RWMutex      `json:"-"` // Protects concurrent reads/writes
-	ID              string            `json:"id"`
-	Method          string            `json:"method"`
-	Path            string            `json:"path"`
-	RemoteAddr      string            `json:"remote_addr"`
-	Protocol        string            `json:"protocol"` // "http" or "tcp"
-	StatusCode      int32             `json:"status_code"`
-	BytesIn         int64             `json:"bytes_in"`
-	BytesOut        int64             `json:"bytes_out"`
-	Duration        time.Duration     `json:"-"`           // Internal use only
-	DurationMS      float64           `json:"duration_ms"` // milliseconds for JSON
-	StartTime       time.Time         `json:"start_time"`
-	EndTime         time.Time         `json:"end_time"`
-	Error           string            `json:"error,omitempty"`
-	Completed       bool              `json:"completed"`
-	RequestHeaders  map[string]string `json:"request_headers,omitempty"`
-	RequestBody     []byte            `json:"request_body,omitempty"`
-	ResponseHeaders map[string]string `json:"response_headers,omitempty"`
-	ResponseBody    []byte            `json:"response_body,omitempty"`
+	mu              sync.RWMutex        `json:"-"` // Protects concurrent reads/writes
+	ID              string              `json:"id"`
+	Method          string              `json:"method"`
+	Path            string              `json:"path"`
+	RemoteAddr      string              `json:"remote_addr"`
+	Protocol        string              `json:"protocol"` // "http" or "tcp"
+	StatusCode      int32               `json:"status_code"`
+	BytesIn         int64               `json:"bytes_in"`
+	BytesOut        int64               `json:"bytes_out"`
+	Duration        time.Duration       `json:"-"`           // Internal use only
+	DurationMS      float64             `json:"duration_ms"` // milliseconds for JSON
+	StartTime       time.Time           `json:"start_time"`
+	EndTime         time.Time           `json:"end_time"`
+	Error           string              `json:"error,omitempty"`
+	Completed       bool                `json:"completed"`
+	RequestHeaders  map[string][]string `json:"request_headers,omitempty"`
+	RequestBody     []byte              `json:"request_body,omitempty"`
+	ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
+	ResponseBody    []byte              `json:"response_body,omitempty"`
 }
 
 // RequestStore stores HTTP/TCP requests in memory with bounded size.
