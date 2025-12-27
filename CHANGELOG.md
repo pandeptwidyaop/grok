@@ -1,3 +1,14 @@
+## [1.0.0-alpha.9](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.8...v1.0.0-alpha.9) (2025-12-27)
+
+### Features
+
+* add macOS and Windows ARM64 builds for grok-server ([091bc00](https://github.com/pandeptwidyaop/grok/commit/091bc0050a21d9942d7055298be4f55ceb60f0ec))
+* enable TLS for Dashboard API server when certificates are configured ([d54c503](https://github.com/pandeptwidyaop/grok/commit/d54c5036b3a4164041e4c630f4e2877a55b1fd5f))
+
+### Documentation
+
+* **config:** improve JWT secret documentation and generation ([ab1d51d](https://github.com/pandeptwidyaop/grok/commit/ab1d51dd92925b7cdf55d1aa08e76d474ca3475f))
+
 ## [1.0.0-alpha.8](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.7...v1.0.0-alpha.8) (2025-12-26)
 
 ### Features
