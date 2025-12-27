@@ -1,3 +1,17 @@
+## [1.0.0-alpha.10](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.9...v1.0.0-alpha.10) (2025-12-27)
+
+### Features
+
+* Add Docker release with semantic versioning and attestation ([ad0d598](https://github.com/pandeptwidyaop/grok/commit/ad0d598393f2740111e54b7974fca885c0e4f179))
+* **cli:** add TLS flags to set-server command for quick setup ([7463471](https://github.com/pandeptwidyaop/grok/commit/7463471442091ed2f24d11c93ed41b4ae0874158))
+* **dashboard:** add release channel selector (stable/beta/alpha) ([672c8fd](https://github.com/pandeptwidyaop/grok/commit/672c8fdd32bc53e833825220a7dd7ad338110ef1))
+* **dashboard:** add TLS detection and --tls flag to Getting Started ([2083f6a](https://github.com/pandeptwidyaop/grok/commit/2083f6a319c5c68d0892ad4c0f3406213269b5c4)), closes [#10b981](https://github.com/pandeptwidyaop/grok/issues/10b981) [#667](https://github.com/pandeptwidyaop/grok/issues/667)
+* Integrate Docker build into release workflow ([ff5f9bf](https://github.com/pandeptwidyaop/grok/commit/ff5f9bf6fbfb1ac52f3ef9ac2a3b3861649122e0))
+
+### Bug Fixes
+
+* Add attestations:write permission to release workflow ([e5708a5](https://github.com/pandeptwidyaop/grok/commit/e5708a5f6763d93eb92292ac5a3823e07ea701d9))
+
 ## [1.0.0-alpha.9](https://github.com/pandeptwidyaop/grok/compare/v1.0.0-alpha.8...v1.0.0-alpha.9) (2025-12-27)
 
 ### Features
