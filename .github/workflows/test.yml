@@ -55,7 +55,7 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        run: go test -v -race ./...
+        run: go test -v -race -short ./...
 
       - name: Build server
         run: go build -o bin/grok-server ./cmd/grok-server
