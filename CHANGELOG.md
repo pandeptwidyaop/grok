@@ -1,3 +1,9 @@
+## [1.1.0-alpha.5](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.4...v1.1.0-alpha.5) (2025-12-27)
+
+### Bug Fixes
+
+* avoid copying mutex in RequestRecord (copylocks) ([b9d0c48](https://github.com/pandeptwidyaop/grok/commit/b9d0c4884cd4b1ec5e72536de8168a9395570edb))
+
 ## [1.1.0-alpha.4](https://github.com/pandeptwidyaop/grok/compare/v1.1.0-alpha.3...v1.1.0-alpha.4) (2025-12-27)
 
 ### Bug Fixes
