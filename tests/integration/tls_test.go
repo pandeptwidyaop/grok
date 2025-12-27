@@ -34,7 +34,7 @@ import (
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
 
-// TestTLSSetup tests the complete TLS setup with self-signed certificates
+// TestTLSSetup tests the complete TLS setup with self-signed certificates.
 func TestTLSSetup(t *testing.T) {
 	// Setup logger
 	logger.Setup(logger.Config{Level: "error", Format: "text", Output: "stdout"})
@@ -90,7 +90,7 @@ func TestTLSSetup(t *testing.T) {
 	t.Log("✓ TLS manager created successfully")
 }
 
-// TestAPIServerWithTLS tests the Dashboard API server with TLS enabled
+// TestAPIServerWithTLS tests the Dashboard API server with TLS enabled.
 func TestAPIServerWithTLS(t *testing.T) {
 	// Setup logger
 	logger.Setup(logger.Config{Level: "error", Format: "text", Output: "stdout"})
@@ -180,7 +180,11 @@ func TestAPIServerWithTLS(t *testing.T) {
 
 	// Test health endpoint
 	testURL := fmt.Sprintf("https://localhost%s/api/health", addr)
-	resp, err := client.Get(testURL)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, testURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		// Server might not be ready yet, this is expected in some cases
 		t.Logf("HTTPS health check skipped (server setup): %v", err)
@@ -201,7 +205,7 @@ func TestAPIServerWithTLS(t *testing.T) {
 	apiServer.Shutdown(ctx)
 }
 
-// TestAPIServerWithoutTLS tests the Dashboard API server without TLS (HTTP only)
+// TestAPIServerWithoutTLS tests the Dashboard API server without TLS (HTTP only).
 func TestAPIServerWithoutTLS(t *testing.T) {
 	// Setup logger
 	logger.Setup(logger.Config{Level: "error", Format: "text", Output: "stdout"})
@@ -258,7 +262,11 @@ func TestAPIServerWithoutTLS(t *testing.T) {
 
 	// Test HTTP health endpoint
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("http://localhost:18080/api/health")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://localhost:18080/api/health", nil)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Logf("HTTP health check skipped (server setup): %v", err)
 	} else {
@@ -278,7 +286,7 @@ func TestAPIServerWithoutTLS(t *testing.T) {
 	apiServer.Shutdown(ctx)
 }
 
-// TestGRPCServerWithTLS tests gRPC server with TLS
+// TestGRPCServerWithTLS tests gRPC server with TLS.
 func TestGRPCServerWithTLS(t *testing.T) {
 	// Setup logger
 	logger.Setup(logger.Config{Level: "error", Format: "text", Output: "stdout"})
@@ -343,7 +351,7 @@ func TestGRPCServerWithTLS(t *testing.T) {
 	grpcServer.Stop()
 }
 
-// TestGRPCServerWithoutTLS tests gRPC server without TLS
+// TestGRPCServerWithoutTLS tests gRPC server without TLS.
 func TestGRPCServerWithoutTLS(t *testing.T) {
 	// Setup logger
 	logger.Setup(logger.Config{Level: "error", Format: "text", Output: "stdout"})
@@ -380,7 +388,7 @@ func TestGRPCServerWithoutTLS(t *testing.T) {
 	grpcServer.Stop()
 }
 
-// TestGRPCClientWithTLS tests gRPC client connecting with TLS
+// TestGRPCClientWithTLS tests gRPC client connecting with TLS.
 func TestGRPCClientWithTLS(t *testing.T) {
 	// Create temp directory for certificates
 	tmpDir := t.TempDir()
@@ -423,7 +431,7 @@ func TestGRPCClientWithTLS(t *testing.T) {
 	t.Log("✓ gRPC client TLS credentials created successfully")
 }
 
-// TestGRPCClientWithoutTLS tests gRPC client connecting without TLS
+// TestGRPCClientWithoutTLS tests gRPC client connecting without TLS.
 func TestGRPCClientWithoutTLS(t *testing.T) {
 	// Create gRPC dial options without TLS (insecure)
 	dialOpts := []grpc.DialOption{
@@ -437,7 +445,7 @@ func TestGRPCClientWithoutTLS(t *testing.T) {
 	t.Log("✓ gRPC client insecure credentials created successfully")
 }
 
-// Helper: generateTestCertificate creates a self-signed certificate for testing
+// Helper: generateTestCertificate creates a self-signed certificate for testing.
 func generateTestCertificate(certFile, keyFile string) error {
 	// Generate private key
 	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
