@@ -17,6 +17,7 @@ import (
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/db/models"
+	"github.com/pandeptwidyaop/grok/internal/server/errorpages"
 	"github.com/pandeptwidyaop/grok/internal/server/tunnel"
 	pkgerrors "github.com/pandeptwidyaop/grok/pkg/errors"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
@@ -68,7 +69,8 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Msg("Failed to route request")
 
 		if err == pkgerrors.ErrTunnelNotFound {
-			http.Error(w, "Tunnel not found", http.StatusNotFound)
+			subdomain := strings.Split(r.Host, ".")[0]
+			errorpages.TunnelNotFound(w, subdomain)
 		} else {
 			http.Error(w, "Bad gateway", http.StatusBadGateway)
 		}
@@ -273,7 +275,7 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 			Str("host", r.Host).
 			Str("path", r.URL.Path).
 			Msg("Invalid webhook URL format")
-		http.Error(w, "Invalid webhook URL", http.StatusBadRequest)
+		errorpages.InvalidWebhookURL(w, r.Host+r.URL.Path)
 		return
 	}
 
