@@ -63,11 +63,17 @@ var httpChunkedBufferPool = sync.Pool{
 // Forward forwards a gRPC HTTP request to local service.
 // For small responses, returns complete response. For large responses, this is deprecated - use ForwardChunked.
 func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) (*tunnelv1.HTTPResponse, error) {
-	// Build URL
-	url := fmt.Sprintf("http://%s%s", f.localAddr, req.Path)
+	// Build URL using strings.Builder to reduce allocations
+	var urlBuilder strings.Builder
+	urlBuilder.Grow(len("http://") + len(f.localAddr) + len(req.Path) + 1 + len(req.QueryString))
+	urlBuilder.WriteString("http://")
+	urlBuilder.WriteString(f.localAddr)
+	urlBuilder.WriteString(req.Path)
 	if req.QueryString != "" {
-		url += "?" + req.QueryString
+		urlBuilder.WriteByte('?')
+		urlBuilder.WriteString(req.QueryString)
 	}
+	url := urlBuilder.String()
 
 	logger.DebugEvent().
 		Str("method", req.Method).
@@ -141,11 +147,17 @@ func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) 
 // This is memory-efficient for large responses as it streams data in 4MB chunks.
 // The sendChunk callback is called for each chunk with (response, isLastChunk).
 func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRequest, sendChunk func(*tunnelv1.HTTPResponse, bool) error) error {
-	// Build URL
-	url := fmt.Sprintf("http://%s%s", f.localAddr, req.Path)
+	// Build URL using strings.Builder to reduce allocations
+	var urlBuilder strings.Builder
+	urlBuilder.Grow(len("http://") + len(f.localAddr) + len(req.Path) + 1 + len(req.QueryString))
+	urlBuilder.WriteString("http://")
+	urlBuilder.WriteString(f.localAddr)
+	urlBuilder.WriteString(req.Path)
 	if req.QueryString != "" {
-		url += "?" + req.QueryString
+		urlBuilder.WriteByte('?')
+		urlBuilder.WriteString(req.QueryString)
 	}
+	url := urlBuilder.String()
 
 	logger.DebugEvent().
 		Str("method", req.Method).

@@ -39,14 +39,26 @@ func (c *Client) startProxyStream(ctx context.Context) error {
 	// Send registration control message with tunnel details
 	// Format: subdomain|token|localaddr|publicurl|savedname(optional)
 	c.mu.RLock()
-	regData := fmt.Sprintf("%s|%s|%s|%s|%s",
-		c.getSubdomain(),
-		c.cfg.AuthToken,
-		c.cfg.LocalAddr,
-		c.publicURL,
-		c.cfg.SavedName,
-	)
+	subdomain := c.getSubdomain()
+	token := c.cfg.AuthToken
+	localAddr := c.cfg.LocalAddr
+	publicURL := c.publicURL
+	savedName := c.cfg.SavedName
 	c.mu.RUnlock()
+
+	// Build registration data using strings.Builder to reduce allocations
+	var regBuilder strings.Builder
+	regBuilder.Grow(len(subdomain) + len(token) + len(localAddr) + len(publicURL) + len(savedName) + 4)
+	regBuilder.WriteString(subdomain)
+	regBuilder.WriteByte('|')
+	regBuilder.WriteString(token)
+	regBuilder.WriteByte('|')
+	regBuilder.WriteString(localAddr)
+	regBuilder.WriteByte('|')
+	regBuilder.WriteString(publicURL)
+	regBuilder.WriteByte('|')
+	regBuilder.WriteString(savedName)
+	regData := regBuilder.String()
 
 	regMsg := &tunnelv1.ProxyMessage{
 		Message: &tunnelv1.ProxyMessage_Control{
