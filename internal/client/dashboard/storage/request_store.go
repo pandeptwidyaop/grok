@@ -9,6 +9,7 @@ import (
 
 // RequestRecord represents a stored HTTP/TCP request with response data.
 type RequestRecord struct {
+	mu             sync.RWMutex      `json:"-"` // Protects concurrent reads/writes
 	ID             string            `json:"id"`
 	Method         string            `json:"method"`
 	Path           string            `json:"path"`
@@ -85,6 +86,11 @@ func (rs *RequestStore) RecordCompletion(event events.Event) {
 	if !ok {
 		return
 	}
+
+	// Lock for writing to avoid data race
+	record.mu.Lock()
+	defer record.mu.Unlock()
+
 	record.StatusCode = data.StatusCode
 	record.BytesIn = data.BytesIn
 	record.BytesOut = data.BytesOut
@@ -100,17 +106,43 @@ func (rs *RequestStore) RecordCompletion(event events.Event) {
 	}
 }
 
-// GetRecent returns the most recent N requests.
+// GetRecent returns the most recent N requests as copies to avoid data races.
 func (rs *RequestStore) GetRecent(limit int) []*RequestRecord {
-	return rs.requests.GetRecent(limit)
+	records := rs.requests.GetRecent(limit)
+	// Create copies to avoid data races during concurrent reads/writes
+	copies := make([]*RequestRecord, len(records))
+	for i, rec := range records {
+		if rec != nil {
+			rec.mu.RLock()
+			recCopy := *rec
+			rec.mu.RUnlock()
+			// Clear the mutex in the copy (it shouldn't be copied)
+			recCopy.mu = sync.RWMutex{}
+			copies[i] = &recCopy
+		}
+	}
+	return copies
 }
 
-// GetAll returns all stored requests.
+// GetAll returns all stored requests as copies to avoid data races.
 func (rs *RequestStore) GetAll() []*RequestRecord {
-	return rs.requests.GetAll()
+	records := rs.requests.GetAll()
+	// Create copies to avoid data races during concurrent reads/writes
+	copies := make([]*RequestRecord, len(records))
+	for i, rec := range records {
+		if rec != nil {
+			rec.mu.RLock()
+			recCopy := *rec
+			rec.mu.RUnlock()
+			// Clear the mutex in the copy (it shouldn't be copied)
+			recCopy.mu = sync.RWMutex{}
+			copies[i] = &recCopy
+		}
+	}
+	return copies
 }
 
-// GetByID retrieves a specific request by ID.
+// GetByID retrieves a specific request by ID as a copy to avoid data races.
 func (rs *RequestStore) GetByID(id string) *RequestRecord {
 	val, ok := rs.byID.Load(id)
 	if !ok {
@@ -120,7 +152,13 @@ func (rs *RequestStore) GetByID(id string) *RequestRecord {
 	if !ok {
 		return nil
 	}
-	return record
+	// Return a copy to avoid data races during concurrent reads/writes
+	record.mu.RLock()
+	recCopy := *record
+	record.mu.RUnlock()
+	// Clear the mutex in the copy (it shouldn't be copied)
+	recCopy.mu = sync.RWMutex{}
+	return &recCopy
 }
 
 // Size returns the number of requests currently stored.
@@ -141,23 +179,34 @@ func (rs *RequestStore) Clear() {
 
 // GetStats returns statistics about the request store.
 func (rs *RequestStore) GetStats() map[string]interface{} {
-	requests := rs.requests.GetAll()
+	records := rs.requests.GetAll()
 
 	var totalDuration time.Duration
 	var completedCount int
 	var errorCount int
 	var totalBytesIn, totalBytesOut int64
 
-	for _, req := range requests {
-		if req.Completed {
-			completedCount++
-			totalDuration += req.Duration
+	for _, rec := range records {
+		if rec != nil {
+			// Lock for reading to avoid data race
+			rec.mu.RLock()
+			completed := rec.Completed
+			duration := rec.Duration
+			hasError := rec.Error != ""
+			bytesIn := rec.BytesIn
+			bytesOut := rec.BytesOut
+			rec.mu.RUnlock()
+
+			if completed {
+				completedCount++
+				totalDuration += duration
+			}
+			if hasError {
+				errorCount++
+			}
+			totalBytesIn += bytesIn
+			totalBytesOut += bytesOut
 		}
-		if req.Error != "" {
-			errorCount++
-		}
-		totalBytesIn += req.BytesIn
-		totalBytesOut += req.BytesOut
 	}
 
 	avgDuration := time.Duration(0)

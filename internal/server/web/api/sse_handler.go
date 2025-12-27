@@ -150,9 +150,10 @@ func (b *SSEBroker) UnregisterClient(client *SSEClient) {
 func (b *SSEBroker) Broadcast(event SSEEvent) {
 	select {
 	case b.broadcast <- event:
+		clientCount := b.GetClientCount()
 		logger.DebugEvent().
 			Str("event_type", event.Type).
-			Int("clients_count", len(b.clients)).
+			Int("clients_count", clientCount).
 			Msg("Broadcasting SSE event")
 	default:
 		logger.WarnEvent().

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pandeptwidyaop/grok/pkg/logger"
@@ -33,6 +34,7 @@ type Config struct {
 // Server is a static file server with directory listing.
 type Server struct {
 	cfg    Config
+	mu     sync.RWMutex
 	server *http.Server
 }
 
@@ -474,6 +476,7 @@ func (s *Server) basicAuthMiddleware(next http.Handler) http.HandlerFunc {
 
 // Start starts the file server on the given address.
 func (s *Server) Start(addr string) error {
+	s.mu.Lock()
 	s.server = &http.Server{
 		Addr:         addr,
 		Handler:      s.Handler(),
@@ -481,19 +484,25 @@ func (s *Server) Start(addr string) error {
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+	srv := s.server
+	s.mu.Unlock()
 
 	logger.InfoEvent().
 		Str("addr", addr).
 		Str("root", s.cfg.Root).
 		Msg("Starting file server")
 
-	return s.server.ListenAndServe()
+	return srv.ListenAndServe()
 }
 
 // Close gracefully shuts down the server.
 func (s *Server) Close() error {
-	if s.server != nil {
-		return s.server.Close()
+	s.mu.RLock()
+	srv := s.server
+	s.mu.RUnlock()
+
+	if srv != nil {
+		return srv.Close()
 	}
 	return nil
 }
