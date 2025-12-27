@@ -56,38 +56,99 @@ export const theme = createTheme({
       'sans-serif',
     ].join(','),
     h1: {
-      fontSize: '2.25rem',
+      fontSize: '1.75rem', // Mobile: 28px
       fontWeight: 700,
       lineHeight: 1.2,
+      '@media (min-width:600px)': {
+        fontSize: '2rem', // Tablet: 32px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '2.25rem', // Desktop: 36px
+      },
     },
     h2: {
-      fontSize: '1.875rem',
+      fontSize: '1.5rem', // Mobile: 24px
       fontWeight: 700,
       lineHeight: 1.3,
+      '@media (min-width:600px)': {
+        fontSize: '1.75rem', // Tablet: 28px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '1.875rem', // Desktop: 30px
+      },
     },
     h3: {
-      fontSize: '1.5rem',
+      fontSize: '1.25rem', // Mobile: 20px
       fontWeight: 600,
       lineHeight: 1.4,
+      '@media (min-width:600px)': {
+        fontSize: '1.375rem', // Tablet: 22px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '1.5rem', // Desktop: 24px
+      },
     },
     h4: {
-      fontSize: '1.25rem',
+      fontSize: '1.125rem', // Mobile: 18px
       fontWeight: 600,
       lineHeight: 1.4,
+      '@media (min-width:600px)': {
+        fontSize: '1.1875rem', // Tablet: 19px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '1.25rem', // Desktop: 20px
+      },
     },
     h5: {
-      fontSize: '1.125rem',
+      fontSize: '1rem', // Mobile: 16px
       fontWeight: 600,
       lineHeight: 1.5,
+      '@media (min-width:600px)': {
+        fontSize: '1.0625rem', // Tablet: 17px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '1.125rem', // Desktop: 18px
+      },
     },
     h6: {
-      fontSize: '1rem',
+      fontSize: '0.9375rem', // Mobile: 15px
       fontWeight: 600,
       lineHeight: 1.5,
+      '@media (min-width:600px)': {
+        fontSize: '0.96875rem', // Tablet: 15.5px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '1rem', // Desktop: 16px
+      },
+    },
+    body1: {
+      fontSize: '0.9375rem', // Mobile: 15px
+      '@media (min-width:600px)': {
+        fontSize: '0.96875rem', // Tablet: 15.5px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '1rem', // Desktop: 16px
+      },
+    },
+    body2: {
+      fontSize: '0.875rem', // Mobile: 14px
+      '@media (min-width:600px)': {
+        fontSize: '0.90625rem', // Tablet: 14.5px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '0.9375rem', // Desktop: 15px
+      },
     },
     button: {
       textTransform: 'none', // No uppercase for buttons
       fontWeight: 500,
+      fontSize: '0.9375rem', // Mobile: 15px
+      '@media (min-width:600px)': {
+        fontSize: '0.96875rem', // Tablet: 15.5px
+      },
+      '@media (min-width:900px)': {
+        fontSize: '1rem', // Desktop: 16px
+      },
     },
   },
   shape: {

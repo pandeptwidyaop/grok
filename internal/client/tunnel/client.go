@@ -60,6 +60,7 @@ type Client struct {
 	stream        tunnelv1.TunnelService_ProxyStreamClient
 	httpForwarder *proxy.HTTPForwarder
 	tcpForwarder  *proxy.TCPForwarder
+	wsConnections map[string]chan []byte // WebSocket connections by request ID
 	mu            sync.RWMutex
 	connected     bool
 	stopCh        chan struct{}
@@ -286,10 +287,11 @@ func (c *Client) createTunnel(ctx context.Context) error {
 		protocol = tunnelv1.TunnelProtocol_TCP
 	}
 
-	// Use SavedName as subdomain if provided (for reconnection with same domain)
-	// Otherwise use custom Subdomain if provided
+	// Priority: --subdomain takes precedence over --name for subdomain allocation
+	// --name is used for persistent tunnel naming (stored in SavedName field)
 	requestedSubdomain := c.cfg.Subdomain
-	if c.cfg.SavedName != "" {
+	if requestedSubdomain == "" && c.cfg.SavedName != "" {
+		// If only --name is provided, use it as subdomain (for reconnection)
 		requestedSubdomain = c.cfg.SavedName
 	}
 

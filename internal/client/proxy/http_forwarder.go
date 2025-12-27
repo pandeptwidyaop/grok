@@ -1,11 +1,14 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
@@ -117,4 +120,135 @@ func (f *HTTPForwarder) Forward(ctx context.Context, req *tunnelv1.HTTPRequest) 
 		Headers:    headers,
 		Body:       respBody,
 	}, nil
+}
+
+// IsWebSocketUpgrade checks if the request is a WebSocket upgrade request.
+func IsWebSocketUpgrade(req *tunnelv1.HTTPRequest) bool {
+	if req.Headers == nil {
+		return false
+	}
+
+	// Check Upgrade header
+	if upgrade, ok := req.Headers["Upgrade"]; ok && len(upgrade.Values) > 0 {
+		if strings.ToLower(upgrade.Values[0]) == "websocket" {
+			// Check Connection header
+			if conn, ok := req.Headers["Connection"]; ok && len(conn.Values) > 0 {
+				return strings.Contains(strings.ToLower(conn.Values[0]), "upgrade")
+			}
+		}
+	}
+
+	return false
+}
+
+// ForwardWebSocketUpgrade handles WebSocket upgrade and returns the upgrade response and connection.
+func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnelv1.HTTPRequest) (*tunnelv1.HTTPResponse, net.Conn, error) {
+	// Dial raw TCP connection to local service
+	dialer := &net.Dialer{
+		Timeout: 10 * time.Second,
+	}
+
+	conn, err := dialer.DialContext(ctx, "tcp", f.localAddr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to connect to local service: %w", err)
+	}
+
+	logger.InfoEvent().
+		Str("local_addr", f.localAddr).
+		Str("path", req.Path).
+		Msg("Established TCP connection for WebSocket upgrade")
+
+	// Build and write HTTP upgrade request
+	url := req.Path
+	if req.QueryString != "" {
+		url += "?" + req.QueryString
+	}
+
+	// Write request line
+	requestLine := fmt.Sprintf("%s %s HTTP/1.1\r\n", req.Method, url)
+	if _, err := conn.Write([]byte(requestLine)); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to write request line: %w", err)
+	}
+
+	// Write headers
+	for name, headerVals := range req.Headers {
+		for _, val := range headerVals.Values {
+			headerLine := fmt.Sprintf("%s: %s\r\n", name, val)
+			if _, err := conn.Write([]byte(headerLine)); err != nil {
+				conn.Close()
+				return nil, nil, fmt.Errorf("failed to write header: %w", err)
+			}
+		}
+	}
+
+	// End of headers
+	if _, err := conn.Write([]byte("\r\n")); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to write header end: %w", err)
+	}
+
+	logger.DebugEvent().Msg("Sent WebSocket upgrade request to local service")
+
+	// Read upgrade response
+	reader := bufio.NewReader(conn)
+
+	// Read status line
+	statusLine, err := reader.ReadString('\n')
+	if err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to read status line: %w", err)
+	}
+
+	// Parse status code
+	var statusCode int
+	if _, err := fmt.Sscanf(statusLine, "HTTP/1.1 %d", &statusCode); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to parse status code: %w", err)
+	}
+
+	// Read headers
+	headers := make(map[string]*tunnelv1.HeaderValues)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			conn.Close()
+			return nil, nil, fmt.Errorf("failed to read header: %w", err)
+		}
+
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			// End of headers
+			break
+		}
+
+		// Parse header
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			name := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+
+			if existing, ok := headers[name]; ok {
+				existing.Values = append(existing.Values, value)
+			} else {
+				headers[name] = &tunnelv1.HeaderValues{
+					Values: []string{value},
+				}
+			}
+		}
+	}
+
+	logger.InfoEvent().
+		Int("status_code", statusCode).
+		Msg("Received WebSocket upgrade response from local service")
+
+	// Build gRPC response
+	response := &tunnelv1.HTTPResponse{
+		StatusCode: int32(statusCode), //nolint:gosec // Safe conversion: HTTP status codes are always 100-599
+		Headers:    headers,
+		Body:       nil, // No body for upgrade response
+	}
+
+	// Return response and connection for bidirectional streaming
+	return response, conn, nil
 }

@@ -318,6 +318,30 @@ func (s *TunnelService) handleProxyResponse(currentTunnel *tunnel.Tunnel, respon
 		Str("tunnel_id", currentTunnel.ID.String()).
 		Msg("Received response from client")
 
+	// Check if this is WebSocket TCP data (client -> server)
+	if tcpData := response.GetTcp(); tcpData != nil {
+		// This is WebSocket data, route to WebSocket channel
+		wsKey := response.RequestId + ":ws"
+		ch, ok := currentTunnel.ResponseMap.Load(wsKey)
+		if ok {
+			if wsChan, ok := ch.(chan []byte); ok {
+				select {
+				case wsChan <- tcpData.Data:
+					logger.DebugEvent().
+						Str("request_id", response.RequestId).
+						Int("bytes", len(tcpData.Data)).
+						Msg("Routed WebSocket TCP data to connection")
+				case <-time.After(5 * time.Second):
+					logger.WarnEvent().
+						Str("request_id", response.RequestId).
+						Msg("Timeout routing WebSocket TCP data")
+				}
+				return
+			}
+		}
+	}
+
+	// Regular HTTP response handling
 	ch, ok := currentTunnel.ResponseMap.Load(response.RequestId)
 	if !ok {
 		logger.WarnEvent().

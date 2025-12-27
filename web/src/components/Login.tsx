@@ -13,6 +13,8 @@ import {
   Container,
   Paper,
   IconButton,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { ArrowRight, ArrowLeft, Shield } from 'lucide-react';
 
@@ -25,6 +27,8 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,8 +45,14 @@ export default function Login() {
         return;
       }
 
-      // Successful login
+      // Successful login - navigate to dashboard first
       navigate('/');
+
+      // Refresh after navigation to ensure clean state
+      // Use setTimeout to allow navigation to complete first
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -68,45 +78,49 @@ export default function Login() {
         overflow: 'hidden',
       }}
     >
-      {/* Animated background elements */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: 80,
-          left: 80,
-          width: 300,
-          height: 300,
-          background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: '50%',
-          filter: 'blur(60px)',
-          animation: 'pulse 3s ease-in-out infinite',
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: 80,
-          right: 80,
-          width: 400,
-          height: 400,
-          background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: '50%',
-          filter: 'blur(60px)',
-          animation: 'pulse 3s ease-in-out infinite 1s',
-        }}
-      />
+      {/* Animated background elements (hidden on mobile) */}
+      {!isMobile && (
+        <>
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 80,
+              left: 80,
+              width: 300,
+              height: 300,
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '50%',
+              filter: 'blur(60px)',
+              animation: 'pulse 3s ease-in-out infinite',
+            }}
+          />
+          <Box
+            sx={{
+              position: 'absolute',
+              bottom: 80,
+              right: 80,
+              width: 400,
+              height: 400,
+              background: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '50%',
+              filter: 'blur(60px)',
+              animation: 'pulse 3s ease-in-out infinite 1s',
+            }}
+          />
+        </>
+      )}
 
       <Container maxWidth="sm" sx={{ position: 'relative', zIndex: 10, px: 2 }}>
         {/* Logo/Brand */}
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
+        <Box sx={{ textAlign: 'center', mb: { xs: 3, sm: 4 } }}>
           <Paper
             elevation={0}
             sx={{
               display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 80,
-              height: 80,
+              width: { xs: 64, sm: 80 },
+              height: { xs: 64, sm: 80 },
               borderRadius: 3,
               bgcolor: 'rgba(255, 255, 255, 0.15)',
               backdropFilter: 'blur(10px)',
@@ -120,10 +134,24 @@ export default function Login() {
               style={{ width: '100%', height: '100%' }}
             />
           </Paper>
-          <Typography variant="h3" sx={{ color: 'white', fontWeight: 700, mb: 1 }}>
+          <Typography
+            variant="h3"
+            sx={{
+              color: 'white',
+              fontWeight: 700,
+              mb: 1,
+              fontSize: { xs: '1.75rem', sm: '2.25rem', md: '3rem' },
+            }}
+          >
             Welcome Back
           </Typography>
-          <Typography variant="body1" sx={{ color: 'rgba(255, 255, 255, 0.8)' }}>
+          <Typography
+            variant="body1"
+            sx={{
+              color: 'rgba(255, 255, 255, 0.8)',
+              fontSize: { xs: '0.9375rem', sm: '1rem' },
+            }}
+          >
             Sign in to access your Grok Dashboard
           </Typography>
         </Box>
@@ -137,7 +165,7 @@ export default function Login() {
             bgcolor: 'rgba(255, 255, 255, 0.95)',
           }}
         >
-          <CardContent sx={{ p: 4 }}>
+          <CardContent sx={{ p: { xs: 2, sm: 3, md: 4 } }}>
             {!requires2FA ? (
               // Login Form
               <>

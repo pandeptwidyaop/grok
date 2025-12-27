@@ -13,7 +13,7 @@ const (
 	// DefaultSubdomainLength is the default length for random subdomains.
 	DefaultSubdomainLength = 8
 	// MinSubdomainLength is the minimum allowed subdomain length.
-	MinSubdomainLength = 4
+	MinSubdomainLength = 3
 	// MaxSubdomainLength is the maximum allowed subdomain length.
 	MaxSubdomainLength = 63
 )
@@ -87,7 +87,7 @@ func IsValidSubdomain(subdomain string) bool {
 	// Convert to lowercase
 	subdomain = strings.ToLower(subdomain)
 
-	// Check length
+	// Check length (3-63 characters)
 	if len(subdomain) < MinSubdomainLength || len(subdomain) > MaxSubdomainLength {
 		return false
 	}

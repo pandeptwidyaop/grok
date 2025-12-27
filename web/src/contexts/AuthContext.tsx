@@ -97,6 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem('auth_org_name', data.organization_name);
     }
 
+    // Note: No reload here - let the Login component navigate first
+    // The page will refresh after navigation in Login.tsx
+
     return data;
   };
 
@@ -120,6 +123,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem('auth_role');
     sessionStorage.removeItem('auth_org_id');
     sessionStorage.removeItem('auth_org_name');
+
+    // Refresh page to reset state after logout
+    window.location.reload();
   };
 
   // Derived properties
