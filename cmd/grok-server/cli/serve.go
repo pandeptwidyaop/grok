@@ -209,6 +209,11 @@ func createHTTPServers(
 		WriteTimeout: 30 * time.Second,
 	}
 
+	// Enable TLS for API server if TLS is configured
+	if tlsMgr != nil && tlsMgr.IsEnabled() {
+		apiServer.TLSConfig = tlsMgr.GetTLSConfig()
+	}
+
 	return httpServer, httpsServer, apiServer
 }
 
@@ -231,9 +236,16 @@ func startServers(httpServer, httpsServer, apiServer *http.Server) {
 	}
 
 	go func() {
-		logger.InfoEvent().Str("addr", apiServer.Addr).Msg("Dashboard API server listening")
-		if err := apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Fatal(fmt.Sprintf("API server error: %v", err))
+		if apiServer.TLSConfig != nil {
+			logger.InfoEvent().Str("addr", apiServer.Addr).Bool("tls", true).Msg("Dashboard API server listening")
+			if err := apiServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				logger.Fatal(fmt.Sprintf("API server error: %v", err))
+			}
+		} else {
+			logger.InfoEvent().Str("addr", apiServer.Addr).Bool("tls", false).Msg("Dashboard API server listening")
+			if err := apiServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Fatal(fmt.Sprintf("API server error: %v", err))
+			}
 		}
 	}()
 }
