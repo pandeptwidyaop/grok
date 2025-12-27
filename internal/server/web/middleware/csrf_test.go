@@ -409,6 +409,52 @@ func TestCSRFProtect_SingleUseToken(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, rec2.Code, "Second request should fail (token already used)")
 }
 
+// TestProtect_RefreshToken tests that new CSRF token is returned after successful validation (SPA support).
+func TestProtect_RefreshToken(t *testing.T) {
+	csrf := NewCSRFProtection()
+
+	handler := csrf.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("success"))
+	}))
+
+	// Generate initial token
+	token, err := csrf.GenerateToken()
+	require.NoError(t, err)
+
+	// Make POST request with valid token
+	req := httptest.NewRequest("POST", "/test", nil)
+	req.Header.Set("X-CSRF-Token", token)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	// Should succeed
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "success", rec.Body.String())
+
+	// Should return new CSRF token in response header
+	newToken := rec.Header().Get("X-CSRF-Token")
+	assert.NotEmpty(t, newToken, "New CSRF token should be returned in response header")
+	assert.NotEqual(t, token, newToken, "New token should be different from old token")
+
+	// Old token should be consumed (single-use)
+	req2 := httptest.NewRequest("POST", "/test", nil)
+	req2.Header.Set("X-CSRF-Token", token)
+	rec2 := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec2, req2)
+	assert.Equal(t, http.StatusForbidden, rec2.Code, "Old token should not work again (single-use)")
+
+	// New token should work
+	req3 := httptest.NewRequest("POST", "/test", nil)
+	req3.Header.Set("X-CSRF-Token", newToken)
+	rec3 := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec3, req3)
+	assert.Equal(t, http.StatusOK, rec3.Code, "New token should work")
+}
+
 // BenchmarkGenerateToken benchmarks token generation
 func BenchmarkGenerateToken(b *testing.B) {
 	csrf := NewCSRFProtection()

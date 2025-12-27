@@ -29,9 +29,16 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-// Add response interceptor to handle auth errors
+// Add response interceptor to handle auth errors and refresh CSRF token
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Update CSRF token if server sent a new one (for SPA support)
+    const newCSRFToken = response.headers['x-csrf-token'];
+    if (newCSRFToken) {
+      window._csrfToken = newCSRFToken;
+    }
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
       // Clear session and redirect to login

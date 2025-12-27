@@ -71,6 +71,8 @@ func (c *CSRFProtection) ValidateToken(token string) bool {
 
 // Protect wraps an HTTP handler with CSRF validation.
 // Only validates for state-changing methods (POST, PUT, PATCH, DELETE).
+// For SPAs, a new CSRF token is returned in the X-CSRF-Token response header
+// after successful validation, allowing the client to use it for subsequent requests.
 func (c *CSRFProtection) Protect(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Only validate CSRF for state-changing methods
@@ -81,6 +83,12 @@ func (c *CSRFProtection) Protect(next http.Handler) http.Handler {
 			if !c.ValidateToken(csrfToken) {
 				http.Error(w, "Invalid or missing CSRF token", http.StatusForbidden)
 				return
+			}
+
+			// Generate new token for SPA to use in next request
+			newToken, err := c.GenerateToken()
+			if err == nil {
+				w.Header().Set("X-CSRF-Token", newToken)
 			}
 		}
 
