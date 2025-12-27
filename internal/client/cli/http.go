@@ -26,9 +26,10 @@ var httpCmd = &cobra.Command{
 	Long: `Create an HTTP tunnel to expose a local HTTP server to the internet.
 
 Examples:
-  grok http 3000                       # Tunnel to localhost:3000 (auto-generated name)
-  grok http 8080 --subdomain demo      # Custom subdomain demo.grok.io
-  grok http 3000 --name my-api         # Named persistent tunnel
+  grok http 3000                       # Tunnel to localhost:3000 (auto-generated subdomain)
+  grok http 8080 --name api            # Named tunnel (recommended, min 3 chars)
+  grok http 3000 --name my-service     # Persistent tunnel with custom name
+  grok http 3000 --subdomain demo      # Custom subdomain (alternative to --name)
   grok http localhost:3000             # Explicit host and port`,
 	Args: cobra.ExactArgs(1),
 	RunE: runHTTPTunnel,
@@ -37,8 +38,8 @@ Examples:
 func init() {
 	rootCmd.AddCommand(httpCmd)
 
-	httpCmd.Flags().StringVarP(&httpSubdomain, "subdomain", "s", "", "request custom subdomain")
-	httpCmd.Flags().StringVarP(&httpSavedName, "name", "n", "", "saved tunnel name (auto-generated if not provided)")
+	httpCmd.Flags().StringVarP(&httpSavedName, "name", "n", "", "tunnel name for persistent tunnels (min 3 chars, recommended)")
+	httpCmd.Flags().StringVarP(&httpSubdomain, "subdomain", "s", "", "custom subdomain (alternative to --name)")
 }
 
 func runHTTPTunnel(cmd *cobra.Command, args []string) error {
