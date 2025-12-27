@@ -37,7 +37,7 @@ tls:
 auth:
   jwt_secret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters"
   admin_username: "admin"
-  admin_password: "secure_password"
+  admin_password: "secure-test-password-123"
 
 tunnels:
   max_per_user: 10
@@ -78,7 +78,7 @@ logging:
 	// Verify auth config
 	assert.Equal(t, "this-is-a-very-secure-jwt-secret-with-at-least-32-characters", cfg.Auth.JWTSecret)
 	assert.Equal(t, "admin", cfg.Auth.AdminUsername)
-	assert.Equal(t, "secure_password", cfg.Auth.AdminPassword)
+	assert.Equal(t, "secure-test-password-123", cfg.Auth.AdminPassword)
 
 	// Verify tunnels config
 	assert.Equal(t, 10, cfg.Tunnels.MaxPerUser)
@@ -100,6 +100,7 @@ func TestLoad_WithDefaults(t *testing.T) {
 	configContent := `
 auth:
   jwt_secret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters-long"
+  admin_password: "secure-test-password-123"
 `
 
 	err := os.WriteFile(configFile, []byte(configContent), 0644)
@@ -209,6 +210,7 @@ func TestLoad_PostgreSQLConfig(t *testing.T) {
 	configContent := `
 auth:
   jwt_secret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters"
+  admin_password: "secure-test-password-123"
 
 database:
   driver: "postgres"
@@ -243,6 +245,7 @@ func TestLoad_TLSConfig(t *testing.T) {
 	configContent := `
 auth:
   jwt_secret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters"
+  admin_password: "secure-test-password-123"
 
 tls:
   auto_cert: false
@@ -271,6 +274,7 @@ func TestLoad_LoggingConfig(t *testing.T) {
 	configContent := `
 auth:
   jwt_secret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters"
+  admin_password: "secure-test-password-123"
 
 logging:
   level: "debug"
@@ -305,6 +309,7 @@ func TestLoad_TunnelsConfig(t *testing.T) {
 	configContent := `
 auth:
   jwt_secret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters"
+  admin_password: "secure-test-password-123"
 
 tunnels:
   max_per_user: 20
@@ -331,6 +336,7 @@ func TestLoad_AllowedOrigins(t *testing.T) {
 	configContent := `
 auth:
   jwt_secret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters"
+  admin_password: "secure-test-password-123"
 
 server:
   allowed_origins:
@@ -359,6 +365,7 @@ func TestLoad_EnvironmentVariables(t *testing.T) {
 	configContent := `
 auth:
   jwt_secret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters"
+  admin_password: "secure-test-password-123"
 
 server:
   domain: "config-file-domain.com"
@@ -389,6 +396,7 @@ server:
   domain: "example.com"
 auth:
   jwt_secret: "config-file-jwt-secret-32-chars-minimum!!"
+  admin_password: "secure-test-password-123"
 `
 
 	err := os.WriteFile(configFile, []byte(configContent), 0644)
@@ -417,7 +425,8 @@ func TestValidateConfig(t *testing.T) {
 			name: "valid config",
 			cfg: &Config{
 				Auth: AuthConfig{
-					JWTSecret: "this-is-a-very-secure-jwt-secret-with-at-least-32-characters",
+					JWTSecret:     "this-is-a-very-secure-jwt-secret-with-at-least-32-characters",
+					AdminPassword: "secure-test-password-123",
 				},
 			},
 			expectError: false,
@@ -456,7 +465,8 @@ func TestValidateConfig(t *testing.T) {
 			name: "exactly 32 characters",
 			cfg: &Config{
 				Auth: AuthConfig{
-					JWTSecret: "12345678901234567890123456789012", // exactly 32
+					JWTSecret:     "12345678901234567890123456789012", // exactly 32
+					AdminPassword: "secure-test-password-123",
 				},
 			},
 			expectError: false,

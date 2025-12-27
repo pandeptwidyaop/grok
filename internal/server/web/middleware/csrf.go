@@ -44,24 +44,25 @@ func (c *CSRFProtection) GenerateToken() (string, error) {
 }
 
 // ValidateToken checks if a CSRF token is valid.
+// Tokens are single-use and deleted after successful validation.
 func (c *CSRFProtection) ValidateToken(token string) bool {
 	if token == "" {
 		return false
 	}
 
-	c.mu.RLock()
-	expiry, exists := c.tokens[token]
-	c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
+	expiry, exists := c.tokens[token]
 	if !exists {
 		return false
 	}
 
+	// Always delete token after validation attempt (single-use)
+	delete(c.tokens, token)
+
 	// Check if expired
 	if time.Now().After(expiry) {
-		c.mu.Lock()
-		delete(c.tokens, token)
-		c.mu.Unlock()
 		return false
 	}
 

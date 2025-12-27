@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,17 +59,47 @@ func (rl *RateLimiter) getVisitor(identifier string) *rate.Limiter {
 	return v.limiter
 }
 
+// getClientIP extracts the real client IP from the request.
+// When behind a reverse proxy, this parses X-Forwarded-For properly.
+// Note: X-Forwarded-For format is "client, proxy1, proxy2, ..."
+// We take the leftmost (original client) IP, but this is still spoofable
+// if not behind a trusted proxy. For production deployments behind proxies,
+// configure your reverse proxy to strip client-provided X-Forwarded-For headers.
+func (rl *RateLimiter) getClientIP(r *http.Request) string {
+	// Try X-Forwarded-For first (most common for proxies)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
+		// Take the leftmost (original client IP)
+		ips := strings.Split(xff, ",")
+		if len(ips) > 0 {
+			clientIP := strings.TrimSpace(ips[0])
+			// Validate it's a valid IP
+			if net.ParseIP(clientIP) != nil {
+				return clientIP
+			}
+		}
+	}
+
+	// Try X-Real-IP as fallback
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		if net.ParseIP(xri) != nil {
+			return xri
+		}
+	}
+
+	// Use direct connection IP as final fallback
+	// This is the most reliable as it can't be spoofed
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr // Return as-is if parsing fails
+	}
+	return ip
+}
+
 // Limit wraps an HTTP handler with rate limiting based on IP address.
 func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Get client IP (check X-Forwarded-For first for proxy support)
-		ip := r.Header.Get("X-Forwarded-For")
-		if ip == "" {
-			ip = r.Header.Get("X-Real-IP")
-		}
-		if ip == "" {
-			ip = r.RemoteAddr
-		}
+		ip := rl.getClientIP(r)
 
 		limiter := rl.getVisitor(ip)
 		if !limiter.Allow() {

@@ -1,38 +1,44 @@
- sqlite .PHONY: help proto build-server build-client build-dashboard build-all dev-server dev-client test clean migrate-up migrate-down
+ sqlite .PHONY: help proto build-server build-client build-dashboard build-client-dashboard build-all dev-server dev-client dev-client-dashboard test clean migrate-up migrate-down
 
 help:
 	@echo "Grok - ngrok Clone"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  proto           - Generate gRPC code from proto files"
-	@echo "  build-all       - Build server, client, and dashboard"
-	@echo "  build-server    - Build server binary"
-	@echo "  build-client    - Build client binary"
-	@echo "  build-dashboard - Build React dashboard"
-	@echo "  dev-server      - Run server in development mode"
-	@echo "  dev-client      - Run client in development mode"
-	@echo "  test            - Run tests"
-	@echo "  migrate-up      - Run database migrations"
-	@echo "  migrate-down    - Rollback database migrations"
-	@echo "  clean           - Clean build artifacts"
+	@echo "  proto                  - Generate gRPC code from proto files"
+	@echo "  build-all              - Build server, client, and dashboards"
+	@echo "  build-server           - Build server binary"
+	@echo "  build-client           - Build client binary (with embedded dashboard)"
+	@echo "  build-dashboard        - Build React server dashboard"
+	@echo "  build-client-dashboard - Build React client dashboard"
+	@echo "  dev-server             - Run server in development mode"
+	@echo "  dev-client             - Run client in development mode"
+	@echo "  dev-client-dashboard   - Run client dashboard dev server (Vite)"
+	@echo "  test                   - Run tests"
+	@echo "  migrate-up             - Run database migrations"
+	@echo "  migrate-down           - Rollback database migrations"
+	@echo "  clean                  - Clean build artifacts"
 
 proto:
 	@echo "Generating gRPC code..."
 	@./scripts/generate-proto.sh
 
 build-dashboard:
-	@echo "Building dashboard..."
+	@echo "Building server dashboard..."
 	@cd web && npm install && npm run build
+
+build-client-dashboard:
+	@echo "Building client dashboard..."
+	@cd client-dashboard && npm install && npm run build
 
 build-server: proto
 	@echo "Building server..."
 	@go build -o bin/grok-server ./cmd/grok-server
 
-build-client: proto
+build-client: proto build-client-dashboard
 	@echo "Building client..."
 	@go build -o bin/grok ./cmd/grok
 
-build-all: build-dashboard build-server build-client
+build-all: build-dashboard build-client-dashboard build-server build-client
 	@echo "Build complete!"
 
 dev-server:
@@ -42,6 +48,12 @@ dev-server:
 dev-client:
 	@echo "Running client in dev mode..."
 	@go run ./cmd/grok/main.go http localhost:3000
+
+dev-client-dashboard:
+	@echo "Running client dashboard dev server..."
+	@echo "Dashboard will be available at http://localhost:5174"
+	@echo "Make sure the client is running with: ./bin/grok http 3000"
+	@cd client-dashboard && npm run dev
 
 test:
 	@echo "Running tests..."
@@ -60,6 +72,8 @@ clean:
 	@rm -rf bin/
 	@rm -rf web/dist/
 	@rm -rf internal/server/web/dist/
+	@rm -rf internal/client/dashboard/web/dist/
+	@rm -rf client-dashboard/node_modules/.vite
 	@rm -rf gen/
 	@echo "Clean complete!"
 

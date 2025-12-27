@@ -144,8 +144,8 @@ func createGRPCServer(tlsMgr *tlsmanager.Manager, tunnelManager *tunnel.Manager,
 			Time:    60 * time.Second,
 			Timeout: 20 * time.Second,
 		}),
-		grpc.MaxRecvMsgSize(16 << 20), // Reduced from 64MB to 16MB
-		grpc.MaxSendMsgSize(16 << 20), // Reduced from 64MB to 16MB
+		grpc.MaxRecvMsgSize(128 << 20), // 128MB for large file transfers
+		grpc.MaxSendMsgSize(128 << 20), // 128MB for large file transfers
 	}
 
 	if tlsMgr != nil && tlsMgr.IsEnabled() {
@@ -157,8 +157,8 @@ func createGRPCServer(tlsMgr *tlsmanager.Manager, tunnelManager *tunnel.Manager,
 	tunnelv1.RegisterTunnelServiceServer(grpcServer, tunnelService)
 
 	logger.InfoEvent().
-		Int("max_recv_mb", 16).
-		Int("max_send_mb", 16).
+		Int("max_recv_mb", 128).
+		Int("max_send_mb", 128).
 		Bool("compression_enabled", true).
 		Msg("gRPC server configured with compression support")
 
@@ -210,8 +210,10 @@ func createHTTPServers(
 		apiMux.Handle("/", http.FileServer(dashboardFS))
 	}
 
-	// Wrap with logging middleware for request tracing (using configured HTTP log level)
-	apiHandlerWithLogging := middleware.HTTPLoggerWithLevel(apiHandler.CORSMiddleware(apiMux), cfg.Logging.HTTPLogLevel)
+	// Wrap with security headers and logging middleware
+	// Security headers → CORS → Logging (innermost to outermost)
+	apiHandlerWithSecurity := middleware.SecurityHeaders(apiHandler.CORSMiddleware(apiMux))
+	apiHandlerWithLogging := middleware.HTTPLoggerWithLevel(apiHandlerWithSecurity, cfg.Logging.HTTPLogLevel)
 
 	apiServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Server.APIPort),

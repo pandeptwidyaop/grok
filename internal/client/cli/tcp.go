@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/pandeptwidyaop/grok/internal/client/dashboard"
 	"github.com/pandeptwidyaop/grok/internal/client/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
@@ -55,6 +56,29 @@ func runTCPTunnel(cmd *cobra.Command, args []string) error {
 		cfg.Auth.Token = tokenFlag
 	}
 
+	// Get dashboard flags
+	dashboardEnabled := cfg.Dashboard.Enabled
+	dashboardPort := cfg.Dashboard.Port
+
+	if noDashboard, _ := cmd.Flags().GetBool("no-dashboard"); noDashboard {
+		dashboardEnabled = false
+	} else if dashboardFlag, _ := cmd.Flags().GetBool("dashboard"); !dashboardFlag {
+		dashboardEnabled = false
+	}
+
+	if portFlag, _ := cmd.Flags().GetInt("dashboard-port"); portFlag != 4041 {
+		dashboardPort = portFlag
+	}
+
+	// Build dashboard config
+	dashboardCfg := dashboard.Config{}
+	if dashboardEnabled {
+		dashboardCfg.Port = dashboardPort
+		dashboardCfg.MaxRequests = cfg.Dashboard.MaxRequests
+		dashboardCfg.MaxBodySize = cfg.Dashboard.MaxBodySize
+		dashboardCfg.EnableSSE = true
+	}
+
 	// Create tunnel client
 	client, err := tunnel.NewClient(tunnel.ClientConfig{
 		ServerAddr:    cfg.Server.Addr,
@@ -67,6 +91,7 @@ func runTCPTunnel(cmd *cobra.Command, args []string) error {
 		SavedName:     tcpSavedName,
 		Protocol:      "tcp",
 		ReconnectCfg:  cfg.Reconnect,
+		DashboardCfg:  dashboardCfg,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create tunnel client: %w", err)

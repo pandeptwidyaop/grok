@@ -221,8 +221,6 @@ func TestProtect_POST_InvalidToken(t *testing.T) {
 // TestProtect_AllMethods tests CSRF protection for all HTTP methods
 func TestProtect_AllMethods(t *testing.T) {
 	csrf := NewCSRFProtection()
-	token, err := csrf.GenerateToken()
-	require.NoError(t, err)
 
 	tests := []struct {
 		name               string
@@ -257,6 +255,9 @@ func TestProtect_AllMethods(t *testing.T) {
 
 			req := httptest.NewRequest(tt.method, "/test", nil)
 			if tt.includeToken {
+				// Generate a fresh token for each test since tokens are single-use
+				token, err := csrf.GenerateToken()
+				require.NoError(t, err)
 				req.Header.Set("X-CSRF-Token", token)
 			}
 			rec := httptest.NewRecorder()
@@ -324,10 +325,11 @@ func TestConcurrentTokenOperations(t *testing.T) {
 		}()
 	}
 
-	// Concurrent token validation
-	validToken, _ := csrf.GenerateToken()
+	// Concurrent token validation (each goroutine needs its own token since tokens are single-use)
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
+			validToken, err := csrf.GenerateToken()
+			assert.NoError(t, err)
 			result := csrf.ValidateToken(validToken)
 			assert.True(t, result)
 			done <- true
@@ -365,6 +367,46 @@ func TestCSRFProtect_ExpiredToken(t *testing.T) {
 
 	// Should fail with expired token
 	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+// TestCSRFProtect_SingleUseToken tests that tokens can only be used once
+func TestCSRFProtect_SingleUseToken(t *testing.T) {
+	csrf := NewCSRFProtection()
+
+	// Generate token
+	token, err := csrf.GenerateToken()
+	require.NoError(t, err)
+
+	// First validation should succeed
+	result1 := csrf.ValidateToken(token)
+	assert.True(t, result1, "First validation should succeed")
+
+	// Second validation with same token should fail (token was deleted)
+	result2 := csrf.ValidateToken(token)
+	assert.False(t, result2, "Second validation should fail (single-use)")
+
+	// Test with HTTP handler
+	handler := csrf.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// Generate a new token for HTTP test
+	httpToken, err := csrf.GenerateToken()
+	require.NoError(t, err)
+
+	// First request should succeed
+	req1 := httptest.NewRequest("POST", "/test", nil)
+	req1.Header.Set("X-CSRF-Token", httpToken)
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	assert.Equal(t, http.StatusOK, rec1.Code, "First request should succeed")
+
+	// Second request with same token should fail
+	req2 := httptest.NewRequest("POST", "/test", nil)
+	req2.Header.Set("X-CSRF-Token", httpToken)
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	assert.Equal(t, http.StatusForbidden, rec2.Code, "Second request should fail (token already used)")
 }
 
 // BenchmarkGenerateToken benchmarks token generation

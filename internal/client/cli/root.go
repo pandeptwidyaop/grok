@@ -79,6 +79,11 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.grok/config.yaml)")
 	rootCmd.PersistentFlags().String("server", "", "server address (overrides config)")
 	rootCmd.PersistentFlags().String("token", "", "auth token (overrides config)")
+
+	// Dashboard flags
+	rootCmd.PersistentFlags().Bool("dashboard", true, "enable dashboard (default: true)")
+	rootCmd.PersistentFlags().Int("dashboard-port", 4041, "dashboard port (default: 4041)")
+	rootCmd.PersistentFlags().Bool("no-dashboard", false, "disable dashboard (shortcut for --dashboard=false)")
 }
 
 // GetConfig returns the loaded configuration.

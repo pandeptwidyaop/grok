@@ -187,7 +187,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Println("\nWaiting for tunnel connection...")
-	fmt.Println("Press Ctrl+C to stop\n")
+	fmt.Println("Press Ctrl+C to stop")
+	fmt.Println()
 
 	// Start tunnel (this blocks until error or shutdown)
 	tunnelErrCh := make(chan error, 1)

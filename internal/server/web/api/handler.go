@@ -385,13 +385,40 @@ func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) deleteToken(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	tokenID := r.PathValue("id")
 	if tokenID == "" {
 		respondError(w, http.StatusBadRequest, "Token ID is required")
 		return
 	}
 
-	if err := h.db.Delete(&models.AuthToken{}, "id = ?", tokenID).Error; err != nil {
+	// Verify token exists and get owner info
+	var token models.AuthToken
+	if err := h.db.Where("id = ?", tokenID).First(&token).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondError(w, http.StatusNotFound, "Token not found")
+			return
+		}
+		logger.ErrorEvent().Err(err).Str("token_id", tokenID).Msg("Failed to get token")
+		respondError(w, http.StatusInternalServerError, "Failed to get token")
+		return
+	}
+
+	// Authorization check: super admin can delete any token, others can only delete their own
+	isSuperAdmin := claims.Role == string(models.RoleSuperAdmin)
+	isOwner := token.UserID.String() == claims.UserID
+
+	if !isSuperAdmin && !isOwner {
+		respondError(w, http.StatusForbidden, "Access denied")
+		return
+	}
+
+	if err := h.db.Delete(&token).Error; err != nil {
 		logger.ErrorEvent().Err(err).Str("token_id", tokenID).Msg("Failed to delete token")
 		respondError(w, http.StatusInternalServerError, "Failed to delete token")
 		return
@@ -401,6 +428,12 @@ func (h *Handler) deleteToken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) toggleToken(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	tokenID := r.PathValue("id")
 	if tokenID == "" {
 		respondError(w, http.StatusBadRequest, "Token ID is required")
@@ -409,7 +442,21 @@ func (h *Handler) toggleToken(w http.ResponseWriter, r *http.Request) {
 
 	var token models.AuthToken
 	if err := h.db.First(&token, "id = ?", tokenID).Error; err != nil {
-		respondError(w, http.StatusNotFound, "Token not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondError(w, http.StatusNotFound, "Token not found")
+			return
+		}
+		logger.ErrorEvent().Err(err).Str("token_id", tokenID).Msg("Failed to get token")
+		respondError(w, http.StatusInternalServerError, "Failed to get token")
+		return
+	}
+
+	// Authorization check: super admin can toggle any token, others can only toggle their own
+	isSuperAdmin := claims.Role == string(models.RoleSuperAdmin)
+	isOwner := token.UserID.String() == claims.UserID
+
+	if !isSuperAdmin && !isOwner {
+		respondError(w, http.StatusForbidden, "Access denied")
 		return
 	}
 
@@ -497,6 +544,12 @@ func (h *Handler) listTunnels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getTunnel(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	tunnelID := r.PathValue("id")
 	if tunnelID == "" {
 		respondError(w, http.StatusBadRequest, "Tunnel ID is required")
@@ -505,8 +558,32 @@ func (h *Handler) getTunnel(w http.ResponseWriter, r *http.Request) {
 
 	var tun models.Tunnel
 	if err := h.db.First(&tun, "id = ?", tunnelID).Error; err != nil {
-		respondError(w, http.StatusNotFound, "Tunnel not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondError(w, http.StatusNotFound, "Tunnel not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "Failed to get tunnel")
 		return
+	}
+
+	// Authorization check: only tunnel owner, org admin, or super admin can view
+	isOwner := tun.UserID.String() == claims.UserID
+	isSuperAdmin := claims.Role == string(models.RoleSuperAdmin)
+	isOrgAdmin := claims.Role == string(models.RoleOrgAdmin)
+
+	// Super admin can view any tunnel
+	if !isSuperAdmin {
+		if isOrgAdmin {
+			// Org admin can only view tunnels in their organization
+			if tun.OrganizationID == nil || claims.OrganizationID == nil || tun.OrganizationID.String() != *claims.OrganizationID {
+				respondError(w, http.StatusForbidden, "Access denied")
+				return
+			}
+		} else if !isOwner {
+			// Regular users can only view their own tunnels
+			respondError(w, http.StatusForbidden, "Access denied")
+			return
+		}
 	}
 
 	respondJSON(w, http.StatusOK, tun)

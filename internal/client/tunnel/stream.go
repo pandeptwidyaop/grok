@@ -10,6 +10,7 @@ import (
 	"time"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/client/dashboard/events"
 	"github.com/pandeptwidyaop/grok/internal/client/proxy"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
@@ -151,9 +152,24 @@ func (c *Client) handleProxyRequest(ctx context.Context, req *tunnelv1.ProxyRequ
 	}
 }
 
-// handleHTTPRequest forwards HTTP request to local service.
+// handleHTTPRequest forwards HTTP request to local service using chunked streaming.
 func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpReq *tunnelv1.HTTPRequest) {
 	start := time.Now()
+
+	// Publish request started event to dashboard
+	if c.eventCollector != nil {
+		c.eventCollector.Publish(events.Event{
+			Type:      events.EventRequestStarted,
+			Timestamp: start,
+			Data: events.RequestStartedEvent{
+				RequestID:  requestID,
+				Method:     httpReq.Method,
+				Path:       httpReq.Path,
+				RemoteAddr: httpReq.RemoteAddr,
+				Protocol:   "http",
+			},
+		})
+	}
 
 	// Check if this is a WebSocket upgrade request
 	if proxy.IsWebSocketUpgrade(httpReq) {
@@ -161,8 +177,54 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 		return
 	}
 
-	// Forward regular HTTP request to local service
-	httpResp, err := c.httpForwarder.Forward(ctx, httpReq)
+	// Track total bytes sent for logging
+	totalBytesSent := 0
+	var statusCode int32
+
+	// Forward HTTP request to local service with chunked streaming
+	err := c.httpForwarder.ForwardChunked(ctx, httpReq, func(httpResp *tunnelv1.HTTPResponse, isLast bool) error {
+		// Capture status code from first chunk
+		if statusCode == 0 {
+			statusCode = httpResp.StatusCode
+		}
+
+		// Track bytes
+		totalBytesSent += len(httpResp.Body)
+
+		// Send chunk back to server
+		proxyResp := &tunnelv1.ProxyResponse{
+			RequestId:   requestID,
+			TunnelId:    c.tunnelID,
+			Payload:     &tunnelv1.ProxyResponse_Http{Http: httpResp},
+			EndOfStream: isLast,
+		}
+
+		msg := &tunnelv1.ProxyMessage{
+			Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
+		}
+
+		c.mu.Lock()
+		sendErr := c.stream.Send(msg)
+		c.mu.Unlock()
+
+		if sendErr != nil {
+			logger.ErrorEvent().
+				Err(sendErr).
+				Str("request_id", requestID).
+				Bool("is_last", isLast).
+				Msg("Failed to send response chunk")
+			return sendErr
+		}
+
+		logger.DebugEvent().
+			Str("request_id", requestID).
+			Int("chunk_size", len(httpResp.Body)).
+			Bool("is_last", isLast).
+			Msg("Sent response chunk to server")
+
+		return nil
+	})
+
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -172,28 +234,25 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 			Str("remote_addr", httpReq.RemoteAddr).
 			Msg("Failed to forward HTTP request")
 
+		// Publish error event to dashboard
+		if c.eventCollector != nil {
+			c.eventCollector.Publish(events.Event{
+				Type:      events.EventRequestCompleted,
+				Timestamp: time.Now(),
+				Data: events.RequestCompletedEvent{
+					RequestID:  requestID,
+					StatusCode: 500,
+					BytesIn:    int64(len(httpReq.Body)),
+					BytesOut:   0,
+					Duration:   time.Since(start),
+					Error:      err.Error(),
+				},
+			})
+		}
+
 		// Send error response
 		c.sendError(requestID, tunnelv1.ErrorCode_LOCAL_SERVICE_UNREACHABLE, err.Error())
 		return
-	}
-
-	// Send response back to server
-	proxyResp := &tunnelv1.ProxyResponse{
-		RequestId:   requestID,
-		TunnelId:    c.tunnelID,
-		Payload:     &tunnelv1.ProxyResponse_Http{Http: httpResp},
-		EndOfStream: true,
-	}
-
-	msg := &tunnelv1.ProxyMessage{
-		Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
-	}
-
-	if err := c.stream.Send(msg); err != nil {
-		logger.ErrorEvent().
-			Err(err).
-			Str("request_id", requestID).
-			Msg("Failed to send response")
 	}
 
 	// Log access with details
@@ -202,15 +261,46 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 		Str("method", httpReq.Method).
 		Str("path", httpReq.Path).
 		Str("remote_addr", httpReq.RemoteAddr).
-		Int32("status", httpResp.StatusCode).
 		Int("bytes_in", len(httpReq.Body)).
-		Int("bytes_out", len(httpResp.Body)).
+		Int("bytes_out", totalBytesSent).
 		Dur("duration", duration).
-		Msg("HTTP request processed")
+		Msg("HTTP request processed (chunked)")
+
+	// Publish request completed event to dashboard
+	if c.eventCollector != nil {
+		c.eventCollector.Publish(events.Event{
+			Type:      events.EventRequestCompleted,
+			Timestamp: time.Now(),
+			Data: events.RequestCompletedEvent{
+				RequestID:  requestID,
+				StatusCode: statusCode,
+				BytesIn:    int64(len(httpReq.Body)),
+				BytesOut:   int64(totalBytesSent),
+				Duration:   duration,
+			},
+		})
+	}
 }
 
 // handleTCPRequest forwards TCP data to local service.
 func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData *tunnelv1.TCPData) {
+	start := time.Now()
+
+	// Publish request started event to dashboard
+	if c.eventCollector != nil {
+		c.eventCollector.Publish(events.Event{
+			Type:      events.EventRequestStarted,
+			Timestamp: start,
+			Data: events.RequestStartedEvent{
+				RequestID:  requestID,
+				Method:     "TCP",
+				Path:       fmt.Sprintf("seq:%d", tcpData.Sequence),
+				RemoteAddr: "",
+				Protocol:   "tcp",
+			},
+		})
+	}
+
 	logger.DebugEvent().
 		Str("request_id", requestID).
 		Int("bytes", len(tcpData.Data)).
@@ -273,6 +363,22 @@ func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData
 			Str("request_id", requestID).
 			Msg("Failed to forward TCP data")
 
+		// Publish error event to dashboard
+		if c.eventCollector != nil {
+			c.eventCollector.Publish(events.Event{
+				Type:      events.EventRequestCompleted,
+				Timestamp: time.Now(),
+				Data: events.RequestCompletedEvent{
+					RequestID:  requestID,
+					StatusCode: 0, // TCP doesn't have status codes
+					BytesIn:    int64(len(tcpData.Data)),
+					BytesOut:   0,
+					Duration:   time.Since(start),
+					Error:      err.Error(),
+				},
+			})
+		}
+
 		// Send error response (close signal)
 		if err := sendResponse(&tunnelv1.TCPData{
 			Data:     []byte{},
@@ -281,6 +387,21 @@ func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData
 			logger.WarnEvent().Err(err).Msg("Failed to send error response")
 		}
 		return
+	}
+
+	// Publish request completed event to dashboard (success case)
+	if c.eventCollector != nil {
+		c.eventCollector.Publish(events.Event{
+			Type:      events.EventRequestCompleted,
+			Timestamp: time.Now(),
+			Data: events.RequestCompletedEvent{
+				RequestID:  requestID,
+				StatusCode: 200, // Indicate success for TCP
+				BytesIn:    int64(len(tcpData.Data)),
+				BytesOut:   int64(len(tcpData.Data)), // Assume same bytes forwarded
+				Duration:   time.Since(start),
+			},
+		})
 	}
 
 	// Start read loop for new connections

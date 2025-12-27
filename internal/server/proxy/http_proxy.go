@@ -27,6 +27,9 @@ import (
 const (
 	// DefaultRequestTimeout is the default timeout for proxied requests.
 	DefaultRequestTimeout = 30 * time.Second
+	// MaxRequestBodySize is the maximum allowed request body size (10MB).
+	// This prevents memory exhaustion from large request bodies.
+	MaxRequestBodySize = 10 * 1024 * 1024 // 10MB
 )
 
 // HTTPProxy handles HTTP reverse proxying.
@@ -86,8 +89,8 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Proxy regular HTTP request through tunnel
-	resp, reqBytes, err := p.proxyRequest(r, tun)
+	// Proxy regular HTTP request through tunnel (chunked streaming)
+	reqBytes, respBytes, statusCode, err := p.proxyRequestChunked(r, tun, w)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -99,9 +102,6 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
-
-	// Write response
-	respBytes := p.writeResponse(w, resp)
 
 	// Update tunnel statistics
 	tun.UpdateStats(reqBytes, respBytes)
@@ -118,7 +118,6 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Log request based on configured level
 	duration := time.Since(start)
-	statusCode := int(resp.StatusCode)
 
 	shouldLog := p.shouldLogHTTPRequest(statusCode)
 	if shouldLog {
@@ -141,11 +140,11 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Dur("duration", duration).
 			Int64("bytes_in", reqBytes).
 			Int64("bytes_out", respBytes).
-			Msg("Request proxied")
+			Msg("Request proxied (chunked)")
 	}
 
 	// Save request log to database (async)
-	go p.saveRequestLog(tun.ID, r, int(resp.StatusCode), duration, reqBytes, respBytes)
+	go p.saveRequestLog(tun.ID, r, statusCode, duration, reqBytes, respBytes)
 }
 
 // isWebSocketUpgrade checks if the request is a WebSocket upgrade request.
@@ -154,17 +153,23 @@ func isWebSocketUpgrade(r *http.Request) bool {
 		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
 }
 
-// Returns: (response, requestBytes, error).
-func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, int64, error) {
+// proxyRequestChunked proxies request and streams response chunks directly to client.
+// Returns: (requestBytes, responseBytes, statusCode, error).
+func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w http.ResponseWriter) (int64, int64, int, error) {
 	// Generate request ID
 	requestID := utils.GenerateRequestID()
 
-	// Read request body
-	body, err := io.ReadAll(r.Body)
+	// Read request body with size limit to prevent memory exhaustion
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBodySize+1)) // +1 to detect if limit exceeded
 	if err != nil {
-		return nil, 0, pkgerrors.Wrap(err, "failed to read request body")
+		return 0, 0, 0, pkgerrors.Wrap(err, "failed to read request body")
 	}
 	defer r.Body.Close()
+
+	// Check if request body exceeded the limit
+	if int64(len(body)) > MaxRequestBodySize {
+		return 0, 0, 0, pkgerrors.NewAppError("REQUEST_TOO_LARGE", "request body exceeds maximum size of 10MB", nil)
+	}
 
 	// Calculate request size (headers + body)
 	requestBytes := int64(len(body))
@@ -199,8 +204,8 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 		},
 	}
 
-	// Create response channel
-	responseCh := make(chan *tunnelv1.ProxyResponse, 1)
+	// Create response channel for receiving chunks
+	responseCh := make(chan *tunnelv1.ProxyResponse, 10) // Buffer for chunks
 	tun.ResponseMap.Store(requestID, responseCh)
 	defer tun.ResponseMap.Delete(requestID)
 
@@ -212,23 +217,84 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 	}
 
 	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
-		return nil, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
+		return 0, 0, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
 	}
 
-	// Wait for response with timeout
+	// Wait for response chunks and stream directly to client
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultRequestTimeout)
 	defer cancel()
 
-	select {
-	case proxyResp := <-responseCh:
-		// Got response
-		if httpResp := proxyResp.GetHttp(); httpResp != nil {
-			return httpResp, requestBytes, nil
-		}
-		return nil, 0, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
+	responseBytes := int64(0)
+	headersWritten := false
+	statusCode := 0
 
-	case <-ctx.Done():
-		return nil, 0, pkgerrors.ErrRequestTimeout
+	for {
+		select {
+		case proxyResp := <-responseCh:
+			if proxyResp == nil {
+				return requestBytes, responseBytes, statusCode, pkgerrors.NewAppError("INVALID_RESPONSE", "received nil response", nil)
+			}
+
+			httpResp := proxyResp.GetHttp()
+			if httpResp == nil {
+				return requestBytes, responseBytes, statusCode, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
+			}
+
+			// Write headers on first chunk
+			if !headersWritten {
+				statusCode = int(httpResp.StatusCode)
+
+				// Write response headers
+				for key, headerVals := range httpResp.Headers {
+					for _, val := range headerVals.Values {
+						w.Header().Add(key, val)
+						responseBytes += int64(len(key) + len(val) + 4)
+					}
+				}
+
+				// Write status code
+				w.WriteHeader(statusCode)
+				responseBytes += 20 // Status line overhead
+
+				headersWritten = true
+			}
+
+			// Write chunk body
+			if len(httpResp.Body) > 0 {
+				n, err := w.Write(httpResp.Body)
+				if err != nil {
+					logger.ErrorEvent().
+						Err(err).
+						Str("request_id", requestID).
+						Msg("Failed to write response chunk to client")
+					return requestBytes, responseBytes, statusCode, pkgerrors.Wrap(err, "failed to write response chunk")
+				}
+				responseBytes += int64(n)
+
+				logger.DebugEvent().
+					Str("request_id", requestID).
+					Int("chunk_size", n).
+					Bool("end_of_stream", proxyResp.EndOfStream).
+					Msg("Wrote response chunk to client")
+			}
+
+			// Flush to ensure chunk is sent immediately
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+
+			// Check if this is the last chunk
+			if proxyResp.EndOfStream {
+				logger.DebugEvent().
+					Str("request_id", requestID).
+					Int64("total_bytes", responseBytes).
+					Msg("Completed streaming chunked response")
+				return requestBytes, responseBytes, statusCode, nil
+			}
+
+		case <-ctx.Done():
+			return requestBytes, responseBytes, statusCode, pkgerrors.ErrRequestTimeout
+		}
 	}
 }
 

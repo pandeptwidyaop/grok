@@ -824,9 +824,12 @@ func (wh *WebhookHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
-		respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
-		return
+	// Super admin can view stats for any app, others must own the organization
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
 	}
 
 	// Calculate stats

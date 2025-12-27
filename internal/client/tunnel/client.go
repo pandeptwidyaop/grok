@@ -20,6 +20,8 @@ import (
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/internal/client/config"
+	"github.com/pandeptwidyaop/grok/internal/client/dashboard"
+	"github.com/pandeptwidyaop/grok/internal/client/dashboard/events"
 	"github.com/pandeptwidyaop/grok/internal/client/proxy"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 )
@@ -49,22 +51,25 @@ type ClientConfig struct {
 	SavedName     string // Saved tunnel name (optional, for persistent tunnels)
 	WebhookAppID  string // Webhook app ID (optional, for webhook tunnels)
 	ReconnectCfg  config.ReconnectConfig
+	DashboardCfg  dashboard.Config // Dashboard configuration
 }
 
 // Client represents a tunnel client.
 type Client struct {
-	cfg           ClientConfig
-	conn          *grpc.ClientConn
-	tunnelSvc     tunnelv1.TunnelServiceClient
-	tunnelID      string
-	publicURL     string
-	stream        tunnelv1.TunnelService_ProxyStreamClient
-	httpForwarder *proxy.HTTPForwarder
-	tcpForwarder  *proxy.TCPForwarder
-	wsConnections map[string]chan []byte // WebSocket connections by request ID
-	mu            sync.RWMutex
-	connected     bool
-	stopCh        chan struct{}
+	cfg             ClientConfig
+	conn            *grpc.ClientConn
+	tunnelSvc       tunnelv1.TunnelServiceClient
+	tunnelID        string
+	publicURL       string
+	stream          tunnelv1.TunnelService_ProxyStreamClient
+	httpForwarder   *proxy.HTTPForwarder
+	tcpForwarder    *proxy.TCPForwarder
+	wsConnections   map[string]chan []byte // WebSocket connections by request ID
+	dashboardServer *dashboard.Server      // Dashboard HTTP server
+	eventCollector  *events.EventCollector // Event collector for dashboard
+	mu              sync.RWMutex
+	connected       bool
+	stopCh          chan struct{}
 }
 
 // NewClient creates a new tunnel client.
@@ -80,12 +85,24 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		tcpForwarder = proxy.NewTCPForwarder(cfg.LocalAddr)
 	}
 
-	return &Client{
+	client := &Client{
 		cfg:           cfg,
 		httpForwarder: httpForwarder,
 		tcpForwarder:  tcpForwarder,
 		stopCh:        make(chan struct{}),
-	}, nil
+	}
+
+	// Initialize dashboard if port is configured
+	if cfg.DashboardCfg.Port > 0 {
+		client.dashboardServer = dashboard.NewServer(cfg.DashboardCfg)
+		client.eventCollector = client.dashboardServer.GetEventCollector()
+
+		logger.InfoEvent().
+			Int("port", cfg.DashboardCfg.Port).
+			Msg("Dashboard enabled")
+	}
+
+	return client, nil
 }
 
 // Start starts the tunnel client.
@@ -94,6 +111,29 @@ func (c *Client) Start(ctx context.Context) error {
 		Str("server", c.cfg.ServerAddr).
 		Str("protocol", c.cfg.Protocol).
 		Msg("Starting tunnel client")
+
+	// Start dashboard server if enabled
+	if c.dashboardServer != nil {
+		dashboardCtx, dashboardCancel := context.WithCancel(ctx)
+		defer dashboardCancel()
+
+		go func() {
+			if err := c.dashboardServer.Start(dashboardCtx); err != nil {
+				logger.ErrorEvent().Err(err).Msg("Dashboard server error")
+			}
+		}()
+
+		// Wait briefly for dashboard to start
+		time.Sleep(100 * time.Millisecond)
+
+		fmt.Printf("\n")
+		fmt.Printf("╔═════════════════════════════════════════════════════════╗\n")
+		fmt.Printf("║              Dashboard Available                        ║\n")
+		fmt.Printf("╠═════════════════════════════════════════════════════════╣\n")
+		fmt.Printf("║  Dashboard:  http://127.0.0.1:%-26d║\n", c.dashboardServer.Port())
+		fmt.Printf("╚═════════════════════════════════════════════════════════╝\n")
+		fmt.Printf("\n")
+	}
 
 	// Start connection loop with reconnection
 	if c.cfg.ReconnectCfg.Enabled {
@@ -237,6 +277,20 @@ func (c *Client) connect(ctx context.Context) error {
 		Str("public_url", c.publicURL).
 		Msg("Tunnel established")
 
+	// Publish connection established event to dashboard
+	if c.eventCollector != nil {
+		c.eventCollector.Publish(events.Event{
+			Type:      events.EventConnectionEstablished,
+			Timestamp: time.Now(),
+			Data: events.ConnectionEvent{
+				TunnelID:  c.tunnelID,
+				PublicURL: c.publicURL,
+				LocalAddr: c.cfg.LocalAddr,
+				Protocol:  c.cfg.Protocol,
+			},
+		})
+	}
+
 	fmt.Printf("\n")
 	fmt.Printf("╔═════════════════════════════════════════════════════════╗\n")
 	fmt.Printf("║                 Tunnel Active                           ║\n")
@@ -257,8 +311,30 @@ func (c *Client) connect(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		logger.InfoEvent().Msg("Context canceled, closing tunnel")
+
+		// Publish connection lost event
+		if c.eventCollector != nil {
+			c.eventCollector.Publish(events.Event{
+				Type:      events.EventConnectionLost,
+				Timestamp: time.Now(),
+				Data: events.ConnectionEvent{
+					TunnelID: c.tunnelID,
+				},
+			})
+		}
 	case <-connLostCh:
 		logger.WarnEvent().Msg("Connection lost, will reconnect")
+
+		// Publish connection lost event
+		if c.eventCollector != nil {
+			c.eventCollector.Publish(events.Event{
+				Type:      events.EventConnectionLost,
+				Timestamp: time.Now(),
+				Data: events.ConnectionEvent{
+					TunnelID: c.tunnelID,
+				},
+			})
+		}
 	}
 
 	c.mu.Lock()
