@@ -2,8 +2,10 @@ package errorpages
 
 import (
 	"bytes"
+	"encoding/json"
 	"html/template"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/pandeptwidyaop/grok/pkg/logger"
@@ -49,9 +51,66 @@ func initTemplates() {
 	})
 }
 
+// acceptsJSON checks if the client accepts JSON responses.
+func acceptsJSON(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	// Check if client explicitly accepts JSON
+	return strings.Contains(accept, "application/json") || strings.Contains(accept, "*/json")
+}
+
+// renderJSON renders a JSON error response.
+func renderJSON(w http.ResponseWriter, statusCode int, message string, details string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(statusCode)
+
+	response := map[string]interface{}{
+		"error":   message,
+		"status":  statusCode,
+		"message": http.StatusText(statusCode),
+	}
+
+	if details != "" {
+		response["details"] = details
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Msg("Failed to encode JSON error response")
+	}
+}
+
 // RenderErrorPage renders an error page with optional data.
-func RenderErrorPage(w http.ResponseWriter, statusCode int, data *ErrorPageData) {
-	// Initialize templates on first call
+// Supports content negotiation: returns JSON if Accept header contains application/json,
+// otherwise returns HTML.
+func RenderErrorPage(w http.ResponseWriter, r *http.Request, statusCode int, data *ErrorPageData) {
+	// Ensure data is not nil
+	if data == nil {
+		data = &ErrorPageData{}
+	}
+
+	// Check if client accepts JSON
+	if acceptsJSON(r) {
+		var message, details string
+		switch statusCode {
+		case http.StatusNotFound:
+			message = "Tunnel not found"
+			if data.Subdomain != "" {
+				details = "Subdomain: " + data.Subdomain
+			}
+		case http.StatusBadRequest:
+			message = "Invalid webhook URL"
+			if data.URL != "" {
+				details = "URL: " + data.URL
+			}
+		default:
+			message = http.StatusText(statusCode)
+		}
+		renderJSON(w, statusCode, message, details)
+		return
+	}
+
+	// Initialize templates on first call for HTML responses
 	initTemplates()
 
 	// Map status codes to template files
@@ -80,11 +139,6 @@ func RenderErrorPage(w http.ResponseWriter, statusCode int, data *ErrorPageData)
 		return
 	}
 
-	// Ensure data is not nil
-	if data == nil {
-		data = &ErrorPageData{}
-	}
-
 	// Render template to buffer (avoid partial writes on error)
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -107,15 +161,15 @@ func RenderErrorPage(w http.ResponseWriter, statusCode int, data *ErrorPageData)
 }
 
 // TunnelNotFound renders 404 error page for missing tunnels.
-func TunnelNotFound(w http.ResponseWriter, subdomain string) {
-	RenderErrorPage(w, http.StatusNotFound, &ErrorPageData{
+// Supports content negotiation: returns JSON for API clients, HTML for browsers.
+func TunnelNotFound(w http.ResponseWriter, r *http.Request, subdomain string) {
+	RenderErrorPage(w, r, http.StatusNotFound, &ErrorPageData{
 		Subdomain: subdomain,
 	})
 }
 
-// InvalidWebhookURL renders 400 error page for invalid webhook URLs.
+// InvalidWebhookURL renders 400 error for invalid webhook URLs.
+// Always returns JSON since webhooks are API-to-API communication.
 func InvalidWebhookURL(w http.ResponseWriter, url string) {
-	RenderErrorPage(w, http.StatusBadRequest, &ErrorPageData{
-		URL: url,
-	})
+	renderJSON(w, http.StatusBadRequest, "Invalid webhook URL", "URL: "+url)
 }

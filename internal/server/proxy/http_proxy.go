@@ -70,7 +70,7 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if err == pkgerrors.ErrTunnelNotFound {
 			subdomain := strings.Split(r.Host, ".")[0]
-			errorpages.TunnelNotFound(w, subdomain)
+			errorpages.TunnelNotFound(w, r, subdomain)
 		} else {
 			http.Error(w, "Bad gateway", http.StatusBadGateway)
 		}

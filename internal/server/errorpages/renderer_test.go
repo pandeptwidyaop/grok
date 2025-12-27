@@ -1,16 +1,19 @@
 package errorpages
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestRenderErrorPage_404(t *testing.T) {
+func TestRenderErrorPage_404_HTML(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept", "text/html")
 	w := httptest.NewRecorder()
 
-	RenderErrorPage(w, http.StatusNotFound, &ErrorPageData{
+	RenderErrorPage(w, req, http.StatusNotFound, &ErrorPageData{
 		Subdomain: "test-tunnel",
 	})
 
@@ -38,10 +41,49 @@ func TestRenderErrorPage_404(t *testing.T) {
 	}
 }
 
-func TestRenderErrorPage_400(t *testing.T) {
+func TestRenderErrorPage_404_JSON(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept", "application/json")
 	w := httptest.NewRecorder()
 
-	RenderErrorPage(w, http.StatusBadRequest, &ErrorPageData{
+	RenderErrorPage(w, req, http.StatusNotFound, &ErrorPageData{
+		Subdomain: "test-tunnel",
+	})
+
+	// Verify status code
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+
+	// Verify content type
+	contentType := w.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("Expected JSON content type, got %s", contentType)
+	}
+
+	// Verify JSON response
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse JSON response: %v", err)
+	}
+
+	if response["error"] != "Tunnel not found" {
+		t.Errorf("Expected error 'Tunnel not found', got %v", response["error"])
+	}
+	if response["status"] != float64(404) {
+		t.Errorf("Expected status 404, got %v", response["status"])
+	}
+	if !strings.Contains(response["details"].(string), "test-tunnel") {
+		t.Error("Expected details to contain subdomain")
+	}
+}
+
+func TestRenderErrorPage_400_JSON(t *testing.T) {
+	req := httptest.NewRequest("POST", "/webhook", nil)
+	req.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+
+	RenderErrorPage(w, req, http.StatusBadRequest, &ErrorPageData{
 		URL: "invalid.webhook.url/path",
 	})
 
@@ -50,24 +92,29 @@ func TestRenderErrorPage_400(t *testing.T) {
 		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 
-	// Verify body contains expected content
-	body := w.Body.String()
-	if !strings.Contains(body, "400") {
-		t.Error("Expected body to contain '400'")
+	// Verify content type
+	contentType := w.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("Expected JSON content type, got %s", contentType)
 	}
-	if !strings.Contains(body, "invalid.webhook.url/path") {
-		t.Error("Expected body to contain URL")
+
+	// Verify JSON response
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse JSON response: %v", err)
 	}
-	if !strings.Contains(body, "Invalid Webhook URL") {
-		t.Error("Expected body to contain 'Invalid Webhook URL'")
+
+	if response["error"] != "Invalid webhook URL" {
+		t.Errorf("Expected error 'Invalid webhook URL', got %v", response["error"])
 	}
 }
 
 func TestRenderErrorPage_NilData(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
 
 	// Should not panic with nil data
-	RenderErrorPage(w, http.StatusNotFound, nil)
+	RenderErrorPage(w, req, http.StatusNotFound, nil)
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("Expected status 404, got %d", w.Code)
@@ -81,10 +128,11 @@ func TestRenderErrorPage_NilData(t *testing.T) {
 }
 
 func TestRenderErrorPage_UnsupportedStatus(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
 	w := httptest.NewRecorder()
 
 	// Should fallback to plain text for unmapped status codes
-	RenderErrorPage(w, http.StatusInternalServerError, nil)
+	RenderErrorPage(w, req, http.StatusInternalServerError, nil)
 
 	if w.Code != http.StatusInternalServerError {
 		t.Errorf("Expected status 500, got %d", w.Code)
@@ -97,13 +145,21 @@ func TestRenderErrorPage_UnsupportedStatus(t *testing.T) {
 	}
 }
 
-func TestTunnelNotFound(t *testing.T) {
+func TestTunnelNotFound_HTML(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept", "text/html")
 	w := httptest.NewRecorder()
 
-	TunnelNotFound(w, "my-app")
+	TunnelNotFound(w, req, "my-app")
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+
+	// Should be HTML
+	contentType := w.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "text/html") {
+		t.Errorf("Expected HTML content type, got %s", contentType)
 	}
 
 	body := w.Body.String()
@@ -112,7 +168,34 @@ func TestTunnelNotFound(t *testing.T) {
 	}
 }
 
-func TestInvalidWebhookURL(t *testing.T) {
+func TestTunnelNotFound_JSON(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept", "application/json")
+	w := httptest.NewRecorder()
+
+	TunnelNotFound(w, req, "my-app")
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Expected status 404, got %d", w.Code)
+	}
+
+	// Should be JSON
+	contentType := w.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("Expected JSON content type, got %s", contentType)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse JSON response: %v", err)
+	}
+
+	if !strings.Contains(response["details"].(string), "my-app") {
+		t.Error("Expected details to contain subdomain")
+	}
+}
+
+func TestInvalidWebhookURL_AlwaysJSON(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	InvalidWebhookURL(w, "webhook.example.com/bad/path")
@@ -121,20 +204,35 @@ func TestInvalidWebhookURL(t *testing.T) {
 		t.Errorf("Expected status 400, got %d", w.Code)
 	}
 
-	body := w.Body.String()
-	if !strings.Contains(body, "webhook.example.com/bad/path") {
-		t.Error("Expected body to contain URL")
+	// Should always be JSON for webhooks
+	contentType := w.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("Expected JSON content type, got %s", contentType)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("Failed to parse JSON response: %v", err)
+	}
+
+	if response["error"] != "Invalid webhook URL" {
+		t.Errorf("Expected error 'Invalid webhook URL', got %v", response["error"])
+	}
+	if !strings.Contains(response["details"].(string), "webhook.example.com/bad/path") {
+		t.Error("Expected details to contain URL")
 	}
 }
 
 func TestTemplateCaching(t *testing.T) {
+	req := httptest.NewRequest("GET", "/test", nil)
+
 	// First render initializes cache
 	w1 := httptest.NewRecorder()
-	RenderErrorPage(w1, http.StatusNotFound, nil)
+	RenderErrorPage(w1, req, http.StatusNotFound, nil)
 
 	// Second render should use cached template
 	w2 := httptest.NewRecorder()
-	RenderErrorPage(w2, http.StatusNotFound, nil)
+	RenderErrorPage(w2, req, http.StatusNotFound, nil)
 
 	// Both should succeed
 	if w1.Code != http.StatusNotFound || w2.Code != http.StatusNotFound {
@@ -151,14 +249,59 @@ func TestTemplateCaching(t *testing.T) {
 	}
 }
 
-func BenchmarkRenderErrorPage(b *testing.B) {
+func TestAcceptsJSON(t *testing.T) {
+	tests := []struct {
+		name   string
+		accept string
+		want   bool
+	}{
+		{"JSON explicit", "application/json", true},
+		{"JSON with charset", "application/json; charset=utf-8", true},
+		{"HTML", "text/html", false},
+		{"Any", "*/*", false},
+		{"Empty", "", false},
+		{"Multiple with JSON", "text/html, application/json", true},
+		{"Multiple with spaces", "text/html , application/json , */*", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/test", nil)
+			if tt.accept != "" {
+				req.Header.Set("Accept", tt.accept)
+			}
+			got := acceptsJSON(req)
+			if got != tt.want {
+				t.Errorf("acceptsJSON() = %v, want %v for Accept: %s", got, tt.want, tt.accept)
+			}
+		})
+	}
+}
+
+func BenchmarkRenderErrorPage_HTML(b *testing.B) {
 	// Initialize templates once
 	initTemplates()
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept", "text/html")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
-		RenderErrorPage(w, http.StatusNotFound, &ErrorPageData{
+		RenderErrorPage(w, req, http.StatusNotFound, &ErrorPageData{
+			Subdomain: "benchmark-tunnel",
+		})
+	}
+}
+
+func BenchmarkRenderErrorPage_JSON(b *testing.B) {
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept", "application/json")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		w := httptest.NewRecorder()
+		RenderErrorPage(w, req, http.StatusNotFound, &ErrorPageData{
 			Subdomain: "benchmark-tunnel",
 		})
 	}
