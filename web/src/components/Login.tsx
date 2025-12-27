@@ -45,8 +45,14 @@ export default function Login() {
         return;
       }
 
-      // Successful login
+      // Successful login - navigate to dashboard first
       navigate('/');
+
+      // Refresh after navigation to ensure clean state
+      // Use setTimeout to allow navigation to complete first
+      setTimeout(() => {
+        window.location.reload();
+      }, 100);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

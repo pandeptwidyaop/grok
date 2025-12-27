@@ -598,24 +598,26 @@ func (h *Handler) deleteTunnel(w http.ResponseWriter, r *http.Request) {
 
 	// Check permissions: only tunnel owner, org admin, or super admin can delete
 	isOwner := tun.UserID.String() == claims.UserID
-	isOrgAdmin := claims.Role == string(models.RoleOrgAdmin) || claims.Role == string(models.RoleSuperAdmin)
+	isSuperAdmin := claims.Role == string(models.RoleSuperAdmin)
+	isOrgAdmin := claims.Role == string(models.RoleOrgAdmin)
 
-	// Check org membership if tunnel belongs to an org
-	sameOrg := true
-	if tun.OrganizationID != nil {
-		if claims.OrganizationID == nil {
-			sameOrg = false
-		} else {
-			sameOrg = tun.OrganizationID.String() == *claims.OrganizationID
+	// Super admin can delete any tunnel
+	if isSuperAdmin {
+		// Super admin has full access, skip other checks
+	} else if isOrgAdmin {
+		// Org admin can only delete tunnels in their organization
+		if tun.OrganizationID == nil || claims.OrganizationID == nil {
+			respondError(w, http.StatusForbidden, "Access denied")
+			return
 		}
-	}
-
-	if !isOwner && !isOrgAdmin {
-		respondError(w, http.StatusForbidden, "Access denied")
-		return
-	}
-
-	if !sameOrg {
+		if tun.OrganizationID.String() != *claims.OrganizationID {
+			respondError(w, http.StatusForbidden, "Access denied")
+			return
+		}
+	} else if isOwner {
+		// Owner can delete their own tunnel
+	} else {
+		// Not owner, not admin, not super admin
 		respondError(w, http.StatusForbidden, "Access denied")
 		return
 	}

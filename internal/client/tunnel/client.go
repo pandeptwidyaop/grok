@@ -52,17 +52,18 @@ type ClientConfig struct {
 
 // Client represents a tunnel client.
 type Client struct {
-	cfg           ClientConfig
-	conn          *grpc.ClientConn
-	tunnelSvc     tunnelv1.TunnelServiceClient
-	tunnelID      string
-	publicURL     string
-	stream        tunnelv1.TunnelService_ProxyStreamClient
-	httpForwarder *proxy.HTTPForwarder
-	tcpForwarder  *proxy.TCPForwarder
-	mu            sync.RWMutex
-	connected     bool
-	stopCh        chan struct{}
+	cfg            ClientConfig
+	conn           *grpc.ClientConn
+	tunnelSvc      tunnelv1.TunnelServiceClient
+	tunnelID       string
+	publicURL      string
+	stream         tunnelv1.TunnelService_ProxyStreamClient
+	httpForwarder  *proxy.HTTPForwarder
+	tcpForwarder   *proxy.TCPForwarder
+	wsConnections  map[string]chan []byte // WebSocket connections by request ID
+	mu             sync.RWMutex
+	connected      bool
+	stopCh         chan struct{}
 }
 
 // NewClient creates a new tunnel client.
