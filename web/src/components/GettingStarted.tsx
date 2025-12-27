@@ -11,6 +11,9 @@ import {
   Button,
   Alert,
   Stack,
+  ToggleButtonGroup,
+  ToggleButton,
+  Tooltip,
 } from '@mui/material';
 import {
   ChevronDown,
@@ -32,6 +35,8 @@ interface OSInfo {
   filename: string;
 }
 
+type ReleaseChannel = 'stable' | 'beta' | 'alpha';
+
 function GettingStarted() {
   const [osInfo, setOsInfo] = useState<OSInfo>({
     os: 'unknown',
@@ -40,6 +45,7 @@ function GettingStarted() {
     filename: '',
   });
   const [copiedSteps, setCopiedSteps] = useState<{ [key: string]: boolean }>({});
+  const [releaseChannel, setReleaseChannel] = useState<ReleaseChannel>('stable');
 
   // Server configuration
   const serverDomain = window.location.hostname;
@@ -51,6 +57,10 @@ function GettingStarted() {
   useEffect(() => {
     detectOS();
   }, []);
+
+  useEffect(() => {
+    updateDownloadURL();
+  }, [releaseChannel, osInfo.os, osInfo.arch]);
 
   const detectOS = () => {
     const userAgent = window.navigator.userAgent.toLowerCase();
@@ -81,9 +91,28 @@ function GettingStarted() {
       ? `grok-${os}-${arch}.exe`
       : `grok-${os}-${arch}`;
 
-    const downloadUrl = `https://github.com/pandeptwidyaop/grok/releases/latest/download/${filename}`;
+    setOsInfo({ os, arch, downloadUrl: '', filename });
+  };
 
-    setOsInfo({ os, arch, downloadUrl, filename });
+  const updateDownloadURL = () => {
+    if (osInfo.os === 'unknown') return;
+
+    const filename = osInfo.os === 'windows'
+      ? `grok-${osInfo.os}-${osInfo.arch}.exe`
+      : `grok-${osInfo.os}-${osInfo.arch}`;
+
+    // Build download URL based on release channel
+    let downloadUrl: string;
+    if (releaseChannel === 'stable') {
+      // Use latest stable release
+      downloadUrl = `https://github.com/pandeptwidyaop/grok/releases/latest/download/${filename}`;
+    } else {
+      // Use tag for pre-releases (beta/alpha)
+      // Format: v1.0.0-alpha.1, v1.0.0-beta.1
+      downloadUrl = `https://github.com/pandeptwidyaop/grok/releases/download/latest-${releaseChannel}/${filename}`;
+    }
+
+    setOsInfo(prev => ({ ...prev, downloadUrl, filename }));
   };
 
   const handleCopy = (text: string, step: string) => {
@@ -142,25 +171,69 @@ function GettingStarted() {
           </Alert>
 
           <Typography variant="body2" color="text.secondary">
-            Download the Grok client binary for your operating system:
+            Select release channel and download the Grok client binary:
           </Typography>
+
+          {/* Release Channel Selector */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              Release Channel
+            </Typography>
+            <ToggleButtonGroup
+              value={releaseChannel}
+              exclusive
+              onChange={(_, newChannel) => newChannel && setReleaseChannel(newChannel)}
+              size="small"
+              sx={{ mb: 2 }}
+            >
+              <Tooltip title="Stable production-ready releases">
+                <ToggleButton value="stable" sx={{ px: 3 }}>
+                  <CheckCircle2 size={16} style={{ marginRight: 6 }} />
+                  Stable
+                </ToggleButton>
+              </Tooltip>
+              <Tooltip title="Beta testing releases (may have bugs)">
+                <ToggleButton value="beta" sx={{ px: 3 }}>
+                  Beta
+                </ToggleButton>
+              </Tooltip>
+              <Tooltip title="Alpha experimental releases (unstable)">
+                <ToggleButton value="alpha" sx={{ px: 3 }}>
+                  Alpha
+                </ToggleButton>
+              </Tooltip>
+            </ToggleButtonGroup>
+
+            {releaseChannel !== 'stable' && (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                <Typography variant="body2" fontWeight={600}>
+                  ⚠️ {releaseChannel === 'alpha' ? 'Alpha' : 'Beta'} Release Channel
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {releaseChannel === 'alpha'
+                    ? 'Alpha releases are experimental and may be unstable. Use for testing only.'
+                    : 'Beta releases are feature-complete but may contain bugs. Suitable for testing.'}
+                </Typography>
+              </Alert>
+            )}
+          </Box>
 
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
             <Button
               variant="contained"
               startIcon={<Download size={18} />}
               href={osInfo.downloadUrl}
-              disabled={osInfo.os === 'unknown'}
-              sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5568d3' } }}
+              disabled={osInfo.os === 'unknown' || !osInfo.downloadUrl}
+              sx={{ bgcolor: releaseChannel !== 'stable' ? '#f59e0b' : '#667eea', '&:hover': { bgcolor: releaseChannel !== 'stable' ? '#d97706' : '#5568d3' } }}
             >
-              Download for {osInfo.os} ({osInfo.arch})
+              Download {releaseChannel !== 'stable' ? releaseChannel.toUpperCase() : ''} for {osInfo.os} ({osInfo.arch})
             </Button>
             <Button
               variant="outlined"
-              href="https://github.com/pandeptwidyaop/grok/releases/latest"
+              href={`https://github.com/pandeptwidyaop/grok/releases${releaseChannel === 'stable' ? '/latest' : ''}`}
               target="_blank"
             >
-              View All Releases
+              View All {releaseChannel !== 'stable' ? releaseChannel.charAt(0).toUpperCase() + releaseChannel.slice(1) : ''} Releases
             </Button>
           </Box>
 
