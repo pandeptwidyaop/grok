@@ -46,6 +46,7 @@ function GettingStarted() {
   const grpcPort = '4443'; // gRPC port for client connections
   const apiPort = window.location.port || '4040'; // API port for dashboard
   const serverAddress = `${serverDomain}:${grpcPort}`;
+  const isUsingTLS = window.location.protocol === 'https:';
 
   useEffect(() => {
     detectOS();
@@ -215,13 +216,29 @@ function GettingStarted() {
             Set your Grok server host and register your authentication token:
           </Typography>
 
+          {isUsingTLS && (
+            <Alert severity="success" icon={<CheckCircle2 size={20} />}>
+              <Typography variant="body2" fontWeight={600}>
+                🔒 TLS Enabled Server
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                This server is using TLS/HTTPS. The <code>--tls</code> flag will be used for secure connections.
+              </Typography>
+            </Alert>
+          )}
+
           <Typography variant="subtitle2" sx={{ mt: 2 }}>
-            Step 1: Set Server Host
+            Step 1: Set Server Host {isUsingTLS && '(with TLS)'}
           </Typography>
           <CodeBlock
-            code={`grok config set-server ${serverAddress}`}
+            code={`grok config set-server ${serverAddress}${isUsingTLS ? ' --tls' : ''}`}
             step="config-server"
           />
+          {isUsingTLS && (
+            <Typography variant="caption" color="text.secondary">
+              The <code>--tls</code> flag enables secure TLS connection with system CA pool
+            </Typography>
+          )}
 
           <Typography variant="subtitle2" sx={{ mt: 2 }}>
             Step 2: Set Authentication Token
@@ -248,7 +265,7 @@ cat ~/.grok/config.yaml`}
             Alternative: You can also use CLI flags for one-time use:
           </Typography>
           <CodeBlock
-            code={`grok http 3000 --host ${serverAddress} --token your_token_here`}
+            code={`grok http 3000 --host ${serverAddress}${isUsingTLS ? ' --tls' : ''} --token your_token_here`}
             step="config-cli"
           />
         </Stack>
@@ -425,7 +442,7 @@ cat ~/.grok/config.yaml`}
 
         {/* Server Information */}
         <Alert
-          severity="info"
+          severity={isUsingTLS ? "success" : "info"}
           icon={<Server size={20} />}
           sx={{ mb: 3 }}
         >
@@ -442,9 +459,12 @@ cat ~/.grok/config.yaml`}
             <Typography variant="body2" component="div">
               <strong>API Port:</strong> <code>{apiPort}</code> (Dashboard/API)
             </Typography>
+            <Typography variant="body2" component="div">
+              <strong>TLS/HTTPS:</strong> <code>{isUsingTLS ? '✓ Enabled (Secure)' : '✗ Disabled (Insecure)'}</code>
+            </Typography>
             <Typography variant="body2" component="div" sx={{ mt: 1 }}>
               <strong>Server Address:</strong> <code style={{
-                backgroundColor: '#667eea',
+                backgroundColor: isUsingTLS ? '#10b981' : '#667eea',
                 color: 'white',
                 padding: '2px 8px',
                 borderRadius: '4px'
