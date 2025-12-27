@@ -114,11 +114,28 @@ func (rs *RequestStore) GetRecent(limit int) []*RequestRecord {
 	for i, rec := range records {
 		if rec != nil {
 			rec.mu.RLock()
-			recCopy := *rec
+			// Manually copy fields to avoid copying mutex
+			recCopy := &RequestRecord{
+				ID:             rec.ID,
+				Method:         rec.Method,
+				Path:           rec.Path,
+				RemoteAddr:     rec.RemoteAddr,
+				Protocol:       rec.Protocol,
+				StatusCode:     rec.StatusCode,
+				BytesIn:        rec.BytesIn,
+				BytesOut:       rec.BytesOut,
+				Duration:       rec.Duration,
+				DurationMS:     rec.DurationMS,
+				StartTime:      rec.StartTime,
+				EndTime:        rec.EndTime,
+				Error:          rec.Error,
+				Completed:      rec.Completed,
+				RequestHeaders: rec.RequestHeaders,
+				RequestBody:    rec.RequestBody,
+				ResponseBody:   rec.ResponseBody,
+			}
 			rec.mu.RUnlock()
-			// Clear the mutex in the copy (it shouldn't be copied)
-			recCopy.mu = sync.RWMutex{}
-			copies[i] = &recCopy
+			copies[i] = recCopy
 		}
 	}
 	return copies
@@ -132,11 +149,28 @@ func (rs *RequestStore) GetAll() []*RequestRecord {
 	for i, rec := range records {
 		if rec != nil {
 			rec.mu.RLock()
-			recCopy := *rec
+			// Manually copy fields to avoid copying mutex
+			recCopy := &RequestRecord{
+				ID:             rec.ID,
+				Method:         rec.Method,
+				Path:           rec.Path,
+				RemoteAddr:     rec.RemoteAddr,
+				Protocol:       rec.Protocol,
+				StatusCode:     rec.StatusCode,
+				BytesIn:        rec.BytesIn,
+				BytesOut:       rec.BytesOut,
+				Duration:       rec.Duration,
+				DurationMS:     rec.DurationMS,
+				StartTime:      rec.StartTime,
+				EndTime:        rec.EndTime,
+				Error:          rec.Error,
+				Completed:      rec.Completed,
+				RequestHeaders: rec.RequestHeaders,
+				RequestBody:    rec.RequestBody,
+				ResponseBody:   rec.ResponseBody,
+			}
 			rec.mu.RUnlock()
-			// Clear the mutex in the copy (it shouldn't be copied)
-			recCopy.mu = sync.RWMutex{}
-			copies[i] = &recCopy
+			copies[i] = recCopy
 		}
 	}
 	return copies
@@ -154,11 +188,27 @@ func (rs *RequestStore) GetByID(id string) *RequestRecord {
 	}
 	// Return a copy to avoid data races during concurrent reads/writes
 	record.mu.RLock()
-	recCopy := *record
+	recCopy := &RequestRecord{
+		ID:             record.ID,
+		Method:         record.Method,
+		Path:           record.Path,
+		RemoteAddr:     record.RemoteAddr,
+		Protocol:       record.Protocol,
+		StatusCode:     record.StatusCode,
+		BytesIn:        record.BytesIn,
+		BytesOut:       record.BytesOut,
+		Duration:       record.Duration,
+		DurationMS:     record.DurationMS,
+		StartTime:      record.StartTime,
+		EndTime:        record.EndTime,
+		Error:          record.Error,
+		Completed:      record.Completed,
+		RequestHeaders: record.RequestHeaders,
+		RequestBody:    record.RequestBody,
+		ResponseBody:   record.ResponseBody,
+	}
 	record.mu.RUnlock()
-	// Clear the mutex in the copy (it shouldn't be copied)
-	recCopy.mu = sync.RWMutex{}
-	return &recCopy
+	return recCopy
 }
 
 // Size returns the number of requests currently stored.
