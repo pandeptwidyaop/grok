@@ -432,8 +432,8 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 			}
 
 			// Handle response asynchronously to avoid blocking ProxyStream receive loop
-		// This allows concurrent response processing while continuing to receive more responses
-		go s.handleProxyResponse(currentTunnel, payload.Response)
+			// This allows concurrent response processing while continuing to receive more responses
+			go s.handleProxyResponse(currentTunnel, payload.Response)
 
 		case *tunnelv1.ProxyMessage_Error:
 			logger.ErrorEvent().

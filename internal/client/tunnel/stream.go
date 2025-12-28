@@ -303,6 +303,7 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 		})
 	}
 }
+
 // handleTCPRequest forwards TCP data to local service.
 func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData *tunnelv1.TCPData) {
 	start := time.Now()
