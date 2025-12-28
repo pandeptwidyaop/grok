@@ -1,3 +1,17 @@
+## [1.3.0-alpha.1](https://github.com/pandeptwidyaop/grok/compare/v1.2.0...v1.3.0-alpha.1) (2025-12-28)
+
+### Features
+
+* add log cleanup limits and webhook event detail with latency breakdown ([463514c](https://github.com/pandeptwidyaop/grok/commit/463514c4aa3ba084bd99c1ea683ef0b87ad763e8))
+* **proxy,db:** optimize performance and fix critical bugs ([9a3c061](https://github.com/pandeptwidyaop/grok/commit/9a3c061e61bd23ce36fb74cc10913855bf662ed8))
+* **ui:** add mobile responsive design for webhook pages ([ebfb89f](https://github.com/pandeptwidyaop/grok/commit/ebfb89f0e8798212f2bac05911047b25da69bbdb))
+* **update:** add interactive version selection and client-server version check ([54792ec](https://github.com/pandeptwidyaop/grok/commit/54792ecef81ff3cf5925d32d79048580ccc292a6))
+
+### Bug Fixes
+
+* **proxy:** fix race condition in SSE broker shutdown ([0e6bebe](https://github.com/pandeptwidyaop/grok/commit/0e6bebe6ac87dfdfa717e181176b13a804a684cb))
+* **ui:** add logo image to mobile AppBar ([6393252](https://github.com/pandeptwidyaop/grok/commit/63932528cec9917da25a43c9ac4bf42460bfd284))
+
 ## [1.2.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.2.0-alpha.2...v1.2.0-alpha.3) (2025-12-28)
 
 ### Features
