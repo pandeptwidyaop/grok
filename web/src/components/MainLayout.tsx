@@ -443,9 +443,31 @@ function MainLayout() {
             >
               <Menu size={24} />
             </IconButton>
-            <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-              Grok
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1 }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 1.5,
+                  bgcolor: 'rgba(255, 255, 255, 0.15)',
+                  backdropFilter: 'blur(10px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  p: 0.5,
+                }}
+              >
+                <img
+                  src="/favicon.svg"
+                  alt="Grok Logo"
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </Paper>
+              <Typography variant="h6" noWrap component="div">
+                Grok
+              </Typography>
+            </Box>
           </Toolbar>
         </AppBar>
       )}
