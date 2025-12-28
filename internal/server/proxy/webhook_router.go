@@ -739,17 +739,22 @@ func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, u
 	tun.ResponseMap.Store(requestID, responseCh)
 	defer tun.ResponseMap.Delete(requestID)
 
-	// Send request to tunnel via gRPC stream
-	proxyMsg := &tunnelv1.ProxyMessage{
-		Message: &tunnelv1.ProxyMessage_Request{
-			Request: proxyReq,
-		},
+	// Send request to tunnel via RequestQueue to prevent race condition
+	pendingReq := &tunnel.PendingRequest{
+		RequestID:  requestID,
+		Request:    proxyReq,
+		ResponseCh: responseCh,
+		Timeout:    30 * time.Second,
+		CreatedAt:  time.Now(),
 	}
 
-	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
+	select {
+	case tun.RequestQueue <- pendingReq:
+		// Successfully queued
+	case <-time.After(5 * time.Second):
 		return &TunnelResponse{
 			Success:      false,
-			ErrorMessage: fmt.Sprintf("failed to send to tunnel: %v", err),
+			ErrorMessage: "tunnel request queue is full",
 		}
 	}
 

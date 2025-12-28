@@ -256,15 +256,22 @@ func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w h
 	tun.ResponseMap.Store(requestID, responseCh)
 	defer tun.ResponseMap.Delete(requestID)
 
-	// Send request to tunnel via gRPC stream
-	proxyMsg := &tunnelv1.ProxyMessage{
-		Message: &tunnelv1.ProxyMessage_Request{
-			Request: proxyReq,
-		},
+	// Send request to tunnel via RequestQueue (instead of direct stream send)
+	// This prevents race condition: multiple HTTP handlers cannot write to stream concurrently
+	pendingReq := &tunnel.PendingRequest{
+		RequestID:  requestID,
+		Request:    proxyReq,
+		ResponseCh: responseCh,
+		Timeout:    DefaultRequestTimeout,
+		CreatedAt:  time.Now(),
 	}
 
-	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
-		return 0, 0, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
+	// Push to queue with timeout to prevent blocking if queue is full
+	select {
+	case tun.RequestQueue <- pendingReq:
+		// Successfully queued
+	case <-time.After(5 * time.Second):
+		return 0, 0, 0, pkgerrors.NewAppError("QUEUE_FULL", "tunnel request queue is full", nil)
 	}
 
 	// Wait for response chunks and stream directly to client
@@ -613,24 +620,31 @@ func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request,
 		},
 	}
 
-	proxyMsg := &tunnelv1.ProxyMessage{
-		Message: &tunnelv1.ProxyMessage_Request{
-			Request: upgradeReq,
-		},
-	}
-
-	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
-		logger.ErrorEvent().
-			Err(err).
-			Str("request_id", requestID).
-			Msg("Failed to send WebSocket upgrade request to client")
-		return
-	}
-
-	// Wait for upgrade response from client (with shorter timeout)
+	// Setup response channel before queueing request
 	responseCh := make(chan *tunnelv1.ProxyResponse, 1)
 	tun.ResponseMap.Store(requestID, responseCh)
 	defer tun.ResponseMap.Delete(requestID)
+
+	// Send via RequestQueue to prevent race condition
+	pendingReq := &tunnel.PendingRequest{
+		RequestID:  requestID,
+		Request:    upgradeReq,
+		ResponseCh: responseCh,
+		Timeout:    10 * time.Second,
+		CreatedAt:  time.Now(),
+	}
+
+	select {
+	case tun.RequestQueue <- pendingReq:
+		// Successfully queued
+	case <-time.After(5 * time.Second):
+		logger.ErrorEvent().
+			Str("request_id", requestID).
+			Msg("Failed to queue WebSocket upgrade request - queue full")
+		return
+	}
+
+	// Wait for upgrade response from client (with timeout)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -748,7 +762,13 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 					},
 				}
 
-				if err := tun.Stream.SendMsg(proxyMsg); err != nil {
+				// Use StreamMu to prevent concurrent sends for WebSocket data
+				// Multiple WebSocket connections may try to send concurrently
+				tun.StreamMu.Lock()
+				err := tun.Stream.SendMsg(proxyMsg)
+				tun.StreamMu.Unlock()
+
+				if err != nil {
 					logger.ErrorEvent().Err(err).Msg("Failed to send WebSocket data to tunnel")
 					errCh <- err
 					return
