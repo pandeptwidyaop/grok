@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -104,8 +105,8 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Proxy regular HTTP request through tunnel (chunked streaming)
-	reqBytes, respBytes, statusCode, err := p.proxyRequestChunked(r, tun, w)
+	// Proxy regular HTTP request through tunnel (simple, full response)
+	resp, reqBytes, err := p.proxyRequest(r, tun)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -117,6 +118,10 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
+
+	// Write response
+	respBytes := p.writeResponse(w, resp)
+	statusCode := int(resp.StatusCode)
 
 	// Update tunnel statistics
 	tun.UpdateStats(reqBytes, respBytes)
@@ -221,8 +226,121 @@ func (p *HTTPProxy) writeResponseHeaders(w http.ResponseWriter, httpResp *tunnel
 	return bytesWritten
 }
 
+// writeResponse writes complete HTTP response (headers + body) to ResponseWriter.
+// Returns total bytes written.
+func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) int64 {
+	// Calculate response size (headers + body)
+	responseBytes := int64(len(resp.Body))
+	for key, headerVals := range resp.Headers {
+		for _, val := range headerVals.Values {
+			responseBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+		}
+	}
+	responseBytes += 20 // Status line overhead
+
+	// Write headers
+	for key, headerVals := range resp.Headers {
+		for _, val := range headerVals.Values {
+			w.Header().Add(key, val)
+		}
+	}
+
+	// Write status code
+	w.WriteHeader(int(resp.StatusCode))
+
+	// Write body
+	if len(resp.Body) > 0 {
+		if _, err := io.Copy(w, bytes.NewReader(resp.Body)); err != nil {
+			logger.ErrorEvent().
+				Err(err).
+				Msg("Failed to write response body")
+		}
+	}
+
+	return responseBytes
+}
+
 // proxyRequestChunked proxies request and streams response chunks directly to client.
 // Returns: (requestBytes, responseBytes, statusCode, error).
+// proxyRequest proxies a single HTTP request through the tunnel (simple, non-chunked).
+// Returns: (httpResponse, requestBytes, error).
+func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, int64, error) {
+	// Generate request ID
+	requestID := utils.GenerateRequestID()
+
+	// Read request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, 0, pkgerrors.Wrap(err, "failed to read request body")
+	}
+	defer r.Body.Close()
+
+	// Calculate request size (headers + body)
+	requestBytes := int64(len(body))
+	for key, values := range r.Header {
+		for _, val := range values {
+			requestBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+		}
+	}
+	requestBytes += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20) // Method, path, query, protocol
+
+	// Convert HTTP headers to proto format
+	headers := make(map[string]*tunnelv1.HeaderValues)
+	for key, values := range r.Header {
+		headers[key] = &tunnelv1.HeaderValues{
+			Values: values,
+		}
+	}
+
+	// Create proxy request
+	proxyReq := &tunnelv1.ProxyRequest{
+		RequestId: requestID,
+		TunnelId:  tun.ID.String(),
+		Payload: &tunnelv1.ProxyRequest_Http{
+			Http: &tunnelv1.HTTPRequest{
+				Method:      r.Method,
+				Path:        r.URL.Path,
+				Headers:     headers,
+				Body:        body,
+				QueryString: r.URL.RawQuery,
+				RemoteAddr:  r.RemoteAddr,
+			},
+		},
+	}
+
+	// Create response channel
+	responseCh := make(chan *tunnelv1.ProxyResponse, 1)
+	tun.ResponseMap.Store(requestID, responseCh)
+	defer tun.ResponseMap.Delete(requestID)
+
+	// Send request to tunnel via gRPC stream
+	proxyMsg := &tunnelv1.ProxyMessage{
+		Message: &tunnelv1.ProxyMessage_Request{
+			Request: proxyReq,
+		},
+	}
+
+	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
+		return nil, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
+	}
+
+	// Wait for response with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultRequestTimeout)
+	defer cancel()
+
+	select {
+	case proxyResp := <-responseCh:
+		// Got response
+		if httpResp := proxyResp.GetHttp(); httpResp != nil {
+			return httpResp, requestBytes, nil
+		}
+		return nil, 0, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
+
+	case <-ctx.Done():
+		return nil, 0, pkgerrors.ErrRequestTimeout
+	}
+}
+
 func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w http.ResponseWriter) (int64, int64, int, error) {
 	requestID := utils.GenerateRequestID()
 

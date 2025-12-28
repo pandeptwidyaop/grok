@@ -188,6 +188,7 @@ func (c *Client) handleProxyRequest(ctx context.Context, req *tunnelv1.ProxyRequ
 }
 
 // handleHTTPRequest forwards HTTP request to local service using chunked streaming.
+// handleHTTPRequest forwards HTTP request to local service.
 func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpReq *tunnelv1.HTTPRequest) {
 	start := time.Now()
 
@@ -213,67 +214,8 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 		return
 	}
 
-	// Track total bytes sent for logging
-	totalBytesSent := 0
-	var statusCode int32
-	var responseHeaders map[string][]string
-	var responseBody []byte
-	const maxBodyCapture = 1024 * 1024 // Capture up to 1MB of response body for dashboard
-
-	// Forward HTTP request to local service with chunked streaming
-	err := c.httpForwarder.ForwardChunked(ctx, httpReq, func(httpResp *tunnelv1.HTTPResponse, isLast bool) error {
-		// Capture status code and headers from first chunk
-		if statusCode == 0 {
-			statusCode = httpResp.StatusCode
-			responseHeaders = convertHeaders(httpResp.Headers)
-		}
-
-		// Track bytes
-		totalBytesSent += len(httpResp.Body)
-
-		// Capture response body for dashboard (limited to maxBodyCapture)
-		if len(responseBody) < maxBodyCapture {
-			remaining := maxBodyCapture - len(responseBody)
-			if len(httpResp.Body) <= remaining {
-				responseBody = append(responseBody, httpResp.Body...)
-			} else {
-				responseBody = append(responseBody, httpResp.Body[:remaining]...)
-			}
-		}
-
-		// Send chunk back to server
-		proxyResp := &tunnelv1.ProxyResponse{
-			RequestId:   requestID,
-			TunnelId:    c.tunnelID,
-			Payload:     &tunnelv1.ProxyResponse_Http{Http: httpResp},
-			EndOfStream: isLast,
-		}
-
-		msg := &tunnelv1.ProxyMessage{
-			Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
-		}
-
-		c.mu.Lock()
-		sendErr := c.stream.Send(msg)
-		c.mu.Unlock()
-
-		if sendErr != nil {
-			logger.ErrorEvent().
-				Err(sendErr).
-				Str("request_id", requestID).
-				Bool("is_last", isLast).
-				Msg("Failed to send response chunk")
-			return sendErr
-		}
-
-		logger.DebugEvent().
-			Str("request_id", requestID).
-			Int("chunk_size", len(httpResp.Body)).
-			Bool("is_last", isLast).
-			Msg("Sent response chunk to server")
-
-		return nil
-	})
+	// Forward regular HTTP request to local service
+	httpResp, err := c.httpForwarder.Forward(ctx, httpReq)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -304,27 +246,56 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 		return
 	}
 
+	// Send response back to server
+	proxyResp := &tunnelv1.ProxyResponse{
+		RequestId:   requestID,
+		TunnelId:    c.tunnelID,
+		Payload:     &tunnelv1.ProxyResponse_Http{Http: httpResp},
+		EndOfStream: true,
+	}
+
+	msg := &tunnelv1.ProxyMessage{
+		Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
+	}
+
+	// No mutex - concurrent sends handled by gRPC internal buffering
+	if sendErr := c.stream.Send(msg); sendErr != nil {
+		logger.ErrorEvent().
+			Err(sendErr).
+			Str("request_id", requestID).
+			Msg("Failed to send response")
+	}
+
 	// Log access with details
 	duration := time.Since(start)
 	logger.InfoEvent().
 		Str("method", httpReq.Method).
 		Str("path", httpReq.Path).
 		Str("remote_addr", httpReq.RemoteAddr).
+		Int32("status", httpResp.StatusCode).
 		Int("bytes_in", len(httpReq.Body)).
-		Int("bytes_out", totalBytesSent).
+		Int("bytes_out", len(httpResp.Body)).
 		Dur("duration", duration).
-		Msg("HTTP request processed (chunked)")
+		Msg("HTTP request processed")
 
 	// Publish request completed event to dashboard
 	if c.eventCollector != nil {
+		// Capture response headers and body for dashboard (limited)
+		responseHeaders := convertHeaders(httpResp.Headers)
+		responseBody := httpResp.Body
+		const maxBodyCapture = 1024 * 1024 // 1MB
+		if len(responseBody) > maxBodyCapture {
+			responseBody = responseBody[:maxBodyCapture]
+		}
+
 		c.eventCollector.Publish(events.Event{
 			Type:      events.EventRequestCompleted,
 			Timestamp: time.Now(),
 			Data: events.RequestCompletedEvent{
 				RequestID:       requestID,
-				StatusCode:      statusCode,
+				StatusCode:      httpResp.StatusCode,
 				BytesIn:         int64(len(httpReq.Body)),
-				BytesOut:        int64(totalBytesSent),
+				BytesOut:        int64(len(httpResp.Body)),
 				Duration:        duration,
 				ResponseHeaders: responseHeaders,
 				ResponseBody:    responseBody,
@@ -332,7 +303,6 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 		})
 	}
 }
-
 // handleTCPRequest forwards TCP data to local service.
 func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData *tunnelv1.TCPData) {
 	start := time.Now()
@@ -714,9 +684,8 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 					Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
 				}
 
-				c.mu.Lock()
+				// No mutex - concurrent sends handled by gRPC internal buffering
 				err = c.stream.Send(msg)
-				c.mu.Unlock()
 
 				if err != nil {
 					logger.ErrorEvent().Err(err).Msg("Failed to send WebSocket data to server")

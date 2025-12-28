@@ -205,9 +205,9 @@ func (c *Client) createGRPCDialOptions() ([]grpc.DialOption, error) {
 			PermitWithoutStream: true,
 		}),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(16<<20), // Reduced from 64MB to 16MB
-			grpc.MaxCallSendMsgSize(16<<20), // Reduced from 64MB to 16MB
-			grpc.UseCompressor("gzip"),      // ✅ Enable gzip compression
+			grpc.MaxCallRecvMsgSize(256<<20), // 256MB for large file support
+			grpc.MaxCallSendMsgSize(256<<20), // 256MB for large file support
+			grpc.UseCompressor("gzip"),       // ✅ Enable gzip compression
 		),
 	}
 

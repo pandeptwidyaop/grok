@@ -144,8 +144,8 @@ func createGRPCServer(tlsMgr *tlsmanager.Manager, tunnelManager *tunnel.Manager,
 			Time:    60 * time.Second,
 			Timeout: 20 * time.Second,
 		}),
-		grpc.MaxRecvMsgSize(128 << 20), // 128MB for large file transfers
-		grpc.MaxSendMsgSize(128 << 20), // 128MB for large file transfers
+		grpc.MaxRecvMsgSize(256 << 20), // 256MB for large file support
+		grpc.MaxSendMsgSize(256 << 20), // 256MB for large file support
 	}
 
 	if tlsMgr != nil && tlsMgr.IsEnabled() {
