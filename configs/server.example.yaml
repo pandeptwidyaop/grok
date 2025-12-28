@@ -84,6 +84,16 @@ tunnels:
   max_per_user: 5
   idle_timeout: "10m"
   heartbeat_interval: "30s"
+  # Maximum number of request logs to keep per tunnel
+  # When limit is exceeded, oldest requests are automatically deleted
+  # This prevents unbounded database growth while keeping recent history
+  max_request_logs: 1000
+
+webhooks:
+  # Maximum number of webhook events to keep per app
+  # When limit is exceeded, oldest events are automatically deleted
+  # This prevents unbounded database growth while keeping recent history
+  max_events: 500
 
 logging:
   level: "info"      # debug, info, warn, error

@@ -14,6 +14,7 @@ type Config struct {
 	TLS      TLSConfig      `mapstructure:"tls"`
 	Auth     AuthConfig     `mapstructure:"auth"`
 	Tunnels  TunnelsConfig  `mapstructure:"tunnels"`
+	Webhooks WebhooksConfig `mapstructure:"webhooks"`
 	Logging  LoggingConfig  `mapstructure:"logging"`
 }
 
@@ -61,6 +62,12 @@ type TunnelsConfig struct {
 	MaxPerUser        int    `mapstructure:"max_per_user"`
 	IdleTimeout       string `mapstructure:"idle_timeout"`
 	HeartbeatInterval string `mapstructure:"heartbeat_interval"`
+	MaxRequestLogs    int    `mapstructure:"max_request_logs"` // Maximum number of request logs to keep per tunnel
+}
+
+// WebhooksConfig holds webhook settings.
+type WebhooksConfig struct {
+	MaxEvents int `mapstructure:"max_events"` // Maximum number of webhook events to keep (oldest deleted when exceeded)
 }
 
 // LoggingConfig holds logging settings.
@@ -174,6 +181,10 @@ func setDefaults() {
 	viper.SetDefault("tunnels.max_per_user", 5)
 	viper.SetDefault("tunnels.idle_timeout", "10m")
 	viper.SetDefault("tunnels.heartbeat_interval", "30s")
+	viper.SetDefault("tunnels.max_request_logs", 1000) // Keep last 1000 requests per tunnel
+
+	// Webhook defaults
+	viper.SetDefault("webhooks.max_events", 500) // Keep last 500 webhook events per app
 
 	// Logging defaults
 	viper.SetDefault("logging.level", "info")

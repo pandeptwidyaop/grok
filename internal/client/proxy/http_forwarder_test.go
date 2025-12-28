@@ -515,6 +515,9 @@ func TestHTTPForwarder_ForwardWebSocketUpgrade(t *testing.T) {
 
 	serverAddr := listener.Addr().String()
 
+	// Channel to signal when server should close
+	done := make(chan struct{})
+
 	// Server goroutine
 	go func() {
 		conn, err := listener.Accept()
@@ -537,6 +540,9 @@ func TestHTTPForwarder_ForwardWebSocketUpgrade(t *testing.T) {
 			"Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n" +
 			"\r\n"
 		conn.Write([]byte(response))
+
+		// Keep connection open until test is done
+		<-done
 	}()
 
 	forwarder := NewHTTPForwarder(serverAddr)
@@ -564,6 +570,9 @@ func TestHTTPForwarder_ForwardWebSocketUpgrade(t *testing.T) {
 	assert.Equal(t, "websocket", resp.Headers["Upgrade"].Values[0])
 	assert.NotNil(t, resp.Headers["Connection"])
 	assert.Equal(t, "Upgrade", resp.Headers["Connection"].Values[0])
+
+	// Signal server to close connection
+	close(done)
 }
 
 // TestHTTPForwarder_ForwardWebSocketUpgrade_ConnectError tests connection error.

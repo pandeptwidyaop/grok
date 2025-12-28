@@ -47,6 +47,7 @@ import TunnelDetail from './TunnelDetail';
 import TokenManager from './TokenManager';
 import { WebhookApps } from './WebhookApps';
 import { WebhookAppDetailPage } from './WebhookAppDetailPage';
+import { WebhookEventDetail } from './WebhookEventDetail';
 import OrganizationList from './OrganizationList';
 import OrganizationDetail from './OrganizationDetail';
 import OrgUserManagement from './OrgUserManagement';
@@ -443,9 +444,31 @@ function MainLayout() {
             >
               <Menu size={24} />
             </IconButton>
-            <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-              Grok
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexGrow: 1 }}>
+              <Paper
+                elevation={0}
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 1.5,
+                  bgcolor: 'rgba(255, 255, 255, 0.15)',
+                  backdropFilter: 'blur(10px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  p: 0.5,
+                }}
+              >
+                <img
+                  src="/favicon.svg"
+                  alt="Grok Logo"
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </Paper>
+              <Typography variant="h6" noWrap component="div">
+                Grok
+              </Typography>
+            </Box>
           </Toolbar>
         </AppBar>
       )}
@@ -489,6 +512,7 @@ function MainLayout() {
           <Route path="/tunnels/:id" element={<TunnelDetail />} />
           <Route path="/tunnels" element={<TunnelList />} />
           <Route path="/tokens" element={<TokenManager />} />
+          <Route path="/webhooks/:appId/events/:eventId" element={<WebhookEventDetail />} />
           <Route path="/webhooks/:id" element={<WebhookAppDetailPage />} />
           <Route path="/webhooks" element={<WebhookApps />} />
           <Route path="/settings" element={<Settings />} />

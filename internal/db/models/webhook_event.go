@@ -10,7 +10,7 @@ import (
 // WebhookEvent represents a logged webhook request event.
 type WebhookEvent struct {
 	ID           uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	WebhookAppID uuid.UUID `gorm:"type:uuid;not null;index" json:"webhook_app_id"`
+	WebhookAppID uuid.UUID `gorm:"type:uuid;not null;index:idx_webhook_events_app_created,priority:1" json:"webhook_app_id"`
 
 	RequestPath string `gorm:"not null" json:"request_path"` // Full path: /app_name/stripe/callback
 	Method      string `gorm:"not null" json:"method"`       // HTTP method
@@ -25,7 +25,15 @@ type WebhookEvent struct {
 	SuccessCount  int    `gorm:"default:0" json:"success_count"` // Number of successful responses
 	ErrorMessage  string `json:"error_message,omitempty"`
 
-	CreatedAt time.Time `gorm:"index" json:"created_at"`
+	// Extended fields for detailed request/response capture
+	RequestHeaders  string `gorm:"type:text" json:"request_headers,omitempty"`  // JSON-encoded headers
+	RequestBody     string `gorm:"type:text" json:"request_body,omitempty"`     // Request body (may be truncated)
+	ResponseHeaders string `gorm:"type:text" json:"response_headers,omitempty"` // From first successful response
+	ResponseBody    string `gorm:"type:text" json:"response_body,omitempty"`    // From first successful response
+	BodyTruncated   bool   `gorm:"default:false" json:"body_truncated"`         // Indicates truncation
+
+	// Composite index (webhook_app_id, created_at DESC) for efficient event queries
+	CreatedAt time.Time `gorm:"index:idx_webhook_events_app_created,priority:2,sort:desc" json:"created_at"`
 
 	// Relationships
 	WebhookApp WebhookApp `gorm:"foreignKey:WebhookAppID;constraint:OnDelete:CASCADE" json:"-"`

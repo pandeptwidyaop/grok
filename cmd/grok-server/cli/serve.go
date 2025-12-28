@@ -365,7 +365,7 @@ func runServer() error {
 
 	router := proxy.NewRouter(tunnelManager, cfg.Server.Domain)
 	webhookRouter := proxy.NewWebhookRouter(database, tunnelManager, cfg.Server.Domain)
-	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager, database, cfg.Logging.HTTPLogLevel)
+	httpProxy := proxy.NewHTTPProxy(router, webhookRouter, tunnelManager, database, cfg.Logging.HTTPLogLevel, cfg.Tunnels.MaxRequestLogs)
 
 	httpServer, httpsServer, apiServer := createHTTPServers(cfg, tlsMgr, httpProxy, database, tokenService, tunnelManager, webhookRouter)
 

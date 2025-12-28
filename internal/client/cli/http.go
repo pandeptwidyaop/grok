@@ -7,9 +7,11 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/pandeptwidyaop/grok/internal/client"
 	"github.com/pandeptwidyaop/grok/internal/client/dashboard"
 	"github.com/pandeptwidyaop/grok/internal/client/tunnel"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
@@ -85,6 +87,9 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 		dashboardCfg.EnableSSE = true
 	}
 
+	// Check version compatibility with server (non-blocking, non-fatal)
+	checkServerVersion(cfg.Server.Addr)
+
 	// Create tunnel client
 	client, err := tunnel.NewClient(tunnel.ClientConfig{
 		ServerAddr:    cfg.Server.Addr,
@@ -134,4 +139,25 @@ func parseLocalAddr(addr string, _ string) string {
 
 	// If it already has host:port format, use as-is
 	return addr
+}
+
+// checkServerVersion checks if client and server versions match.
+// This is a non-blocking, non-fatal check that displays a warning if versions mismatch.
+func checkServerVersion(serverAddr string) {
+	checker := client.NewVersionChecker(serverAddr)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mismatch, err := checker.CheckVersion(ctx)
+	if err != nil {
+		// Log warning but continue (non-fatal)
+		logger.WarnEvent().Err(err).Msg("Failed to check server version")
+		return
+	}
+
+	// Display warning banner if versions mismatch
+	if mismatch != nil && mismatch.Mismatch {
+		mismatch.DisplayWarning()
+	}
 }

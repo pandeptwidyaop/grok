@@ -37,25 +37,33 @@ const (
 	// MaxRequestBodySize is the maximum allowed request body size (10MB).
 	// This prevents memory exhaustion from large request bodies.
 	MaxRequestBodySize = 10 * 1024 * 1024 // 10MB
+	// CleanupDebounceInterval is the minimum time between cleanup operations per tunnel.
+	// This prevents excessive database queries on high-traffic tunnels.
+	CleanupDebounceInterval = 1 * time.Minute
 )
 
 // HTTPProxy handles HTTP reverse proxying.
 type HTTPProxy struct {
-	router        *Router
-	webhookRouter *WebhookRouter
-	tunnelManager *tunnel.Manager
-	db            *gorm.DB
-	httpLogLevel  string // HTTP request log level: silent, error, warn, info
+	router         *Router
+	webhookRouter  *WebhookRouter
+	tunnelManager  *tunnel.Manager
+	db             *gorm.DB
+	httpLogLevel   string // HTTP request log level: silent, error, warn, info
+	maxRequestLogs int    // Maximum number of request logs to keep per tunnel
+
+	// Cleanup debouncing: track last cleanup time per tunnel
+	lastCleanup sync.Map // tunnelID → time.Time
 }
 
 // NewHTTPProxy creates a new HTTP proxy.
-func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager, db *gorm.DB, httpLogLevel string) *HTTPProxy {
+func NewHTTPProxy(router *Router, webhookRouter *WebhookRouter, tunnelManager *tunnel.Manager, db *gorm.DB, httpLogLevel string, maxRequestLogs int) *HTTPProxy {
 	return &HTTPProxy{
-		router:        router,
-		webhookRouter: webhookRouter,
-		tunnelManager: tunnelManager,
-		db:            db,
-		httpLogLevel:  httpLogLevel,
+		router:         router,
+		webhookRouter:  webhookRouter,
+		tunnelManager:  tunnelManager,
+		db:             db,
+		httpLogLevel:   httpLogLevel,
+		maxRequestLogs: maxRequestLogs,
 	}
 }
 
@@ -475,7 +483,84 @@ func (p *HTTPProxy) saveRequestLog(tunnelID uuid.UUID, r *http.Request, statusCo
 			Err(err).
 			Str("tunnel_id", tunnelID.String()).
 			Msg("Failed to save request log")
+	} else {
+		// Cleanup old request logs if limit exceeded
+		p.cleanupOldRequestLogs(tunnelID)
 	}
+}
+
+// cleanupOldRequestLogs removes old request logs when limit is exceeded.
+// Deletes oldest requests first to keep recent history.
+// Uses debouncing to prevent excessive cleanup operations on high-traffic tunnels.
+func (p *HTTPProxy) cleanupOldRequestLogs(tunnelID uuid.UUID) {
+	if p.maxRequestLogs <= 0 {
+		return // Unlimited if not set or disabled
+	}
+
+	// Debounce: Check if we recently cleaned up this tunnel
+	now := time.Now()
+	if lastCleanupInterface, ok := p.lastCleanup.Load(tunnelID); ok {
+		if lastCleanup, ok := lastCleanupInterface.(time.Time); ok {
+			if now.Sub(lastCleanup) < CleanupDebounceInterval {
+				// Skip cleanup - too soon since last cleanup
+				return
+			}
+		}
+	}
+
+	// Update last cleanup time before starting (prevent concurrent cleanups)
+	p.lastCleanup.Store(tunnelID, now)
+
+	// Count total request logs for this tunnel
+	var count int64
+	if err := p.db.Model(&models.RequestLog{}).
+		Where("tunnel_id = ?", tunnelID).
+		Count(&count).Error; err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("tunnel_id", tunnelID.String()).
+			Msg("Failed to count request logs for cleanup")
+		return
+	}
+
+	// Calculate how many to delete
+	if count <= int64(p.maxRequestLogs) {
+		return // Within limit, no cleanup needed
+	}
+
+	toDelete := count - int64(p.maxRequestLogs)
+
+	// Get IDs of oldest requests to delete
+	var oldLogIDs []uuid.UUID
+	if err := p.db.Model(&models.RequestLog{}).
+		Select("id").
+		Where("tunnel_id = ?", tunnelID).
+		Order("created_at ASC").
+		Limit(int(toDelete)).
+		Pluck("id", &oldLogIDs).Error; err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("tunnel_id", tunnelID.String()).
+			Int64("to_delete", toDelete).
+			Msg("Failed to fetch old request log IDs for cleanup")
+		return
+	}
+
+	// Delete old request logs
+	if err := p.db.Where("id IN ?", oldLogIDs).Delete(&models.RequestLog{}).Error; err != nil {
+		logger.WarnEvent().
+			Err(err).
+			Str("tunnel_id", tunnelID.String()).
+			Int("deleted_count", len(oldLogIDs)).
+			Msg("Failed to delete old request logs")
+		return
+	}
+
+	logger.DebugEvent().
+		Str("tunnel_id", tunnelID.String()).
+		Int("deleted_count", len(oldLogIDs)).
+		Int64("remaining_count", count-toDelete).
+		Msg("Request logs cleanup completed")
 }
 
 // handleWebSocketProxy handles WebSocket upgrade and bidirectional proxying.

@@ -209,9 +209,16 @@ func (wh *WebhookHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query app
+	// Query app with optimized JOIN to avoid N+1 queries
 	var app models.WebhookApp
-	if err := wh.db.Preload("Routes.Tunnel").Preload("Organization").First(&app, appID).Error; err != nil {
+	if err := wh.db.
+		Preload("Routes", func(db *gorm.DB) *gorm.DB {
+			// Preload routes with tunnel using JOIN for efficiency
+			return db.Joins("LEFT JOIN tunnels ON tunnels.id = webhook_routes.tunnel_id").
+				Preload("Tunnel")
+		}).
+		Preload("Organization").
+		First(&app, appID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondJSON(w, http.StatusNotFound, map[string]string{"error": "webhook app not found"})
 			return
@@ -442,11 +449,12 @@ func (wh *WebhookHandler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Query routes
+	// Query routes with JOIN to avoid N+1 query
 	var routes []models.WebhookRoute
-	if err := wh.db.Where("webhook_app_id = ?", appID).
-		Preload("Tunnel").
-		Order("priority ASC").
+	if err := wh.db.Where("webhook_routes.webhook_app_id = ?", appID).
+		Joins("LEFT JOIN tunnels ON tunnels.id = webhook_routes.tunnel_id").
+		Preload("Tunnel"). // Still preload for struct population
+		Order("webhook_routes.priority ASC").
 		Find(&routes).Error; err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to list webhook routes")
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list routes"})
@@ -870,6 +878,121 @@ func (wh *WebhookHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 		Scan(&stats)
 
 	respondJSON(w, http.StatusOK, stats)
+}
+
+// GetEventDetail retrieves detailed information for a single webhook event.
+func (wh *WebhookHandler) GetEventDetail(w http.ResponseWriter, r *http.Request) {
+	claims := middleware.GetClaimsFromContext(r.Context())
+	if claims == nil {
+		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+
+	// Parse app ID and event ID
+	appID, err := uuid.Parse(r.PathValue("app_id"))
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid app ID"})
+		return
+	}
+
+	eventID, err := uuid.Parse(r.PathValue("event_id"))
+	if err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid event ID"})
+		return
+	}
+
+	// Verify app ownership
+	var app models.WebhookApp
+	if err := wh.db.First(&app, appID).Error; err != nil {
+		respondJSON(w, http.StatusNotFound, map[string]string{"error": "webhook app not found"})
+		return
+	}
+
+	if claims.Role != "super_admin" {
+		if claims.OrganizationID == nil || app.OrganizationID.String() != *claims.OrganizationID {
+			respondJSON(w, http.StatusForbidden, map[string]string{"error": "access denied"})
+			return
+		}
+	}
+
+	// Fetch event with tunnel responses
+	var event models.WebhookEvent
+	if err := wh.db.Where("id = ? AND webhook_app_id = ?", eventID, appID).
+		First(&event).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			respondJSON(w, http.StatusNotFound, map[string]string{"error": "event not found"})
+			return
+		}
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get event"})
+		return
+	}
+
+	// Fetch per-tunnel responses
+	var tunnelResponses []models.WebhookTunnelResponse
+	if err := wh.db.Where("webhook_event_id = ?", eventID).
+		Order("duration_ms ASC"). // Fastest first
+		Find(&tunnelResponses).Error; err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to get tunnel responses")
+		// Continue without tunnel responses (not critical)
+	}
+
+	// Parse JSON headers back to map[string][]string
+	var requestHeaders map[string][]string
+	if event.RequestHeaders != "" {
+		json.Unmarshal([]byte(event.RequestHeaders), &requestHeaders)
+	}
+
+	var responseHeaders map[string][]string
+	if event.ResponseHeaders != "" {
+		json.Unmarshal([]byte(event.ResponseHeaders), &responseHeaders)
+	}
+
+	// Build response
+	type TunnelResponseDetail struct {
+		ID              string              `json:"id"`
+		TunnelID        string              `json:"tunnel_id"`
+		TunnelSubdomain string              `json:"tunnel_subdomain"`
+		StatusCode      int                 `json:"status_code"`
+		DurationMs      int64               `json:"duration_ms"`
+		Success         bool                `json:"success"`
+		ErrorMessage    string              `json:"error_message,omitempty"`
+		ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
+		ResponseBody    string              `json:"response_body,omitempty"`
+	}
+
+	tunnelDetails := make([]TunnelResponseDetail, 0, len(tunnelResponses))
+	for _, tr := range tunnelResponses {
+		var respHeaders map[string][]string
+		if tr.ResponseHeaders != "" {
+			json.Unmarshal([]byte(tr.ResponseHeaders), &respHeaders)
+		}
+
+		tunnelDetails = append(tunnelDetails, TunnelResponseDetail{
+			ID:              tr.ID.String(),
+			TunnelID:        tr.TunnelID.String(),
+			TunnelSubdomain: tr.TunnelSubdomain,
+			StatusCode:      tr.StatusCode,
+			DurationMs:      tr.DurationMs,
+			Success:         tr.Success,
+			ErrorMessage:    tr.ErrorMessage,
+			ResponseHeaders: respHeaders,
+			ResponseBody:    tr.ResponseBody,
+		})
+	}
+
+	response := struct {
+		models.WebhookEvent
+		RequestHeadersParsed  map[string][]string    `json:"request_headers_parsed"`
+		ResponseHeadersParsed map[string][]string    `json:"response_headers_parsed"`
+		TunnelResponses       []TunnelResponseDetail `json:"tunnel_responses"`
+	}{
+		WebhookEvent:          event,
+		RequestHeadersParsed:  requestHeaders,
+		ResponseHeadersParsed: responseHeaders,
+		TunnelResponses:       tunnelDetails,
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 // Helper function to parse int from string

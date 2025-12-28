@@ -32,7 +32,8 @@ type SSEBroker struct {
 	unregister  chan *SSEClient
 	broadcast   chan SSEEvent
 	done        chan struct{}
-	sseLogLevel string // SSE connection log level: silent, warn, info
+	wg          sync.WaitGroup // Wait for run() goroutine to exit
+	sseLogLevel string          // SSE connection log level: silent, warn, info
 }
 
 // NewSSEBroker creates a new SSE broker
@@ -46,12 +47,15 @@ func NewSSEBroker(sseLogLevel string) *SSEBroker {
 		sseLogLevel: sseLogLevel,
 	}
 
+	broker.wg.Add(1)
 	go broker.run()
 	return broker
 }
 
 // run handles client registration and event broadcasting
 func (b *SSEBroker) run() {
+	defer b.wg.Done()
+
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -171,7 +175,13 @@ func (b *SSEBroker) GetClientCount() int {
 
 // Close closes the SSE broker
 func (b *SSEBroker) Close() {
+	// Signal shutdown
 	close(b.done)
+
+	// Wait for run() goroutine to exit
+	b.wg.Wait()
+
+	// Now safe to cleanup resources
 	b.clientsMu.Lock()
 	for _, client := range b.clients {
 		close(client.Channel)

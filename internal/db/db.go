@@ -82,5 +82,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.WebhookApp{},
 		&models.WebhookRoute{},
 		&models.WebhookEvent{},
+		&models.WebhookTunnelResponse{}, // Per-tunnel response tracking
 	)
 }
