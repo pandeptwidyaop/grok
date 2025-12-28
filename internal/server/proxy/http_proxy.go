@@ -572,18 +572,8 @@ func (p *HTTPProxy) cleanupOldRequestLogs(tunnelID uuid.UUID) {
 
 // handleWebSocketProxy handles WebSocket upgrade and bidirectional proxying.
 func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tun *tunnel.Tunnel) {
-	// Hijack the HTTP connection
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		logger.ErrorEvent().Msg("ResponseWriter does not support hijacking")
-		http.Error(w, "WebSocket not supported", http.StatusInternalServerError)
-		return
-	}
-
-	conn, bufrw, err := hijacker.Hijack()
+	conn, err := p.hijackWebSocketConnection(w)
 	if err != nil {
-		logger.ErrorEvent().Err(err).Msg("Failed to hijack connection")
-		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
 		return
 	}
 	defer conn.Close()
@@ -594,18 +584,65 @@ func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request,
 		Str("path", r.URL.Path).
 		Msg("WebSocket upgrade request received")
 
-	// Generate request ID for this WebSocket connection
 	requestID := utils.GenerateRequestID()
 
-	// Convert HTTP headers to proto format for upgrade request
-	headers := make(map[string]*tunnelv1.HeaderValues, len(r.Header))
-	for key, values := range r.Header {
-		headers[key] = &tunnelv1.HeaderValues{
-			Values: values,
-		}
+	responseCh, err := p.sendWebSocketUpgradeRequest(r, tun, requestID)
+	if err != nil {
+		return
+	}
+	defer tun.ResponseMap.Delete(requestID)
+
+	upgradeResp, err := p.waitForWebSocketUpgradeResponse(requestID, responseCh)
+	if err != nil {
+		return
 	}
 
-	// Send WebSocket upgrade request to client
+	if err := p.writeWebSocketUpgradeResponse(conn, upgradeResp); err != nil {
+		return
+	}
+
+	if upgradeResp.StatusCode != 101 {
+		logger.WarnEvent().
+			Int("status_code", int(upgradeResp.StatusCode)).
+			Str("request_id", requestID).
+			Msg("WebSocket upgrade failed")
+		return
+	}
+
+	logger.InfoEvent().
+		Str("request_id", requestID).
+		Str("tunnel_id", tun.ID.String()).
+		Msg("WebSocket upgraded successfully, starting bidirectional proxy")
+
+	p.proxyWebSocketData(conn, tun, requestID)
+}
+
+// hijackWebSocketConnection hijacks HTTP connection for WebSocket upgrade.
+func (p *HTTPProxy) hijackWebSocketConnection(w http.ResponseWriter) (net.Conn, error) {
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		logger.ErrorEvent().Msg("ResponseWriter does not support hijacking")
+		http.Error(w, "WebSocket not supported", http.StatusInternalServerError)
+		return nil, fmt.Errorf("hijacking not supported")
+	}
+
+	conn, _, err := hijacker.Hijack()
+	if err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to hijack connection")
+		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+// sendWebSocketUpgradeRequest sends WebSocket upgrade request to tunnel client.
+func (p *HTTPProxy) sendWebSocketUpgradeRequest(r *http.Request, tun *tunnel.Tunnel, requestID string) (chan *tunnelv1.ProxyResponse, error) {
+	headers := make(map[string]*tunnelv1.HeaderValues, len(r.Header))
+	for key, values := range r.Header {
+		headers[key] = &tunnelv1.HeaderValues{Values: values}
+	}
+
 	upgradeReq := &tunnelv1.ProxyRequest{
 		RequestId: requestID,
 		TunnelId:  tun.ID.String(),
@@ -620,12 +657,9 @@ func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request,
 		},
 	}
 
-	// Setup response channel before queueing request
 	responseCh := make(chan *tunnelv1.ProxyResponse, 1)
 	tun.ResponseMap.Store(requestID, responseCh)
-	defer tun.ResponseMap.Delete(requestID)
 
-	// Send via RequestQueue to prevent race condition
 	pendingReq := &tunnel.PendingRequest{
 		RequestID:  requestID,
 		Request:    upgradeReq,
@@ -636,79 +670,57 @@ func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request,
 
 	select {
 	case tun.RequestQueue <- pendingReq:
-		// Successfully queued
+		return responseCh, nil
 	case <-time.After(5 * time.Second):
 		logger.ErrorEvent().
 			Str("request_id", requestID).
 			Msg("Failed to queue WebSocket upgrade request - queue full")
-		return
+		return nil, fmt.Errorf("queue full")
 	}
+}
 
-	// Wait for upgrade response from client (with timeout)
-
+// waitForWebSocketUpgradeResponse waits for upgrade response from tunnel client.
+func (p *HTTPProxy) waitForWebSocketUpgradeResponse(requestID string, responseCh chan *tunnelv1.ProxyResponse) (*tunnelv1.HTTPResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var upgradeResp *tunnelv1.HTTPResponse
 	select {
 	case proxyResp := <-responseCh:
 		if httpResp := proxyResp.GetHttp(); httpResp != nil {
-			upgradeResp = httpResp
-		} else {
-			logger.ErrorEvent().Str("request_id", requestID).Msg("Invalid upgrade response type")
-			return
+			return httpResp, nil
 		}
+		logger.ErrorEvent().Str("request_id", requestID).Msg("Invalid upgrade response type")
+		return nil, fmt.Errorf("invalid response type")
 	case <-ctx.Done():
 		logger.ErrorEvent().Str("request_id", requestID).Msg("WebSocket upgrade timeout")
-		return
+		return nil, fmt.Errorf("timeout")
 	}
+}
 
-	// Write upgrade response to client
-	if err := bufrw.Flush(); err != nil {
-		logger.ErrorEvent().Err(err).Msg("Failed to flush buffer")
-		return
-	}
-
-	// Write HTTP response line
+// writeWebSocketUpgradeResponse writes HTTP upgrade response to connection.
+func (p *HTTPProxy) writeWebSocketUpgradeResponse(conn net.Conn, upgradeResp *tunnelv1.HTTPResponse) error {
 	statusLine := fmt.Sprintf("HTTP/1.1 %d %s\r\n", upgradeResp.StatusCode, http.StatusText(int(upgradeResp.StatusCode)))
 	if _, err := conn.Write([]byte(statusLine)); err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to write status line")
-		return
+		return err
 	}
 
-	// Write headers
 	for key, headerVals := range upgradeResp.Headers {
 		for _, val := range headerVals.Values {
 			headerLine := fmt.Sprintf("%s: %s\r\n", key, val)
 			if _, err := conn.Write([]byte(headerLine)); err != nil {
 				logger.ErrorEvent().Err(err).Msg("Failed to write header")
-				return
+				return err
 			}
 		}
 	}
 
-	// End of headers
 	if _, err := conn.Write([]byte("\r\n")); err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to write header end")
-		return
+		return err
 	}
 
-	// If upgrade failed (not 101 Switching Protocols), close connection
-	if upgradeResp.StatusCode != 101 {
-		logger.WarnEvent().
-			Int("status_code", int(upgradeResp.StatusCode)).
-			Str("request_id", requestID).
-			Msg("WebSocket upgrade failed")
-		return
-	}
-
-	logger.InfoEvent().
-		Str("request_id", requestID).
-		Str("tunnel_id", tun.ID.String()).
-		Msg("WebSocket upgraded successfully, starting bidirectional proxy")
-
-	// Start bidirectional WebSocket proxying
-	p.proxyWebSocketData(conn, tun, requestID)
+	return nil
 }
 
 // proxyWebSocketData handles bidirectional WebSocket data streaming.
