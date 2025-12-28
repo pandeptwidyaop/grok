@@ -30,6 +30,9 @@ import {
   Paper,
   FormHelperText,
   Tooltip,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
   ArrowLeft,
@@ -61,6 +64,8 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
   const [routePriority, setRoutePriority] = useState('100');
   const [activeTab, setActiveTab] = useState(0);
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Subscribe to real-time events via SSE
   useAllEvents((event) => {
@@ -249,7 +254,16 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'flex-start' },
+          gap: { xs: 2, sm: 0 },
+          mb: 4,
+        }}
+      >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <IconButton onClick={onBack}>
             <ArrowLeft size={20} />
@@ -263,7 +277,7 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
             </Typography>
           </Box>
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: { xs: '100%', sm: 'auto' } }}>
           <Chip
             label={app.is_active ? 'Active' : 'Inactive'}
             color={app.is_active ? 'success' : 'default'}
@@ -274,6 +288,7 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
             color="error"
             startIcon={<Trash2 size={16} />}
             onClick={() => setDeleteAppDialogOpen(true)}
+            sx={{ flex: { xs: 1, sm: 'none' } }}
           >
             Delete App
           </Button>
@@ -290,7 +305,13 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
             Send webhook requests to this URL. All requests will be broadcast to all enabled
             tunnels.
           </Typography>
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              gap: 2,
+            }}
+          >
             <TextField
               fullWidth
               value={webhookUrl}
@@ -304,6 +325,7 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                 navigator.clipboard.writeText(webhookUrl);
                 toast.success('URL copied to clipboard');
               }}
+              sx={{ minWidth: { xs: '100%', sm: 'auto' } }}
             >
               Copy
             </Button>
@@ -349,8 +371,10 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
               <Box
                 sx={{
                   display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
                   justifyContent: 'space-between',
-                  alignItems: 'flex-start',
+                  alignItems: { xs: 'stretch', sm: 'flex-start' },
+                  gap: { xs: 2, sm: 0 },
                   mb: 3,
                 }}
               >
@@ -366,7 +390,11 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                   variant="contained"
                   startIcon={<Plus size={16} />}
                   onClick={() => setAddRouteDialogOpen(true)}
-                  sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5568d3' } }}
+                  sx={{
+                    bgcolor: '#667eea',
+                    '&:hover': { bgcolor: '#5568d3' },
+                    minWidth: { xs: '100%', sm: 'auto' },
+                  }}
                 >
                   Add Route
                 </Button>
@@ -385,7 +413,99 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                     Add a tunnel to start receiving webhooks
                   </Typography>
                 </Box>
+              ) : isMobile ? (
+                /* Mobile Card View */
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {routes.map((route: WebhookRoute) => (
+                    <Card key={route.id} variant="outlined">
+                      <CardContent sx={{ p: 2 }}>
+                        {/* Header: Tunnel and Health */}
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {route.tunnel?.subdomain || 'Unknown'}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            {getStatusIcon(route)}
+                            {getStatusChip(route)}
+                          </Box>
+                        </Box>
+
+                        <Divider sx={{ my: 2 }} />
+
+                        {/* Local Address */}
+                        <Box sx={{ mb: 1.5 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Local Address
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontSize: '0.875rem',
+                              wordBreak: 'break-all',
+                            }}
+                          >
+                            {route.tunnel?.local_addr || 'N/A'}
+                          </Typography>
+                        </Box>
+
+                        {/* Priority */}
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Priority
+                          </Typography>
+                          <TextField
+                            type="number"
+                            size="small"
+                            fullWidth
+                            value={route.priority}
+                            onChange={(e) => {
+                              const priority = parseInt(e.target.value, 10);
+                              if (!isNaN(priority) && priority > 0) {
+                                updateRouteMutation.mutate({
+                                  routeId: route.id,
+                                  priority,
+                                });
+                              }
+                            }}
+                          />
+                        </Box>
+
+                        {/* Actions */}
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
+                            fullWidth
+                            variant="outlined"
+                            onClick={() => toggleRouteMutation.mutate(route.id)}
+                            disabled={toggleRouteMutation.isPending}
+                            startIcon={
+                              route.is_enabled ? (
+                                <ToggleRight size={20} style={{ color: '#10b981' }} />
+                              ) : (
+                                <ToggleLeft size={20} style={{ color: '#9e9e9e' }} />
+                              )
+                            }
+                          >
+                            {route.is_enabled ? 'Enabled' : 'Disabled'}
+                          </Button>
+                          <IconButton
+                            color="error"
+                            onClick={() => {
+                              setRouteToDelete(route);
+                              setDeleteRouteDialogOpen(true);
+                            }}
+                            disabled={deleteRouteMutation.isPending}
+                            sx={{ minWidth: 44, minHeight: 44 }}
+                          >
+                            <Trash2 size={18} />
+                          </IconButton>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Box>
               ) : (
+                /* Desktop Table View */
                 <TableContainer component={Paper} variant="outlined">
                   <Table>
                     <TableHead>
@@ -506,7 +626,89 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                   Events will appear when webhooks are received
                 </Typography>
               </Box>
+            ) : isMobile ? (
+              /* Mobile Card View */
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {events.map((event: WebhookEvent) => (
+                  <Card key={event.id} variant="outlined">
+                    <CardContent sx={{ p: 2 }}>
+                      {/* Header: Method and Status */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                        <Chip label={event.method} variant="outlined" size="small" />
+                        <Chip
+                          label={event.status_code}
+                          color={
+                            event.status_code >= 200 && event.status_code < 300
+                              ? 'success'
+                              : event.status_code >= 400
+                              ? 'error'
+                              : 'warning'
+                          }
+                          variant="outlined"
+                          size="small"
+                        />
+                      </Box>
+
+                      {/* Path */}
+                      <Box sx={{ mb: 1.5 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Request Path
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontFamily: 'monospace',
+                            fontSize: '0.875rem',
+                            wordBreak: 'break-all',
+                          }}
+                        >
+                          {event.request_path}
+                        </Typography>
+                      </Box>
+
+                      <Divider sx={{ my: 2 }} />
+
+                      {/* Metrics */}
+                      <Box sx={{ display: 'flex', gap: 3, mb: 1.5, flexWrap: 'wrap' }}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Duration
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {event.duration_ms}ms
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Tunnels
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {event.tunnel_count}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                            Success Rate
+                          </Typography>
+                          <Chip
+                            label={`${event.success_count}/${event.tunnel_count}`}
+                            color={event.success_count > 0 ? 'success' : 'error'}
+                            variant="outlined"
+                            size="small"
+                          />
+                        </Box>
+                      </Box>
+
+                      {/* Timestamp */}
+                      <Typography variant="caption" color="text.secondary">
+                        {formatRelativeTime(event.created_at)}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
             ) : (
+              /* Desktop Table View */
               <TableContainer component={Paper} variant="outlined">
                 <Table>
                   <TableHead>

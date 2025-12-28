@@ -23,6 +23,9 @@ import {
   Paper,
   IconButton,
   Tooltip,
+  Divider,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import { Webhook, Plus, Eye } from 'lucide-react';
 import { toast } from 'sonner';
@@ -38,6 +41,8 @@ export function WebhookApps({}: WebhookAppsProps) {
   const [newAppDescription, setNewAppDescription] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   // Subscribe to real-time events via SSE
   useAllEvents((event) => {
@@ -85,7 +90,16 @@ export function WebhookApps({}: WebhookAppsProps) {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
+          justifyContent: 'space-between',
+          alignItems: { xs: 'stretch', sm: 'flex-start' },
+          gap: { xs: 2, sm: 0 },
+          mb: 4,
+        }}
+      >
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
             Webhook Apps
@@ -99,7 +113,11 @@ export function WebhookApps({}: WebhookAppsProps) {
           variant="contained"
           startIcon={<Plus size={16} />}
           onClick={() => setCreateDialogOpen(true)}
-          sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5568d3' } }}
+          sx={{
+            bgcolor: '#667eea',
+            '&:hover': { bgcolor: '#5568d3' },
+            minWidth: { xs: '100%', sm: 'auto' },
+          }}
         >
           Create Webhook App
         </Button>
@@ -191,8 +209,122 @@ export function WebhookApps({}: WebhookAppsProps) {
                 Create a webhook app to start broadcasting events to multiple tunnels
               </Typography>
             </Box>
+          ) : isMobile ? (
+            /* Mobile Card View */
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {apps.map((app) => (
+                <Card
+                  key={app.id}
+                  variant="outlined"
+                  sx={{
+                    cursor: 'pointer',
+                    transition: 'box-shadow 0.2s',
+                    '&:hover': {
+                      boxShadow: 3,
+                    },
+                  }}
+                  onClick={() => navigate(`/webhooks/${app.id}`)}
+                >
+                  <CardContent sx={{ p: 2 }}>
+                    {/* Header: Name and Status */}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <Webhook size={18} style={{ color: '#667eea', flexShrink: 0 }} />
+                          <Typography variant="body1" sx={{ fontWeight: 600, wordBreak: 'break-word' }}>
+                            {app.name}
+                          </Typography>
+                        </Box>
+                        {app.description && (
+                          <Typography variant="body2" color="text.secondary" sx={{ ml: '26px' }}>
+                            {app.description}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Chip
+                        label={app.is_active ? 'Active' : 'Inactive'}
+                        color={app.is_active ? 'success' : 'default'}
+                        variant="outlined"
+                        size="small"
+                        sx={{ flexShrink: 0, ml: 1 }}
+                      />
+                    </Box>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Organization */}
+                    {app.organization_name && (
+                      <Box sx={{ mb: 1.5 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Organization
+                        </Typography>
+                        <Chip
+                          label={app.organization_name}
+                          color="secondary"
+                          variant="outlined"
+                          size="small"
+                          sx={{ fontWeight: 500 }}
+                        />
+                      </Box>
+                    )}
+
+                    {/* Owner */}
+                    {app.owner_name && (
+                      <Box sx={{ mb: 1.5 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Owner
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {app.owner_name}
+                        </Typography>
+                        {app.owner_email && (
+                          <Typography variant="caption" color="text.secondary">
+                            {app.owner_email}
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+
+                    {/* Routes and Created */}
+                    <Box sx={{ display: 'flex', gap: 3, mb: 2 }}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Routes
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {app.routes?.length || 0}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Created
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatRelativeTime(app.created_at)}
+                        </Typography>
+                      </Box>
+                    </Box>
+
+                    {/* Action Button */}
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      color="primary"
+                      startIcon={<Eye size={18} />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/webhooks/${app.id}`);
+                      }}
+                    >
+                      View Details
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
           ) : (
-            <TableContainer component={Paper} variant="outlined">
+            /* Desktop Table View */
+            <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
               <Table>
                 <TableHead>
                   <TableRow>
