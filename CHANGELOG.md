@@ -1,3 +1,9 @@
+## [1.3.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.1...v1.3.0-alpha.2) (2025-12-28)
+
+### Bug Fixes
+
+* **proxy:** fix race condition in gRPC stream concurrent writes ([e9746e0](https://github.com/pandeptwidyaop/grok/commit/e9746e06885d110251dfe8cfcaae0be8ebeb2649))
+
 ## [1.3.0-alpha.1](https://github.com/pandeptwidyaop/grok/compare/v1.2.0...v1.3.0-alpha.1) (2025-12-28)
 
 ### Features
