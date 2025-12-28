@@ -1,3 +1,9 @@
+## [1.3.0-alpha.4](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.3...v1.3.0-alpha.4) (2025-12-28)
+
+### Bug Fixes
+
+* **proxy,tunnel:** fix concurrent request hanging and large file support ([dcd05a5](https://github.com/pandeptwidyaop/grok/commit/dcd05a57fe1f0c78ee170001e8fd6f0e7457a51c))
+
 ## [1.3.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.2...v1.3.0-alpha.3) (2025-12-28)
 
 ### Code Refactoring
