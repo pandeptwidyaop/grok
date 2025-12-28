@@ -1,3 +1,9 @@
+## [1.3.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.2...v1.3.0-alpha.3) (2025-12-28)
+
+### Code Refactoring
+
+* **proxy:** reduce cyclomatic complexity in WebSocket handler ([37cb230](https://github.com/pandeptwidyaop/grok/commit/37cb2308ed4dc7c0f355a587f84a71dc421c9a8f))
+
 ## [1.3.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.1...v1.3.0-alpha.2) (2025-12-28)
 
 ### Bug Fixes
