@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -64,6 +65,7 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
   const [routePriority, setRoutePriority] = useState('100');
   const [activeTab, setActiveTab] = useState(0);
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -724,7 +726,14 @@ export function WebhookAppDetail({ app, onBack }: WebhookAppDetailProps) {
                   </TableHead>
                   <TableBody>
                     {events.map((event: WebhookEvent) => (
-                      <TableRow key={event.id}>
+                      <TableRow
+                        key={event.id}
+                        onClick={() => navigate(`/webhooks/${app.id}/events/${event.id}`)}
+                        sx={{
+                          cursor: 'pointer',
+                          '&:hover': { bgcolor: 'action.hover' }
+                        }}
+                      >
                         <TableCell>
                           <Typography variant="body2" color="text.secondary">
                             {formatRelativeTime(event.created_at)}

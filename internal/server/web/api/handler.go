@@ -60,6 +60,12 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 
 	// Subscribe to webhook events and broadcast via SSE + save to database
 	if webhookRouter != nil {
+		// Size limits to prevent database bloat
+		const (
+			maxBodySize    = 100 * 1024 // 100KB per body
+			maxHeadersSize = 10 * 1024  // 10KB for headers JSON
+		)
+
 		webhookRouter.OnWebhookEvent(func(event interface{}) {
 			// Type assert to WebhookEvent
 			if webhookEvent, ok := event.(proxy.WebhookEvent); ok {
@@ -87,12 +93,95 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 					ErrorMessage:  webhookEvent.ErrorMessage,
 				}
 
+				// Serialize and truncate request headers
+				if reqHeadersJSON, err := json.Marshal(webhookEvent.RequestHeaders); err == nil {
+					if len(reqHeadersJSON) > maxHeadersSize {
+						dbEvent.RequestHeaders = string(reqHeadersJSON[:maxHeadersSize])
+					} else {
+						dbEvent.RequestHeaders = string(reqHeadersJSON)
+					}
+				}
+
+				// Truncate request body if needed
+				if len(webhookEvent.RequestBody) > maxBodySize {
+					dbEvent.RequestBody = string(webhookEvent.RequestBody[:maxBodySize])
+					dbEvent.BodyTruncated = true
+				} else {
+					dbEvent.RequestBody = string(webhookEvent.RequestBody)
+				}
+
+				// Serialize and truncate response headers
+				if webhookEvent.ResponseHeaders != nil {
+					if respHeadersJSON, err := json.Marshal(webhookEvent.ResponseHeaders); err == nil {
+						if len(respHeadersJSON) > maxHeadersSize {
+							dbEvent.ResponseHeaders = string(respHeadersJSON[:maxHeadersSize])
+						} else {
+							dbEvent.ResponseHeaders = string(respHeadersJSON)
+						}
+					}
+				}
+
+				// Truncate response body if needed
+				if len(webhookEvent.ResponseBody) > maxBodySize {
+					dbEvent.ResponseBody = string(webhookEvent.ResponseBody[:maxBodySize])
+					dbEvent.BodyTruncated = true
+				} else {
+					dbEvent.ResponseBody = string(webhookEvent.ResponseBody)
+				}
+
 				if err := h.db.Create(dbEvent).Error; err != nil {
 					logger.ErrorEvent().
 						Err(err).
 						Str("app_id", webhookEvent.AppID.String()).
 						Msg("Failed to save webhook event to database")
+					return // Don't save tunnel responses if event save failed
 				}
+
+				// Save per-tunnel responses
+				for _, tunnelResp := range webhookEvent.TunnelResponses {
+					// Get tunnel subdomain (may be nil if tunnel deleted)
+					tunnelSubdomain := "unknown"
+					if tun, ok := tunnelManager.GetTunnelByID(tunnelResp.TunnelID); ok {
+						tunnelSubdomain = tun.Subdomain
+					}
+
+					dbTunnelResp := &models.WebhookTunnelResponse{
+						WebhookEventID:  dbEvent.ID,
+						TunnelID:        tunnelResp.TunnelID,
+						TunnelSubdomain: tunnelSubdomain,
+						StatusCode:      tunnelResp.StatusCode,
+						DurationMs:      tunnelResp.DurationMs,
+						Success:         tunnelResp.Success,
+						ErrorMessage:    tunnelResp.ErrorMessage,
+					}
+
+					// Serialize response headers
+					if respHeadersJSON, err := json.Marshal(tunnelResp.Headers); err == nil {
+						if len(respHeadersJSON) > maxHeadersSize {
+							dbTunnelResp.ResponseHeaders = string(respHeadersJSON[:maxHeadersSize])
+						} else {
+							dbTunnelResp.ResponseHeaders = string(respHeadersJSON)
+						}
+					}
+
+					// Truncate response body
+					if len(tunnelResp.Body) > maxBodySize {
+						dbTunnelResp.ResponseBody = string(tunnelResp.Body[:maxBodySize])
+					} else {
+						dbTunnelResp.ResponseBody = string(tunnelResp.Body)
+					}
+
+					if err := h.db.Create(dbTunnelResp).Error; err != nil {
+						logger.ErrorEvent().
+							Err(err).
+							Str("event_id", dbEvent.ID.String()).
+							Str("tunnel_id", tunnelResp.TunnelID.String()).
+							Msg("Failed to save webhook tunnel response")
+					}
+				}
+
+				// Cleanup old events if limit exceeded
+				h.cleanupOldWebhookEvents(webhookEvent.AppID)
 
 				// Broadcast webhook event via SSE
 				h.sseBroker.Broadcast(SSEEvent{
@@ -112,6 +201,66 @@ func NewHandler(db *gorm.DB, tokenService *auth.TokenService, tunnelManager *tun
 	}
 
 	return h
+}
+
+// cleanupOldWebhookEvents removes old webhook events when limit is exceeded.
+// Deletes oldest events first to keep recent history.
+// Related webhook_tunnel_responses are deleted automatically via CASCADE.
+func (h *Handler) cleanupOldWebhookEvents(appID uuid.UUID) {
+	maxEvents := h.config.Webhooks.MaxEvents
+	if maxEvents <= 0 {
+		return // Unlimited if not set or disabled
+	}
+
+	// Count total events for this app
+	var count int64
+	if err := h.db.Model(&models.WebhookEvent{}).
+		Where("webhook_app_id = ?", appID).
+		Count(&count).Error; err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("app_id", appID.String()).
+			Msg("Failed to count webhook events for cleanup")
+		return
+	}
+
+	// Calculate how many to delete
+	if count <= int64(maxEvents) {
+		return // Within limit, no cleanup needed
+	}
+
+	toDelete := count - int64(maxEvents)
+
+	// Get IDs of oldest events to delete
+	var oldEventIDs []uuid.UUID
+	if err := h.db.Model(&models.WebhookEvent{}).
+		Select("id").
+		Where("webhook_app_id = ?", appID).
+		Order("created_at ASC").
+		Limit(int(toDelete)).
+		Pluck("id", &oldEventIDs).Error; err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("app_id", appID.String()).
+			Int64("to_delete", toDelete).
+			Msg("Failed to fetch old webhook event IDs for cleanup")
+		return
+	}
+
+	// Delete old events (CASCADE will delete tunnel_responses automatically)
+	if err := h.db.Where("id IN ?", oldEventIDs).Delete(&models.WebhookEvent{}).Error; err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("app_id", appID.String()).
+			Int("deleted_count", len(oldEventIDs)).
+			Msg("Failed to delete old webhook events")
+	} else {
+		logger.InfoEvent().
+			Str("app_id", appID.String()).
+			Int("deleted_count", len(oldEventIDs)).
+			Int64("remaining_count", int64(maxEvents)).
+			Msg("Cleaned up old webhook events")
+	}
 }
 
 // CORSMiddleware adds CORS headers to all responses with origin whitelisting
@@ -251,6 +400,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Webhook Events & Stats
 	mux.Handle("GET /api/webhooks/apps/{app_id}/events",
 		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.GetEvents))))
+	mux.Handle("GET /api/webhooks/apps/{app_id}/events/{event_id}",
+		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.GetEventDetail))))
 	mux.Handle("GET /api/webhooks/apps/{app_id}/stats",
 		h.authMW.Protect(rbac.RequireOrganization(http.HandlerFunc(webhookHandler.GetStats))))
 

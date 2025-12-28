@@ -47,6 +47,7 @@ import TunnelDetail from './TunnelDetail';
 import TokenManager from './TokenManager';
 import { WebhookApps } from './WebhookApps';
 import { WebhookAppDetailPage } from './WebhookAppDetailPage';
+import { WebhookEventDetail } from './WebhookEventDetail';
 import OrganizationList from './OrganizationList';
 import OrganizationDetail from './OrganizationDetail';
 import OrgUserManagement from './OrgUserManagement';
@@ -511,6 +512,7 @@ function MainLayout() {
           <Route path="/tunnels/:id" element={<TunnelDetail />} />
           <Route path="/tunnels" element={<TunnelList />} />
           <Route path="/tokens" element={<TokenManager />} />
+          <Route path="/webhooks/:appId/events/:eventId" element={<WebhookEventDetail />} />
           <Route path="/webhooks/:id" element={<WebhookAppDetailPage />} />
           <Route path="/webhooks" element={<WebhookApps />} />
           <Route path="/settings" element={<Settings />} />

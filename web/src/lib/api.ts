@@ -219,6 +219,46 @@ export interface WebhookStats {
   total_bytes_out: number;
 }
 
+export interface WebhookTunnelResponse {
+  id: string;
+  tunnel_id: string;
+  tunnel_subdomain: string;
+  status_code: number;
+  duration_ms: number;
+  success: boolean;
+  error_message?: string;
+  response_headers?: Record<string, string[]>;
+  response_body?: string;
+}
+
+export interface WebhookEventDetail {
+  // All existing WebhookEvent fields
+  id: string;
+  webhook_app_id: string;
+  request_path: string;
+  method: string;
+  status_code: number;
+  duration_ms: number;
+  bytes_in: number;
+  bytes_out: number;
+  client_ip: string;
+  routing_status: string;
+  tunnel_count: number;
+  success_count: number;
+  error_message?: string;
+  created_at: string;
+  body_truncated: boolean;
+
+  // Extended fields
+  request_headers: string;
+  request_body: string;
+  response_headers: string;
+  response_body: string;
+  request_headers_parsed: Record<string, string[]>;
+  response_headers_parsed: Record<string, string[]>;
+  tunnel_responses: WebhookTunnelResponse[];
+}
+
 export interface CreateWebhookAppRequest {
   name: string;
   description: string;
@@ -365,6 +405,8 @@ export const api = {
     // Webhook Events & Stats
     getEvents: (appId: string, limit = 100) =>
       apiClient.get<WebhookEvent[]>(`/webhooks/apps/${appId}/events`, { params: { limit } }),
+    getEventDetail: (appId: string, eventId: string) =>
+      apiClient.get<WebhookEventDetail>(`/webhooks/apps/${appId}/events/${eventId}`),
     getStats: (appId: string) =>
       apiClient.get<WebhookStats>(`/webhooks/apps/${appId}/stats`),
   },

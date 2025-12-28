@@ -52,6 +52,13 @@ type WebhookEvent struct {
 	TunnelCount  int
 	SuccessCount int
 	ErrorMessage string
+
+	// Extended fields for detailed request/response capture
+	RequestHeaders  map[string][]string // Full request headers
+	RequestBody     []byte              // Request body
+	ResponseHeaders map[string][]string // From first successful response
+	ResponseBody    []byte              // From first successful response
+	TunnelResponses []*TunnelResponse   // Per-tunnel breakdown
 }
 
 // WebhookEventHandler is a callback for webhook events.
@@ -325,8 +332,13 @@ func collectResponses(responseCh chan *TunnelResponse, tunnelCount int) *Broadca
 // emitWebhookEvent emits a webhook processing event.
 func (wr *WebhookRouter) emitWebhookEvent(cache *WebhookRouteCache, userPath string, request *RequestData, result *BroadcastResult, durationMs int64) {
 	statusCode := 0
+	var responseHeaders map[string][]string
+	var responseBody []byte
+
 	if result.FirstSuccess != nil {
 		statusCode = result.FirstSuccess.StatusCode
+		responseHeaders = result.FirstSuccess.Headers
+		responseBody = result.FirstSuccess.Body
 	}
 
 	bytesIn := int64(len(request.Body))
@@ -360,6 +372,13 @@ func (wr *WebhookRouter) emitWebhookEvent(cache *WebhookRouteCache, userPath str
 		TunnelCount:  result.TunnelCount,
 		SuccessCount: result.SuccessCount,
 		ErrorMessage: result.ErrorMessage,
+
+		// Extended fields for detailed request/response capture
+		RequestHeaders:  request.Headers,
+		RequestBody:     request.Body,
+		ResponseHeaders: responseHeaders,
+		ResponseBody:    responseBody,
+		TunnelResponses: result.Responses, // Per-tunnel breakdown
 	})
 }
 
