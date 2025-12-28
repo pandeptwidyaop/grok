@@ -73,12 +73,23 @@ type WebhookRouter struct {
 	// In-memory cache: org_subdomain → *WebhookRouteCache
 	webhookCache sync.Map
 
+	// Subdomain lookup cache: webhookSubdomain → appOrgComponents
+	// This prevents DB query on every webhook request
+	subdomainCache sync.Map
+
 	// Cache configuration
 	cacheRefreshInterval time.Duration
 
 	// Event handlers
 	eventHandlers []WebhookEventHandler
 	eventMu       sync.RWMutex
+
+	// Worker pool for broadcast concurrency control
+	broadcastSemaphore      chan struct{}
+	maxConcurrentBroadcasts int
+
+	// Circuit breaker state tracking: tunnelID → *circuitBreakerState
+	circuitBreakers sync.Map
 }
 
 // WebhookRouteCache holds cached webhook routing information.
@@ -120,14 +131,37 @@ type TunnelResponse struct {
 	ErrorMessage string
 }
 
+// circuitBreakerState tracks circuit breaker state for a tunnel.
+type circuitBreakerState struct {
+	failureCount    int
+	successCount    int
+	lastFailureTime time.Time
+	state           string // "closed", "open", "half_open"
+	mu              sync.RWMutex
+}
+
+const (
+	circuitClosed   = "closed"
+	circuitOpen     = "open"
+	circuitHalfOpen = "half_open"
+
+	// Circuit breaker thresholds.
+	failureThreshold = 5                // Open circuit after 5 consecutive failures.
+	cooldownPeriod   = 30 * time.Second // Wait 30s before trying again.
+	successThreshold = 2                // Close circuit after 2 consecutive successes in half-open.
+)
+
 // NewWebhookRouter creates a new webhook router.
 func NewWebhookRouter(db *gorm.DB, tunnelManager *tunnel.Manager, baseDomain string) *WebhookRouter {
+	maxConcurrent := 10 // Default: max 10 concurrent broadcasts per webhook
 	return &WebhookRouter{
-		db:                   db,
-		tunnelManager:        tunnelManager,
-		baseDomain:           baseDomain,
-		cacheRefreshInterval: 30 * time.Second,
-		eventHandlers:        make([]WebhookEventHandler, 0),
+		db:                      db,
+		tunnelManager:           tunnelManager,
+		baseDomain:              baseDomain,
+		cacheRefreshInterval:    30 * time.Second,
+		eventHandlers:           make([]WebhookEventHandler, 0),
+		broadcastSemaphore:      make(chan struct{}, maxConcurrent),
+		maxConcurrentBroadcasts: maxConcurrent,
 	}
 }
 
@@ -139,13 +173,58 @@ func (wr *WebhookRouter) OnWebhookEvent(handler WebhookEventHandler) {
 }
 
 // emitEvent emits a webhook event to all subscribers.
+// Each handler is executed in a separate goroutine with timeout protection and panic recovery.
 func (wr *WebhookRouter) emitEvent(event WebhookEvent) {
 	wr.eventMu.RLock()
-	defer wr.eventMu.RUnlock()
+	// Copy handlers to avoid holding read lock during execution
+	handlers := make([]WebhookEventHandler, len(wr.eventHandlers))
+	copy(handlers, wr.eventHandlers)
+	wr.eventMu.RUnlock()
 
-	// Call all event handlers in goroutines to avoid blocking
-	for _, handler := range wr.eventHandlers {
-		go handler(event)
+	// Call all event handlers in goroutines with timeout protection
+	for _, handler := range handlers {
+		go wr.executeHandlerSafely(handler, event)
+	}
+}
+
+// executeHandlerSafely executes an event handler with timeout and panic recovery.
+func (wr *WebhookRouter) executeHandlerSafely(handler WebhookEventHandler, event WebhookEvent) {
+	// Panic recovery
+	defer func() {
+		if r := recover(); r != nil {
+			logger.ErrorEvent().
+				Interface("panic", r).
+				Str("event_type", string(event.Type)).
+				Str("app_id", event.AppID.String()).
+				Msg("Webhook event handler panicked")
+		}
+	}()
+
+	// Create context with timeout (5 seconds for event handlers)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Execute handler in a goroutine with timeout detection
+	done := make(chan struct{})
+	go func() {
+		handler(event)
+		close(done)
+	}()
+
+	// Wait for handler to complete or timeout
+	select {
+	case <-done:
+		// Handler completed successfully
+		logger.DebugEvent().
+			Str("event_type", string(event.Type)).
+			Str("app_id", event.AppID.String()).
+			Msg("Webhook event handler completed")
+	case <-ctx.Done():
+		// Handler timed out
+		logger.WarnEvent().
+			Str("event_type", string(event.Type)).
+			Str("app_id", event.AppID.String()).
+			Msg("Webhook event handler timed out after 5 seconds")
 	}
 }
 
@@ -169,6 +248,13 @@ func (wr *WebhookRouter) IsWebhookRequest(host string) bool {
 	return strings.HasSuffix(subdomain, "-webhook")
 }
 
+// appOrgComponents represents cached subdomain lookup results.
+type appOrgComponents struct {
+	AppName      string
+	OrgSubdomain string
+	CachedAt     time.Time
+}
+
 // Returns: orgSubdomain="trofeo", appName="payment-app", userPath="/stripe/callback".
 func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdomain, appName, userPath string, err error) {
 	// Remove port from host
@@ -190,17 +276,42 @@ func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdoma
 		return "", "", "", ErrInvalidWebhookURL
 	}
 
+	// Check subdomain cache first to avoid database query
+	if cached, ok := wr.subdomainCache.Load(webhookSubdomain); ok {
+		if components, ok := cached.(*appOrgComponents); ok {
+			// Cache valid for 5 minutes
+			if time.Since(components.CachedAt) < 5*time.Minute {
+				appName = components.AppName
+				orgSubdomain = components.OrgSubdomain
+
+				// User path is the entire request path
+				if path == "" {
+					userPath = "/"
+				} else {
+					userPath = path
+				}
+
+				return orgSubdomain, appName, userPath, nil
+			}
+		}
+	}
+
+	// Cache miss or expired - query database
 	// Remove "-webhook" suffix to get: {app-name}-{org-subdomain}
 	appOrgPart := strings.TrimSuffix(webhookSubdomain, "-webhook")
 
 	// Query database to find matching webhook app
 	// We need to find a webhook app where concatenating app.Name + "-" + org.Subdomain
 	// matches the appOrgPart
-	// Note: Use || for string concatenation (SQLite compatible)
+	// Use || for SQLite and CONCAT for PostgreSQL (database-aware)
 	var webhookApp models.WebhookApp
+
+	// Get database dialect
+	concatSQL := wr.buildConcatSQL()
+
 	err = wr.db.Preload("Organization").
 		Joins("JOIN organizations ON organizations.id = webhook_apps.organization_id").
-		Where("webhook_apps.name || '-' || organizations.subdomain = ?", appOrgPart).
+		Where(concatSQL+" = ?", appOrgPart).
 		First(&webhookApp).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -212,6 +323,13 @@ func (wr *WebhookRouter) ExtractWebhookComponents(host, path string) (orgSubdoma
 	// Extract components from database result
 	appName = webhookApp.Name
 	orgSubdomain = webhookApp.Organization.Subdomain
+
+	// Cache the result for future requests
+	wr.subdomainCache.Store(webhookSubdomain, &appOrgComponents{
+		AppName:      appName,
+		OrgSubdomain: orgSubdomain,
+		CachedAt:     time.Now(),
+	})
 
 	// User path is the entire request path
 	if path == "" {
@@ -382,12 +500,106 @@ func (wr *WebhookRouter) emitWebhookEvent(cache *WebhookRouteCache, userPath str
 	})
 }
 
+// getOrCreateCircuitBreaker gets or creates circuit breaker state for a tunnel.
+func (wr *WebhookRouter) getOrCreateCircuitBreaker(tunnelID uuid.UUID) *circuitBreakerState {
+	if cb, ok := wr.circuitBreakers.Load(tunnelID); ok {
+		if state, ok := cb.(*circuitBreakerState); ok {
+			return state
+		}
+	}
+
+	cb := &circuitBreakerState{
+		state: circuitClosed,
+	}
+	actual, _ := wr.circuitBreakers.LoadOrStore(tunnelID, cb)
+	if state, ok := actual.(*circuitBreakerState); ok {
+		return state
+	}
+	return cb
+}
+
+// canAttempt checks if circuit breaker allows attempt.
+func (cb *circuitBreakerState) canAttempt() bool {
+	cb.mu.RLock()
+	defer cb.mu.RUnlock()
+
+	switch cb.state {
+	case circuitClosed:
+		return true
+	case circuitOpen:
+		// Check if cooldown period has passed
+		if time.Since(cb.lastFailureTime) > cooldownPeriod {
+			// Transition to half-open
+			return true
+		}
+		return false
+	case circuitHalfOpen:
+		return true
+	default:
+		return true
+	}
+}
+
+// recordSuccess records a successful attempt.
+func (cb *circuitBreakerState) recordSuccess() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	cb.failureCount = 0
+	cb.successCount++
+
+	if cb.state == circuitHalfOpen && cb.successCount >= successThreshold {
+		// Close circuit after successful attempts
+		cb.state = circuitClosed
+		cb.successCount = 0
+		logger.InfoEvent().Msg("Circuit breaker closed after successful attempts")
+	} else if cb.state == circuitOpen {
+		// Transition from open to half-open on first success
+		cb.state = circuitHalfOpen
+		cb.successCount = 1
+	}
+}
+
+// recordFailure records a failed attempt.
+func (cb *circuitBreakerState) recordFailure() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	cb.successCount = 0
+	cb.failureCount++
+	cb.lastFailureTime = time.Now()
+
+	if cb.failureCount >= failureThreshold && cb.state == circuitClosed {
+		// Open circuit after threshold failures
+		cb.state = circuitOpen
+		logger.WarnEvent().
+			Int("failure_count", cb.failureCount).
+			Msg("Circuit breaker opened due to consecutive failures")
+	} else if cb.state == circuitHalfOpen {
+		// Back to open if failure in half-open
+		cb.state = circuitOpen
+		logger.WarnEvent().Msg("Circuit breaker reopened after failure in half-open state")
+	}
+}
+
 // broadcastToSingleTunnel broadcasts request to a single tunnel.
 func (wr *WebhookRouter) broadcastToSingleTunnel(ctx context.Context, route *WebhookRouteCacheEntry, userPath string, request *RequestData, responseCh chan *TunnelResponse) {
 	start := time.Now()
 
+	// Check circuit breaker
+	cb := wr.getOrCreateCircuitBreaker(route.TunnelID)
+	if !cb.canAttempt() {
+		responseCh <- &TunnelResponse{
+			TunnelID:     route.TunnelID,
+			Success:      false,
+			ErrorMessage: "circuit breaker open - tunnel has been failing",
+		}
+		return
+	}
+
 	tun, ok := wr.tunnelManager.GetTunnelByID(route.TunnelID)
 	if !ok {
+		cb.recordFailure()
 		responseCh <- &TunnelResponse{
 			TunnelID:     route.TunnelID,
 			Success:      false,
@@ -397,6 +609,7 @@ func (wr *WebhookRouter) broadcastToSingleTunnel(ctx context.Context, route *Web
 	}
 
 	if tun.GetStatus() != "active" {
+		cb.recordFailure()
 		responseCh <- &TunnelResponse{
 			TunnelID:     route.TunnelID,
 			Success:      false,
@@ -408,6 +621,13 @@ func (wr *WebhookRouter) broadcastToSingleTunnel(ctx context.Context, route *Web
 	response := wr.sendToTunnel(ctx, tun, userPath, request)
 	response.TunnelID = route.TunnelID
 	response.DurationMs = time.Since(start).Milliseconds()
+
+	// Update circuit breaker based on response
+	if response.Success {
+		cb.recordSuccess()
+	} else {
+		cb.recordFailure()
+	}
 
 	responseCh <- response
 }
@@ -439,11 +659,25 @@ func (wr *WebhookRouter) BroadcastToTunnels(ctx context.Context, cache *WebhookR
 	responseCh := make(chan *TunnelResponse, len(enabledRoutes))
 	var wg sync.WaitGroup
 
+	// Use worker pool to limit concurrent broadcasts and prevent memory spike
 	for _, route := range enabledRoutes {
 		wg.Add(1)
 		go func(r *WebhookRouteCacheEntry) {
 			defer wg.Done()
-			wr.broadcastToSingleTunnel(broadcastCtx, r, userPath, request, responseCh)
+
+			// Acquire semaphore (blocks if pool is full)
+			select {
+			case wr.broadcastSemaphore <- struct{}{}:
+				defer func() { <-wr.broadcastSemaphore }() // Release semaphore
+				wr.broadcastToSingleTunnel(broadcastCtx, r, userPath, request, responseCh)
+			case <-broadcastCtx.Done():
+				// Context canceled while waiting for semaphore
+				responseCh <- &TunnelResponse{
+					TunnelID:     r.TunnelID,
+					Success:      false,
+					ErrorMessage: "broadcast canceled while waiting for worker pool",
+				}
+			}
 		}(route)
 	}
 
@@ -580,4 +814,21 @@ func (wr *WebhookRouter) InvalidateAllCache() {
 	})
 
 	logger.InfoEvent().Msg("All webhook caches invalidated")
+}
+
+// buildConcatSQL returns the appropriate SQL concatenation syntax based on database type.
+// SQLite uses || operator, PostgreSQL uses CONCAT() function.
+func (wr *WebhookRouter) buildConcatSQL() string {
+	// Get database name from GORM
+	dbName := wr.db.Dialector.Name()
+
+	switch dbName {
+	case "postgres":
+		return "CONCAT(webhook_apps.name, '-', organizations.subdomain)"
+	case "sqlite":
+		return "webhook_apps.name || '-' || organizations.subdomain"
+	default:
+		// Default to PostgreSQL syntax for other databases (MySQL also supports CONCAT)
+		return "CONCAT(webhook_apps.name, '-', organizations.subdomain)"
+	}
 }

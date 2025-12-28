@@ -209,9 +209,16 @@ func (wh *WebhookHandler) GetApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Query app
+	// Query app with optimized JOIN to avoid N+1 queries
 	var app models.WebhookApp
-	if err := wh.db.Preload("Routes.Tunnel").Preload("Organization").First(&app, appID).Error; err != nil {
+	if err := wh.db.
+		Preload("Routes", func(db *gorm.DB) *gorm.DB {
+			// Preload routes with tunnel using JOIN for efficiency
+			return db.Joins("LEFT JOIN tunnels ON tunnels.id = webhook_routes.tunnel_id").
+				Preload("Tunnel")
+		}).
+		Preload("Organization").
+		First(&app, appID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			respondJSON(w, http.StatusNotFound, map[string]string{"error": "webhook app not found"})
 			return
@@ -442,11 +449,12 @@ func (wh *WebhookHandler) ListRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Query routes
+	// Query routes with JOIN to avoid N+1 query
 	var routes []models.WebhookRoute
-	if err := wh.db.Where("webhook_app_id = ?", appID).
-		Preload("Tunnel").
-		Order("priority ASC").
+	if err := wh.db.Where("webhook_routes.webhook_app_id = ?", appID).
+		Joins("LEFT JOIN tunnels ON tunnels.id = webhook_routes.tunnel_id").
+		Preload("Tunnel"). // Still preload for struct population
+		Order("webhook_routes.priority ASC").
 		Find(&routes).Error; err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to list webhook routes")
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list routes"})

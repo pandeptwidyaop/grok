@@ -5,10 +5,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pandeptwidyaop/grok/internal/db/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/pandeptwidyaop/grok/internal/db/models"
 )
 
 func TestCleanupOldRequestLogs(t *testing.T) {
