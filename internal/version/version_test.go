@@ -158,8 +158,8 @@ func TestValidateReleaseAssets(t *testing.T) {
 			release: Release{
 				TagName: "v1.2.0",
 				Assets: []Asset{
-					{Name: "grok-server_v1.2.0_" + goos + "_" + arch + ".tar.gz"},
-					{Name: "grok-server_v1.2.0_linux_x86_64.tar.gz"},
+					{Name: "grok-server_1.2.0_" + goos + "_" + arch + ".tar.gz"},
+					{Name: "grok-server_1.2.0_linux_x86_64.tar.gz"},
 				},
 			},
 			binaryName:  "grok-server",
@@ -170,7 +170,7 @@ func TestValidateReleaseAssets(t *testing.T) {
 			release: Release{
 				TagName: "v1.2.0",
 				Assets: []Asset{
-					{Name: "grok-server_v1.2.0_windows_x86_64.tar.gz"},
+					{Name: "grok-server_1.2.0_windows_x86_64.tar.gz"},
 				},
 			},
 			binaryName:  "grok-server",
