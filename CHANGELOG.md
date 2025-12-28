@@ -1,3 +1,9 @@
+## [1.2.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.2.0-alpha.1...v1.2.0-alpha.2) (2025-12-28)
+
+### Features
+
+* **ui:** add mobile responsive design for webhook pages ([ebfb89f](https://github.com/pandeptwidyaop/grok/commit/ebfb89f0e8798212f2bac05911047b25da69bbdb))
+
 ## [1.2.0-alpha.1](https://github.com/pandeptwidyaop/grok/compare/v1.1.0...v1.2.0-alpha.1) (2025-12-27)
 
 ### Features
