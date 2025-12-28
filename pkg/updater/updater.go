@@ -127,7 +127,9 @@ func (u *Updater) getDownloadURL(version string) string {
 	// Construct filename based on binary name
 	// Client: grok_1.0.0_linux_x86_64.tar.gz
 	// Server: grok-server_1.0.0_linux_x86_64.tar.gz
-	filename := fmt.Sprintf("%s_%s_%s_%s.tar.gz", u.binaryName, version, osName, arch)
+	// Strip 'v' prefix from version for filename
+	versionWithoutV := strings.TrimPrefix(version, "v")
+	filename := fmt.Sprintf("%s_%s_%s_%s.tar.gz", u.binaryName, versionWithoutV, osName, arch)
 
 	// Construct full URL
 	url := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s",

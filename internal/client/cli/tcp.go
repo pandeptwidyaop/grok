@@ -77,6 +77,9 @@ func runTCPTunnel(cmd *cobra.Command, args []string) error {
 		dashboardCfg.EnableSSE = true
 	}
 
+	// Check version compatibility with server (non-blocking, non-fatal)
+	checkServerVersion(cfg.Server.Addr)
+
 	// Create tunnel client
 	client, err := tunnel.NewClient(tunnel.ClientConfig{
 		ServerAddr:    cfg.Server.Addr,
