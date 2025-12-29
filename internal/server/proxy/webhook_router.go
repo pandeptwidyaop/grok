@@ -796,7 +796,7 @@ func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, u
 type RequestData struct {
 	Method      string
 	Path        string
-	QueryString string              // Query parameters (e.g., "foo=bar&id=123")
+	QueryString string // Query parameters (e.g., "foo=bar&id=123")
 	Headers     map[string][]string
 	Body        []byte
 }
