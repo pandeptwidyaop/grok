@@ -24,10 +24,11 @@ type HTTPForwarder struct {
 
 // NewHTTPForwarder creates a new HTTP forwarder.
 func NewHTTPForwarder(localAddr string) *HTTPForwarder {
-	// Create custom transport with optimized settings
+	// Create custom transport with optimized settings for high concurrency
 	transport := &http.Transport{
-		MaxIdleConns:        100,              // Reuse connections
-		MaxIdleConnsPerHost: 10,               // Keep connections to local service alive
+		MaxIdleConns:        200,              // Total reusable connections across all hosts
+		MaxIdleConnsPerHost: 100,              // Max idle connections per host (optimized for 100+ concurrent requests)
+		MaxConnsPerHost:     200,              // Max active connections per host (safety limit: 200 concurrent requests)
 		IdleConnTimeout:     90 * time.Second, // Keep idle connections longer
 		DisableCompression:  false,            // Allow compression if server supports it
 		WriteBufferSize:     32 * 1024,        // 32KB write buffer (default is 4KB)
