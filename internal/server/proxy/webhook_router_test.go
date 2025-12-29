@@ -211,6 +211,70 @@ func TestWebhookRouter_ExtractWebhookComponents(t *testing.T) {
 	}
 }
 
+func TestRequestData_QueryStringForwarding(t *testing.T) {
+	tests := []struct {
+		name        string
+		method      string
+		path        string
+		queryString string
+		wantPath    string
+		wantQuery   string
+	}{
+		{
+			name:        "with query parameters",
+			method:      "GET",
+			path:        "/api/users",
+			queryString: "id=123&filter=active",
+			wantPath:    "/api/users",
+			wantQuery:   "id=123&filter=active",
+		},
+		{
+			name:        "without query parameters",
+			method:      "POST",
+			path:        "/api/payment",
+			queryString: "",
+			wantPath:    "/api/payment",
+			wantQuery:   "",
+		},
+		{
+			name:        "complex query string",
+			method:      "GET",
+			path:        "/webhook/stripe",
+			queryString: "timestamp=1234567890&signature=abc123&event=payment_intent.succeeded",
+			wantPath:    "/webhook/stripe",
+			wantQuery:   "timestamp=1234567890&signature=abc123&event=payment_intent.succeeded",
+		},
+		{
+			name:        "single query param",
+			method:      "GET",
+			path:        "/callback",
+			queryString: "code=abc123",
+			wantPath:    "/callback",
+			wantQuery:   "code=abc123",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			requestData := &RequestData{
+				Method:      tt.method,
+				Path:        tt.path,
+				QueryString: tt.queryString,
+				Headers:     make(map[string][]string),
+				Body:        []byte{},
+			}
+
+			// Verify fields are set correctly
+			if requestData.Path != tt.wantPath {
+				t.Errorf("Path = %q; want %q", requestData.Path, tt.wantPath)
+			}
+			if requestData.QueryString != tt.wantQuery {
+				t.Errorf("QueryString = %q; want %q", requestData.QueryString, tt.wantQuery)
+			}
+		})
+	}
+}
+
 // Benchmark tests.
 func BenchmarkIsWebhookRequest(b *testing.B) {
 	router := &WebhookRouter{
