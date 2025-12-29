@@ -194,13 +194,19 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 
 	// Publish request started event to dashboard
 	if c.eventCollector != nil {
+		// Build full path with query parameters
+		fullPath := httpReq.Path
+		if httpReq.QueryString != "" {
+			fullPath = httpReq.Path + "?" + httpReq.QueryString
+		}
+
 		c.eventCollector.Publish(events.Event{
 			Type:      events.EventRequestStarted,
 			Timestamp: start,
 			Data: events.RequestStartedEvent{
 				RequestID:  requestID,
 				Method:     httpReq.Method,
-				Path:       httpReq.Path,
+				Path:       fullPath,
 				RemoteAddr: httpReq.RemoteAddr,
 				Protocol:   "http",
 				Headers:    convertHeaders(httpReq.Headers),
