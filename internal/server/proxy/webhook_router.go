@@ -728,7 +728,7 @@ func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, u
 				Path:        userPath,
 				Headers:     headers,
 				Body:        request.Body,
-				QueryString: "",
+				QueryString: request.QueryString,
 				RemoteAddr:  "", // Will be populated by handleWebhookRequest
 			},
 		},
@@ -794,10 +794,11 @@ func (wr *WebhookRouter) sendToTunnel(ctx context.Context, tun *tunnel.Tunnel, u
 
 // RequestData holds HTTP request data for proxying.
 type RequestData struct {
-	Method  string
-	Path    string
-	Headers map[string][]string
-	Body    []byte
+	Method      string
+	Path        string
+	QueryString string              // Query parameters (e.g., "foo=bar&id=123")
+	Headers     map[string][]string
+	Body        []byte
 }
 
 // InvalidateCache invalidates the cache for a specific webhook app.

@@ -336,10 +336,11 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 
 	// Prepare request data
 	requestData := &RequestData{
-		Method:  r.Method,
-		Path:    userPath, // Use user-defined path, not the full path
-		Headers: r.Header,
-		Body:    body,
+		Method:      r.Method,
+		Path:        userPath, // Use user-defined path, not the full path
+		QueryString: r.URL.RawQuery,
+		Headers:     r.Header,
+		Body:        body,
 	}
 
 	// Broadcast to all enabled tunnels
