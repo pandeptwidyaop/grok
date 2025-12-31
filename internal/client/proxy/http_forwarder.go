@@ -14,37 +14,91 @@ import (
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
+	"github.com/pandeptwidyaop/grok/pkg/pool"
 )
 
 // HTTPForwarder forwards HTTP requests to local service.
 type HTTPForwarder struct {
 	localAddr  string
 	httpClient *http.Client // No timeout to support large file downloads via chunked transfer
+	connPool   *pool.ConnectionPool
+	bufferPool *pool.AdaptiveBufferPool
 }
 
 // NewHTTPForwarder creates a new HTTP forwarder.
 func NewHTTPForwarder(localAddr string) *HTTPForwarder {
-	// Create custom transport with optimized settings for high concurrency
-	transport := &http.Transport{
-		MaxIdleConns:        200,              // Total reusable connections across all hosts
-		MaxIdleConnsPerHost: 100,              // Max idle connections per host (optimized for 100+ concurrent requests)
-		MaxConnsPerHost:     200,              // Max active connections per host (safety limit: 200 concurrent requests)
-		IdleConnTimeout:     90 * time.Second, // Keep idle connections longer
-		DisableCompression:  false,            // Allow compression if server supports it
-		WriteBufferSize:     32 * 1024,        // 32KB write buffer (default is 4KB)
-		ReadBufferSize:      32 * 1024,        // 32KB read buffer (default is 4KB)
+	// Create connection pool for local service connections
+	connPool, err := pool.NewConnectionPool(pool.Config{
+		MinSize:             0, // Lazy init - don't pre-allocate before service is ready
+		MaxSize:             100,
+		IdleTimeout:         90 * time.Second,
+		HealthCheckInterval: 30 * time.Second,
+		MaxWaitTime:         5 * time.Second,
+		Factory: func() (net.Conn, error) {
+			return net.DialTimeout("tcp", localAddr, 10*time.Second)
+		},
+	})
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("local_addr", localAddr).
+			Msg("Failed to create connection pool, falling back to default transport")
+		// Fallback to default transport without connection pool
+		transport := &http.Transport{
+			MaxIdleConns:        200,
+			MaxIdleConnsPerHost: 100,
+			MaxConnsPerHost:     200,
+			IdleConnTimeout:     90 * time.Second,
+			DisableCompression:  false,
+			WriteBufferSize:     32 * 1024,
+			ReadBufferSize:      32 * 1024,
+		}
+		return &HTTPForwarder{
+			localAddr: localAddr,
+			httpClient: &http.Client{
+				Timeout:   0,
+				Transport: transport,
+				CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+					return http.ErrUseLastResponse
+				},
+			},
+			connPool:   nil,
+			bufferPool: pool.NewAdaptiveBufferPool(),
+		}
 	}
+
+	// Create custom transport that uses connection pool
+	transport := &http.Transport{
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     200,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  false,
+		WriteBufferSize:     32 * 1024,
+		ReadBufferSize:      32 * 1024,
+		// Use connection pool for dialing
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return connPool.Get(ctx)
+		},
+	}
+
+	logger.InfoEvent().
+		Str("local_addr", localAddr).
+		Int("pool_min", 0).
+		Int("pool_max", 100).
+		Msg("HTTP forwarder initialized with connection pool")
 
 	return &HTTPForwarder{
 		localAddr: localAddr,
 		httpClient: &http.Client{
-			Timeout:   0, // No timeout to support large file downloads via chunked transfer
+			Timeout:   0,
 			Transport: transport,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				// Don't follow redirects
 				return http.ErrUseLastResponse
 			},
 		},
+		connPool:   connPool,
+		bufferPool: pool.NewAdaptiveBufferPool(),
 	}
 }
 
@@ -210,17 +264,30 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 
 	logger.InfoEvent().
 		Int("status", httpResp.StatusCode).
+		Int64("content_length", httpResp.ContentLength).
 		Msg("Received response from local service, streaming in chunks")
 
-	// Get buffer from pool
-	bufPtr := httpChunkedBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
-	buffer := *bufPtr
-	defer httpChunkedBufferPool.Put(bufPtr)
+	// Get adaptive buffer based on Content-Length
+	// Validate Content-Length to prevent DoS attacks
+	const MaxBufferSize = 100 * 1024 * 1024 // 100MB limit
+	estimatedSize := int(httpResp.ContentLength)
+	if estimatedSize < 0 || estimatedSize > MaxBufferSize {
+		estimatedSize = 0 // Unknown or too large, use safe default (64KB medium buffer)
+		if httpResp.ContentLength > MaxBufferSize {
+			logger.WarnEvent().
+				Int64("content_length", httpResp.ContentLength).
+				Int("max_buffer_size", MaxBufferSize).
+				Msg("Content-Length exceeds max buffer size, using default buffer")
+		}
+	}
+
+	buffer := f.bufferPool.Get(estimatedSize)
+	defer buffer.Release()
 
 	totalBytes := 0
 
 	for {
-		n, err := httpResp.Body.Read(buffer)
+		n, err := httpResp.Body.Read(buffer.Bytes())
 		if n > 0 {
 			totalBytes += n
 
@@ -228,7 +295,7 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 			chunk := &tunnelv1.HTTPResponse{
 				StatusCode: int32(httpResp.StatusCode), //nolint:gosec // Safe conversion
 				Headers:    headers,
-				Body:       append([]byte(nil), buffer[:n]...),
+				Body:       append([]byte(nil), buffer.Bytes()[:n]...),
 			}
 
 			// Check if this is the last chunk
@@ -394,4 +461,12 @@ func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnel
 
 	// Return response and connection for bidirectional streaming
 	return response, conn, nil
+}
+
+// Close gracefully shuts down the HTTP forwarder and its connection pool.
+func (f *HTTPForwarder) Close() error {
+	if f.connPool != nil {
+		return f.connPool.Close()
+	}
+	return nil
 }

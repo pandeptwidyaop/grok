@@ -465,3 +465,39 @@ func (c *Client) GetPublicURL() string {
 	defer c.mu.RUnlock()
 	return c.publicURL
 }
+
+// Stop gracefully shuts down the client and cleans up resources.
+func (c *Client) Stop() error {
+	logger.InfoEvent().Msg("Stopping tunnel client...")
+
+	// Signal stop to all goroutines
+	close(c.stopCh)
+
+	// Close dashboard server
+	if c.dashboardServer != nil {
+		if err := c.dashboardServer.Close(); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to close dashboard server")
+		}
+	}
+
+	// Close forwarders (fixes resource leak)
+	if c.httpForwarder != nil {
+		if err := c.httpForwarder.Close(); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to close HTTP forwarder")
+		}
+	}
+
+	if c.tcpForwarder != nil {
+		c.tcpForwarder.Close()
+	}
+
+	// Close gRPC connection
+	if c.conn != nil {
+		if err := c.conn.Close(); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to close gRPC connection")
+		}
+	}
+
+	logger.InfoEvent().Msg("Tunnel client stopped successfully")
+	return nil
+}
