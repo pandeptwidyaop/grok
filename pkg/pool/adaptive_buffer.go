@@ -183,7 +183,7 @@ func (p *AdaptiveBufferPool) Get(estimatedSize int) *Buffer {
 		// Small buffer (1KB)
 		tier = TierSmall
 		pooled := p.small.Get()
-		data = pooled.(*[]byte)
+		data = pooled.(*[]byte) //nolint:errcheck // Type assertion from sync.Pool is safe
 		p.stats.SmallAllocated.Add(1)
 		p.stats.TotalBytesAllocated.Add(SmallBufferSize)
 
@@ -191,7 +191,7 @@ func (p *AdaptiveBufferPool) Get(estimatedSize int) *Buffer {
 		// Medium buffer (64KB)
 		tier = TierMedium
 		pooled := p.medium.Get()
-		data = pooled.(*[]byte)
+		data = pooled.(*[]byte) //nolint:errcheck // Type assertion from sync.Pool is safe
 		p.stats.MediumAllocated.Add(1)
 		p.stats.TotalBytesAllocated.Add(MediumBufferSize)
 
@@ -201,14 +201,14 @@ func (p *AdaptiveBufferPool) Get(estimatedSize int) *Buffer {
 			// Unknown size or small enough - use medium buffer
 			tier = TierMedium
 			pooled := p.medium.Get()
-			data = pooled.(*[]byte)
+			data = pooled.(*[]byte) //nolint:errcheck // Type assertion from sync.Pool is safe
 			p.stats.MediumAllocated.Add(1)
 			p.stats.TotalBytesAllocated.Add(MediumBufferSize)
 		} else {
 			// Large buffer needed
 			tier = TierLarge
 			pooled := p.large.Get()
-			data = pooled.(*[]byte)
+			data = pooled.(*[]byte) //nolint:errcheck // Type assertion from sync.Pool is safe
 			p.stats.LargeAllocated.Add(1)
 			p.stats.TotalBytesAllocated.Add(LargeBufferSize)
 		}
@@ -245,8 +245,8 @@ func (p *AdaptiveBufferPool) GetLarge() *Buffer {
 }
 
 // Stats returns a snapshot of buffer pool statistics.
-func (p *AdaptiveBufferPool) Stats() BufferStats {
-	return p.stats
+func (p *AdaptiveBufferPool) Stats() *BufferStats {
+	return &p.stats
 }
 
 // StatsMap returns buffer pool statistics as a map.

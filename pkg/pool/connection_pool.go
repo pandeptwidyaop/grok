@@ -516,8 +516,8 @@ func (p *ConnectionPool) Close() error {
 }
 
 // Metrics returns a snapshot of pool metrics.
-func (p *ConnectionPool) Metrics() PoolMetrics {
-	return p.metrics
+func (p *ConnectionPool) Metrics() *PoolMetrics {
+	return &p.metrics
 }
 
 // Stats returns pool statistics as a map.
