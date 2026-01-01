@@ -1,3 +1,9 @@
+## [1.3.0-alpha.7](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.6...v1.3.0-alpha.7) (2026-01-01)
+
+### Code Refactoring
+
+* Rename connection pool metrics, add read lock to metrics snapshot, and extract HTTP response streaming. ([9a2e148](https://github.com/pandeptwidyaop/grok/commit/9a2e1484c029dd63a48579267d399d23234e590f))
+
 ## [1.3.0-alpha.6](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.5...v1.3.0-alpha.6) (2026-01-01)
 
 ### Features
