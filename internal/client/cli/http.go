@@ -92,18 +92,19 @@ func runHTTPTunnel(cmd *cobra.Command, args []string) error {
 
 	// Create tunnel client
 	client, err := tunnel.NewClient(tunnel.ClientConfig{
-		ServerAddr:    cfg.Server.Addr,
-		TLS:           cfg.Server.TLS,
-		TLSCertFile:   cfg.Server.TLSCertFile,
-		TLSInsecure:   cfg.Server.TLSInsecure,
-		TLSServerName: cfg.Server.TLSServerName,
-		AuthToken:     cfg.Auth.Token,
-		LocalAddr:     localAddr,
-		Subdomain:     httpSubdomain,
-		SavedName:     httpSavedName,
-		Protocol:      "http",
-		ReconnectCfg:  cfg.Reconnect,
-		DashboardCfg:  dashboardCfg,
+		ServerAddr:     cfg.Server.Addr,
+		TLS:            cfg.Server.TLS,
+		TLSCertFile:    cfg.Server.TLSCertFile,
+		TLSInsecure:    cfg.Server.TLSInsecure,
+		TLSServerName:  cfg.Server.TLSServerName,
+		AuthToken:      cfg.Auth.Token,
+		LocalAddr:      localAddr,
+		Subdomain:      httpSubdomain,
+		SavedName:      httpSavedName,
+		Protocol:       "http",
+		ReconnectCfg:   cfg.Reconnect,
+		DashboardCfg:   dashboardCfg,
+		PerformanceCfg: cfg.Performance,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create tunnel client: %w", err)
