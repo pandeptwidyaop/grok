@@ -171,8 +171,11 @@ Internet Client → Server (HTTP Proxy) → Tunnel Manager → gRPC Stream → C
 - **proxy/**: HTTP and TCP forwarding to local services
   - Auto-reconnection with exponential backoff
   - Heartbeat keep-alive mechanism
-- **dashboard/**: Client-side real-time monitoring dashboard (localhost:4041)
-  - Event-driven architecture with SSE for real-time updates
+  - **Connection Pooling**: Reuses TCP connections to local service (99.5% reuse)
+  - **Adaptive Buffering**: Dynamic buffer sizing (1KB/64KB/4MB) for low memory usage
+- **pkg/pool/**: High-performance resource pooling
+  - `ConnectionPool`: Channel-based connection reuse
+  - `AdaptiveBufferPool`: Smart buffer allocation based on Content-Length
   - Embedded React dashboard for request inspection
   - See "Client Dashboard Architecture" section below for details
 

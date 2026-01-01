@@ -14,11 +14,27 @@ import (
 	"github.com/stretchr/testify/require"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/client/config"
 )
+
+// createTestForwarder creates a forwarder with default test config
+func createTestForwarder(addr string) *HTTPForwarder {
+	cfg := config.PerformanceConfig{}
+	cfg.ConnectionPool.Enabled = true
+	cfg.ConnectionPool.MinSize = 1
+	cfg.ConnectionPool.MaxSize = 10
+	cfg.ConnectionPool.IdleTimeout = 90 * time.Second
+	cfg.ConnectionPool.HealthCheckInterval = 30 * time.Second
+
+	// Create adaptive buffer pool config
+	cfg.BufferPool.Enabled = true
+
+	return NewHTTPForwarder(addr, cfg)
+}
 
 // TestNewHTTPForwarder tests HTTP forwarder creation.
 func TestNewHTTPForwarder(t *testing.T) {
-	forwarder := NewHTTPForwarder("localhost:3000")
+	forwarder := createTestForwarder("localhost:3000")
 
 	require.NotNil(t, forwarder)
 	assert.Equal(t, "localhost:3000", forwarder.localAddr)
@@ -39,7 +55,7 @@ func TestHTTPForwarder_Forward_SimpleGET(t *testing.T) {
 
 	// Extract host:port from server URL
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	// Create gRPC request
 	req := &tunnelv1.HTTPRequest{
@@ -75,7 +91,7 @@ func TestHTTPForwarder_Forward_POST(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "POST",
@@ -102,7 +118,7 @@ func TestHTTPForwarder_Forward_QueryString(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:      "GET",
@@ -130,7 +146,7 @@ func TestHTTPForwarder_Forward_Headers(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method: "GET",
@@ -159,7 +175,7 @@ func TestHTTPForwarder_Forward_XForwardedFor(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:     "GET",
@@ -183,7 +199,7 @@ func TestHTTPForwarder_Forward_HostHeader(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method: "GET",
@@ -208,7 +224,7 @@ func TestHTTPForwarder_Forward_4xxError(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -232,7 +248,7 @@ func TestHTTPForwarder_Forward_5xxError(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -255,7 +271,7 @@ func TestHTTPForwarder_Forward_Redirect(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -275,7 +291,7 @@ func TestHTTPForwarder_Forward_Redirect(t *testing.T) {
 // TestHTTPForwarder_Forward_InvalidLocalAddr tests error when local service unreachable.
 func TestHTTPForwarder_Forward_InvalidLocalAddr(t *testing.T) {
 	// Use an invalid address that will fail to connect
-	forwarder := NewHTTPForwarder("localhost:99999")
+	forwarder := createTestForwarder("localhost:99999")
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -300,7 +316,7 @@ func TestHTTPForwarder_Forward_ContextCanceled(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -331,7 +347,7 @@ func TestHTTPForwarder_ForwardChunked(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -371,7 +387,7 @@ func TestHTTPForwarder_ForwardChunked_SmallResponse(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -399,7 +415,7 @@ func TestHTTPForwarder_ForwardChunked_SendError(t *testing.T) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -545,7 +561,7 @@ func TestHTTPForwarder_ForwardWebSocketUpgrade(t *testing.T) {
 		<-done
 	}()
 
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method: "GET",
@@ -577,7 +593,7 @@ func TestHTTPForwarder_ForwardWebSocketUpgrade(t *testing.T) {
 
 // TestHTTPForwarder_ForwardWebSocketUpgrade_ConnectError tests connection error.
 func TestHTTPForwarder_ForwardWebSocketUpgrade_ConnectError(t *testing.T) {
-	forwarder := NewHTTPForwarder("localhost:99999")
+	forwarder := createTestForwarder("localhost:99999")
 
 	req := &tunnelv1.HTTPRequest{
 		Method: "GET",
@@ -605,7 +621,7 @@ func BenchmarkHTTPForwarder_Forward(b *testing.B) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",
@@ -630,7 +646,7 @@ func BenchmarkHTTPForwarder_ForwardChunked(b *testing.B) {
 	defer server.Close()
 
 	serverAddr := strings.TrimPrefix(server.URL, "http://")
-	forwarder := NewHTTPForwarder(serverAddr)
+	forwarder := createTestForwarder(serverAddr)
 
 	req := &tunnelv1.HTTPRequest{
 		Method:  "GET",

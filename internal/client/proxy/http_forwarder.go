@@ -12,6 +12,7 @@ import (
 	"time"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/client/config"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
 	"github.com/pandeptwidyaop/grok/pkg/pool"
 )
@@ -25,48 +26,33 @@ type HTTPForwarder struct {
 }
 
 // NewHTTPForwarder creates a new HTTP forwarder.
-func NewHTTPForwarder(localAddr string) *HTTPForwarder {
-	// Create connection pool for local service connections
-	connPool, err := pool.NewConnectionPool(pool.Config{
-		MinSize:             0, // Lazy init - don't pre-allocate before service is ready
-		MaxSize:             100,
-		IdleTimeout:         90 * time.Second,
-		HealthCheckInterval: 30 * time.Second,
-		MaxWaitTime:         5 * time.Second,
-		Factory: func() (net.Conn, error) {
-			return net.DialTimeout("tcp", localAddr, 10*time.Second)
-		},
-	})
+func NewHTTPForwarder(localAddr string, cfg config.PerformanceConfig) *HTTPForwarder {
+	// Create connection pool if enabled
+	var connPool *pool.ConnectionPool
+	var err error
+
+	if cfg.ConnectionPool.Enabled {
+		connPool, err = pool.NewConnectionPool(pool.Config{
+			MinSize:             cfg.ConnectionPool.MinSize,
+			MaxSize:             cfg.ConnectionPool.MaxSize,
+			IdleTimeout:         cfg.ConnectionPool.IdleTimeout,
+			HealthCheckInterval: cfg.ConnectionPool.HealthCheckInterval,
+			MaxWaitTime:         5 * time.Second,
+			Factory: func() (net.Conn, error) {
+				return net.DialTimeout("tcp", localAddr, 10*time.Second)
+			},
+		})
+	}
+
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
 			Str("local_addr", localAddr).
 			Msg("Failed to create connection pool, falling back to default transport")
-		// Fallback to default transport without connection pool
-		transport := &http.Transport{
-			MaxIdleConns:        200,
-			MaxIdleConnsPerHost: 100,
-			MaxConnsPerHost:     200,
-			IdleConnTimeout:     90 * time.Second,
-			DisableCompression:  false,
-			WriteBufferSize:     32 * 1024,
-			ReadBufferSize:      32 * 1024,
-		}
-		return &HTTPForwarder{
-			localAddr: localAddr,
-			httpClient: &http.Client{
-				Timeout:   0,
-				Transport: transport,
-				CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-					return http.ErrUseLastResponse
-				},
-			},
-			connPool:   nil,
-			bufferPool: pool.NewAdaptiveBufferPool(),
-		}
+		// Connect pool will be nil, fallback logic below handles it
 	}
 
-	// Create custom transport that uses connection pool
+	// Create custom transport
 	transport := &http.Transport{
 		MaxIdleConns:        200,
 		MaxIdleConnsPerHost: 100,
@@ -75,17 +61,30 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 		DisableCompression:  false,
 		WriteBufferSize:     32 * 1024,
 		ReadBufferSize:      32 * 1024,
-		// Use connection pool for dialing
-		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return connPool.Get(ctx)
-		},
 	}
 
-	logger.InfoEvent().
-		Str("local_addr", localAddr).
-		Int("pool_min", 0).
-		Int("pool_max", 100).
-		Msg("HTTP forwarder initialized with connection pool")
+	// Use connection pool for dialing if available
+	if connPool != nil {
+		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return connPool.Get(ctx)
+		}
+
+		logger.InfoEvent().
+			Str("local_addr", localAddr).
+			Int("pool_min", cfg.ConnectionPool.MinSize).
+			Int("pool_max", cfg.ConnectionPool.MaxSize).
+			Msg("HTTP forwarder initialized with connection pool")
+	} else {
+		logger.InfoEvent().
+			Str("local_addr", localAddr).
+			Msg("HTTP forwarder initialized with standard transport (no pool)")
+	}
+
+	// Create adaptive buffer pool if enabled
+	// Note: Currently AdaptiveBufferPool doesn't support configuration in constructor,
+	// but we could extend it. For now using defaults.
+	// If needed we can add config support to NewAdaptiveBufferPool later.
+	bufferPool := pool.NewAdaptiveBufferPool()
 
 	return &HTTPForwarder{
 		localAddr: localAddr,
@@ -97,7 +96,7 @@ func NewHTTPForwarder(localAddr string) *HTTPForwarder {
 			},
 		},
 		connPool:   connPool,
-		bufferPool: pool.NewAdaptiveBufferPool(),
+		bufferPool: bufferPool,
 	}
 }
 

@@ -39,19 +39,20 @@ func cryptoRandFloat64() float64 {
 
 // ClientConfig holds tunnel client configuration.
 type ClientConfig struct {
-	ServerAddr    string
-	TLS           bool
-	TLSCertFile   string
-	TLSInsecure   bool
-	TLSServerName string
-	AuthToken     string
-	LocalAddr     string
-	Subdomain     string
-	Protocol      string
-	SavedName     string // Saved tunnel name (optional, for persistent tunnels)
-	WebhookAppID  string // Webhook app ID (optional, for webhook tunnels)
-	ReconnectCfg  config.ReconnectConfig
-	DashboardCfg  dashboard.Config // Dashboard configuration
+	ServerAddr     string
+	TLS            bool
+	TLSCertFile    string
+	TLSInsecure    bool
+	TLSServerName  string
+	AuthToken      string
+	LocalAddr      string
+	Subdomain      string
+	Protocol       string
+	SavedName      string // Saved tunnel name (optional, for persistent tunnels)
+	WebhookAppID   string // Webhook app ID (optional, for webhook tunnels)
+	ReconnectCfg   config.ReconnectConfig
+	DashboardCfg   dashboard.Config         // Dashboard configuration
+	PerformanceCfg config.PerformanceConfig // Performance configuration
 }
 
 // Client represents a tunnel client.
@@ -80,7 +81,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 
 	switch cfg.Protocol {
 	case "http", "https":
-		httpForwarder = proxy.NewHTTPForwarder(cfg.LocalAddr)
+		httpForwarder = proxy.NewHTTPForwarder(cfg.LocalAddr, cfg.PerformanceCfg)
 	case "tcp":
 		tcpForwarder = proxy.NewTCPForwarder(cfg.LocalAddr)
 	}
