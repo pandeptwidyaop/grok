@@ -86,7 +86,7 @@ function ConnectionStatus({ status }: ConnectionStatusProps) {
           </Grid>
 
           {/* Protocol */}
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6}>
             <Card variant="outlined">
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -103,7 +103,7 @@ function ConnectionStatus({ status }: ConnectionStatusProps) {
           </Grid>
 
           {/* Uptime */}
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6}>
             <Card variant="outlined">
               <CardContent>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
@@ -116,19 +116,7 @@ function ConnectionStatus({ status }: ConnectionStatusProps) {
             </Card>
           </Grid>
 
-          {/* Tunnel ID */}
-          <Grid item xs={12} md={4}>
-            <Card variant="outlined">
-              <CardContent>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Tunnel ID
-                </Typography>
-                <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
-                  {status.tunnel_id ? status.tunnel_id.substring(0, 8) : 'N/A'}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
+
         </Grid>
       )}
 

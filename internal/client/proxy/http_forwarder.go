@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/textproto"
 	"strings"
 	"time"
 
@@ -389,52 +390,50 @@ func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnel
 
 	logger.DebugEvent().Msg("Sent WebSocket upgrade request to local service")
 
-	// Read upgrade response
-	reader := bufio.NewReader(conn)
+	// Read upgrade response with read deadline to prevent hanging
+	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to set read deadline: %w", err)
+	}
+
+	// Use textproto.Reader with controlled buffering
+	// 4KB is enough for headers, and bufferedConn will handle the rest
+	br := bufio.NewReaderSize(conn, 4096)
+	tp := textproto.NewReader(br)
 
 	// Read status line
-	statusLine, err := reader.ReadString('\n')
+	statusLine, err := tp.ReadLine()
 	if err != nil {
 		conn.Close()
 		return nil, nil, fmt.Errorf("failed to read status line: %w", err)
 	}
 
-	// Parse status code
+	// Parse status code (support HTTP/1.0 and HTTP/1.1)
+	var version string
 	var statusCode int
-	if _, err := fmt.Sscanf(statusLine, "HTTP/1.1 %d", &statusCode); err != nil {
+	if _, err := fmt.Sscanf(statusLine, "HTTP/%s %d", &version, &statusCode); err != nil {
 		conn.Close()
-		return nil, nil, fmt.Errorf("failed to parse status code: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse status line: %w", err)
 	}
 
 	// Read headers
-	// Pre-allocate with typical WebSocket upgrade header count (~8 headers)
-	headers := make(map[string]*tunnelv1.HeaderValues, 8)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			conn.Close()
-			return nil, nil, fmt.Errorf("failed to read header: %w", err)
-		}
+	mimeHeader, err := tp.ReadMIMEHeader()
+	if err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to read headers: %w", err)
+	}
 
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			// End of headers
-			break
-		}
+	// Clear read deadline
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to clear read deadline: %w", err)
+	}
 
-		// Parse header
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 {
-			name := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-
-			if existing, ok := headers[name]; ok {
-				existing.Values = append(existing.Values, value)
-			} else {
-				headers[name] = &tunnelv1.HeaderValues{
-					Values: []string{value},
-				}
-			}
+	// Convert headers to protobuf format
+	headers := make(map[string]*tunnelv1.HeaderValues, len(mimeHeader))
+	for name, values := range mimeHeader {
+		headers[name] = &tunnelv1.HeaderValues{
+			Values: values,
 		}
 	}
 
@@ -444,13 +443,28 @@ func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnel
 
 	// Build gRPC response
 	response := &tunnelv1.HTTPResponse{
-		StatusCode: int32(statusCode), //nolint:gosec // Safe conversion: HTTP status codes are always 100-599
+		StatusCode: int32(statusCode), //nolint:gosec // Safe conversion
 		Headers:    headers,
-		Body:       nil, // No body for upgrade response
+		Body:       nil,
 	}
 
-	// Return response and connection for bidirectional streaming
-	return response, conn, nil
+	// CRITICAL FIX: Wrap connection to preserve buffered data
+	wrappedConn := &bufferedConn{
+		Conn:   conn,
+		reader: br,
+	}
+
+	return response, wrappedConn, nil
+}
+
+// bufferedConn wraps net.Conn to read from bufio.Reader first
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (bc *bufferedConn) Read(b []byte) (int, error) {
+	return bc.reader.Read(b)
 }
 
 // Close gracefully shuts down the HTTP forwarder and its connection pool.

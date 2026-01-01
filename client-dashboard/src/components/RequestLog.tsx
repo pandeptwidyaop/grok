@@ -177,7 +177,12 @@ function RequestLog() {
               </TableRow>
             ) : (
               filteredRequests.map((req) => (
-                <TableRow key={req.id} hover>
+                <TableRow
+                  key={req.id}
+                  hover
+                  onClick={() => setSelectedRequest(req.id)}
+                  sx={{ cursor: 'pointer' }}
+                >
                   <TableCell>
                     <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
                       {formatTimestamp(req.timestamp)}
@@ -211,7 +216,13 @@ function RequestLog() {
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip title="View details">
-                      <IconButton size="small" onClick={() => setSelectedRequest(req.id)}>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent double trigger
+                          setSelectedRequest(req.id);
+                        }}
+                      >
                         <Info fontSize="small" />
                       </IconButton>
                     </Tooltip>

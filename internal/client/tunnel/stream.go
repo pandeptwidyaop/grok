@@ -348,10 +348,12 @@ func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData
 				Str("request_id", requestID).
 				Int("bytes", len(tcpData.Data)).
 				Msg("Routed WebSocket data to connection")
-		case <-time.After(5 * time.Second):
+		default:
+			// Non-blocking drop to prevent blocking the main receive loop
 			logger.WarnEvent().
 				Str("request_id", requestID).
-				Msg("Timeout routing WebSocket data")
+				Int("bytes", len(tcpData.Data)).
+				Msg("WebSocket channel full, dropping message")
 		}
 		return
 	}
@@ -708,7 +710,7 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 
 		// Create a channel for receiving WebSocket data from the stream handler
 		// The stream receiver will put data here when it receives TCP data for this requestID
-		wsChan := make(chan []byte, 100)
+		wsChan := make(chan []byte, 1000)
 
 		// Store channel in a map so receiveRequests can find it
 		c.mu.Lock()
