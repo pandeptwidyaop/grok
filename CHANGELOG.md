@@ -1,3 +1,17 @@
+## [1.3.0-alpha.6](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.5...v1.3.0-alpha.6) (2026-01-01)
+
+### Features
+
+* implement http connection pooling and adaptive buffering ([c6e507e](https://github.com/pandeptwidyaop/grok/commit/c6e507e12060cb851dbe54bb934c0c7d5bba782a))
+* implement HTTP performance optimization with connection pooling and adaptive buffers ([70acc0c](https://github.com/pandeptwidyaop/grok/commit/70acc0c3ecfdc86a0eaa43f09818c3056e165b1f))
+
+### Bug Fixes
+
+* enable performance config in http command ([61acc69](https://github.com/pandeptwidyaop/grok/commit/61acc69694ccf1e5410e1adab385f8cac91d45c0))
+* lint errors and minor improvements ([37065d9](https://github.com/pandeptwidyaop/grok/commit/37065d904bbad4a099e621e1147074e23f528f08))
+* race condition in connection pool metrics ([d4552ae](https://github.com/pandeptwidyaop/grok/commit/d4552ae98181b7a6daf053920c9e669f69b7567e))
+* **websocket:** Fix bufio leak, channel blocking, and dashboard bugs ([f21067b](https://github.com/pandeptwidyaop/grok/commit/f21067bafc61ed28ffac3df13c82b94e8d8f11d6))
+
 ## [1.3.0-alpha.5](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.4...v1.3.0-alpha.5) (2025-12-29)
 
 ### Bug Fixes
