@@ -1,3 +1,15 @@
+## [1.3.0-alpha.5](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.4...v1.3.0-alpha.5) (2025-12-29)
+
+### Bug Fixes
+
+* **dashboard:** display query parameters in client dashboard ([0dbf272](https://github.com/pandeptwidyaop/grok/commit/0dbf272384fe042cd1c352bb5d68ba712cef24da))
+* **lint:** fix gci formatting and unused writes in tests ([fa229d9](https://github.com/pandeptwidyaop/grok/commit/fa229d941c53ef2396687ac40a52efb2efa3d5a3))
+* **webhook:** forward query parameters to tunnel clients ([a8d7726](https://github.com/pandeptwidyaop/grok/commit/a8d77266b983f42c6e9a8c8de9634ce31b20ef52))
+
+### Performance Improvements
+
+* **client:** optimize HTTP connection pooling for high concurrency ([c4e68c0](https://github.com/pandeptwidyaop/grok/commit/c4e68c0e888f23de619f323161580960b00499b6))
+
 ## [1.3.0-alpha.4](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.3...v1.3.0-alpha.4) (2025-12-28)
 
 ### Bug Fixes
