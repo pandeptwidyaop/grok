@@ -1,3 +1,9 @@
+## [1.3.0-alpha.8](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.7...v1.3.0-alpha.8) (2026-01-01)
+
+### Features
+
+* Add and display TCP port statistics in the dashboard for SuperAdmins. ([939f20b](https://github.com/pandeptwidyaop/grok/commit/939f20b91a97bac3ae98228269f1f4d9be84632d))
+
 ## [1.3.0-alpha.7](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.6...v1.3.0-alpha.7) (2026-01-01)
 
 ### Code Refactoring
