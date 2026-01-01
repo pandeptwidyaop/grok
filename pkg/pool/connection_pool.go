@@ -323,7 +323,7 @@ func (p *ConnectionPool) Get(ctx context.Context) (net.Conn, error) {
 			p.metrics.ReuseCount.Add(1)
 
 			conn.lastUsed = time.Now()
-			conn.useCount++
+			atomic.AddInt64(&conn.useCount, 1)
 
 			logger.DebugEvent().
 				Dur("wait_time", waitTime).
@@ -370,7 +370,7 @@ func (p *ConnectionPool) Put(conn net.Conn) error {
 	case p.pool <- pc:
 		p.metrics.IdleConnections.Add(1)
 		logger.DebugEvent().
-			Int64("use_count", pc.useCount).
+			Int64("use_count", atomic.LoadInt64(&pc.useCount)).
 			Dur("age", time.Since(pc.createdAt)).
 			Msg("Returned connection to pool")
 		return nil
