@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
-	"github.com/pandeptwidyaop/grok/internal/client/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/client/config"
 )
 
 // TestForwardWebSocketUpgrade_BufferedData reproduces the critical bufio.Reader leak.
@@ -19,7 +20,7 @@ import (
 // Without the fix, these frames will be lost in the bufio buffer.
 func TestForwardWebSocketUpgrade_BufferedData(t *testing.T) {
 	// Create mock server that sends upgrade + immediate message
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		conn, buf, err := w.(http.Hijacker).Hijack()
 		if err != nil {
 			t.Errorf("Hijack failed: %v", err)

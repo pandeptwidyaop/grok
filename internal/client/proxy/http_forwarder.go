@@ -253,6 +253,12 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 		}
 	}
 
+	// Stream response body
+	return f.streamChunkedResponse(httpResp, headers, sendChunk)
+}
+
+// streamChunkedResponse streams the response body in chunks.
+func (f *HTTPForwarder) streamChunkedResponse(httpResp *http.Response, headers map[string]*tunnelv1.HeaderValues, sendChunk func(*tunnelv1.HTTPResponse, bool) error) error {
 	logger.InfoEvent().
 		Int("status", httpResp.StatusCode).
 		Int64("content_length", httpResp.ContentLength).
@@ -457,7 +463,7 @@ func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnel
 	return response, wrappedConn, nil
 }
 
-// bufferedConn wraps net.Conn to read from bufio.Reader first
+// bufferedConn wraps net.Conn to read from bufio.Reader first.
 type bufferedConn struct {
 	net.Conn
 	reader *bufio.Reader

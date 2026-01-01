@@ -73,7 +73,8 @@ func (c Config) Validate() error {
 }
 
 // PoolMetrics tracks connection pool statistics.
-type PoolMetrics struct {
+// Metrics tracks connection pool statistics.
+type Metrics struct {
 	// TotalConnections is the total number of connections created.
 	TotalConnections atomic.Int64
 	// ActiveConnections is the current number of active connections.
@@ -91,7 +92,7 @@ type PoolMetrics struct {
 }
 
 // ReuseRate returns the connection reuse rate (0.0 - 1.0).
-func (m *PoolMetrics) ReuseRate() float64 {
+func (m *Metrics) ReuseRate() float64 {
 	total := m.TotalConnections.Load()
 	if total == 0 {
 		return 0
@@ -101,7 +102,7 @@ func (m *PoolMetrics) ReuseRate() float64 {
 }
 
 // AvgWaitTime returns the average wait time in milliseconds.
-func (m *PoolMetrics) AvgWaitTime() float64 {
+func (m *Metrics) AvgWaitTime() float64 {
 	count := m.WaitCount.Load()
 	if count == 0 {
 		return 0
@@ -207,7 +208,7 @@ func (pc *pooledConn) isHealthy() bool {
 type ConnectionPool struct {
 	config    Config
 	pool      chan *pooledConn
-	metrics   PoolMetrics
+	metrics   Metrics
 	mu        sync.RWMutex
 	closed    bool
 	stopCh    chan struct{}
@@ -515,8 +516,10 @@ func (p *ConnectionPool) Close() error {
 	return err
 }
 
-// Metrics returns a snapshot of pool metrics.
-func (p *ConnectionPool) Metrics() *PoolMetrics {
+// Metrics returns a snapshot of the current metrics.
+func (p *ConnectionPool) Metrics() *Metrics {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	return &p.metrics
 }
 

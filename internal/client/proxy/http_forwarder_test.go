@@ -17,7 +17,7 @@ import (
 	"github.com/pandeptwidyaop/grok/internal/client/config"
 )
 
-// createTestForwarder creates a forwarder with default test config
+// createTestForwarder creates a forwarder with default test config.
 func createTestForwarder(addr string) *HTTPForwarder {
 	cfg := config.PerformanceConfig{}
 	cfg.ConnectionPool.Enabled = true
@@ -525,7 +525,7 @@ func TestIsWebSocketUpgrade(t *testing.T) {
 // TestHTTPForwarder_ForwardWebSocketUpgrade tests WebSocket upgrade handling.
 func TestHTTPForwarder_ForwardWebSocketUpgrade(t *testing.T) {
 	// Create a mock server using httptest
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		conn, buf, err := w.(http.Hijacker).Hijack()
 		if err != nil {
 			t.Errorf("Hijack failed: %v", err)
