@@ -119,6 +119,14 @@ export interface Stats {
   total_requests: number;
   total_bytes_in: number;
   total_bytes_out: number;
+  tcp_ports?: {
+    start_port: number;
+    end_port: number;
+    total_ports: number;
+    allocated_ports: number;
+    available_ports: number;
+    utilization: number;
+  };
 }
 
 export interface Organization {

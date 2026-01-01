@@ -922,11 +922,12 @@ func (h *Handler) getStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var stats struct {
-		TotalTunnels  int64 `json:"total_tunnels"`
-		ActiveTunnels int64 `json:"active_tunnels"`
-		TotalRequests int64 `json:"total_requests"`
-		TotalBytesIn  int64 `json:"total_bytes_in"`
-		TotalBytesOut int64 `json:"total_bytes_out"`
+		TotalTunnels  int64                  `json:"total_tunnels"`
+		ActiveTunnels int64                  `json:"active_tunnels"`
+		TotalRequests int64                  `json:"total_requests"`
+		TotalBytesIn  int64                  `json:"total_bytes_in"`
+		TotalBytesOut int64                  `json:"total_bytes_out"`
+		TCPPorts      map[string]interface{} `json:"tcp_ports,omitempty"`
 	}
 
 	// Build base query with org filtering
@@ -958,6 +959,11 @@ func (h *Handler) getStats(w http.ResponseWriter, r *http.Request) {
 	baseQuery.Select("COALESCE(SUM(requests_count), 0)").Row().Scan(&stats.TotalRequests)
 	baseQuery.Select("COALESCE(SUM(bytes_in), 0)").Row().Scan(&stats.TotalBytesIn)
 	baseQuery.Select("COALESCE(SUM(bytes_out), 0)").Row().Scan(&stats.TotalBytesOut)
+
+	// Include TCP port stats for super admin
+	if claims.Role == string(models.RoleSuperAdmin) {
+		stats.TCPPorts = h.tunnelManager.GetPortStats()
+	}
 
 	respondJSON(w, http.StatusOK, stats)
 }
