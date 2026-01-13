@@ -1,3 +1,9 @@
+## [1.3.0-alpha.9](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.8...v1.3.0-alpha.9) (2026-01-13)
+
+### Bug Fixes
+
+* **build:** Fix version information in build outputs ([b77858e](https://github.com/pandeptwidyaop/grok/commit/b77858e0ab7c53c9cc30db48866183483ea58396))
+
 ## [1.3.0-alpha.8](https://github.com/pandeptwidyaop/grok/compare/v1.3.0-alpha.7...v1.3.0-alpha.8) (2026-01-01)
 
 ### Features
