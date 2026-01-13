@@ -1,3 +1,33 @@
+## [1.4.0](https://github.com/pandeptwidyaop/grok/compare/v1.3.0...v1.4.0) (2026-01-13)
+
+### Features
+
+* Add and display TCP port statistics in the dashboard for SuperAdmins. ([939f20b](https://github.com/pandeptwidyaop/grok/commit/939f20b91a97bac3ae98228269f1f4d9be84632d))
+* implement http connection pooling and adaptive buffering ([c6e507e](https://github.com/pandeptwidyaop/grok/commit/c6e507e12060cb851dbe54bb934c0c7d5bba782a))
+* implement HTTP performance optimization with connection pooling and adaptive buffers ([70acc0c](https://github.com/pandeptwidyaop/grok/commit/70acc0c3ecfdc86a0eaa43f09818c3056e165b1f)), closes [#performance-optimization](https://github.com/pandeptwidyaop/grok/issues/performance-optimization)
+
+### Bug Fixes
+
+* **build:** Fix version information in build outputs ([b77858e](https://github.com/pandeptwidyaop/grok/commit/b77858e0ab7c53c9cc30db48866183483ea58396))
+* **dashboard:** display query parameters in client dashboard ([0dbf272](https://github.com/pandeptwidyaop/grok/commit/0dbf272384fe042cd1c352bb5d68ba712cef24da))
+* enable performance config in http command ([61acc69](https://github.com/pandeptwidyaop/grok/commit/61acc69694ccf1e5410e1adab385f8cac91d45c0))
+* lint errors and minor improvements ([37065d9](https://github.com/pandeptwidyaop/grok/commit/37065d904bbad4a099e621e1147074e23f528f08))
+* **lint:** fix gci formatting and unused writes in tests ([fa229d9](https://github.com/pandeptwidyaop/grok/commit/fa229d941c53ef2396687ac40a52efb2efa3d5a3))
+* **proxy,tunnel:** fix concurrent request hanging and large file support ([dcd05a5](https://github.com/pandeptwidyaop/grok/commit/dcd05a57fe1f0c78ee170001e8fd6f0e7457a51c))
+* **proxy:** fix race condition in gRPC stream concurrent writes ([e9746e0](https://github.com/pandeptwidyaop/grok/commit/e9746e06885d110251dfe8cfcaae0be8ebeb2649))
+* race condition in connection pool metrics ([d4552ae](https://github.com/pandeptwidyaop/grok/commit/d4552ae98181b7a6daf053920c9e669f69b7567e))
+* **webhook:** forward query parameters to tunnel clients ([a8d7726](https://github.com/pandeptwidyaop/grok/commit/a8d77266b983f42c6e9a8c8de9634ce31b20ef52))
+* **websocket:** Fix bufio leak, channel blocking, and dashboard bugs ([f21067b](https://github.com/pandeptwidyaop/grok/commit/f21067bafc61ed28ffac3df13c82b94e8d8f11d6))
+
+### Performance Improvements
+
+* **client:** optimize HTTP connection pooling for high concurrency ([c4e68c0](https://github.com/pandeptwidyaop/grok/commit/c4e68c0e888f23de619f323161580960b00499b6))
+
+### Code Refactoring
+
+* **proxy:** reduce cyclomatic complexity in WebSocket handler ([37cb230](https://github.com/pandeptwidyaop/grok/commit/37cb2308ed4dc7c0f355a587f84a71dc421c9a8f))
+* Rename connection pool metrics, add read lock to metrics snapshot, and extract HTTP response streaming. ([9a2e148](https://github.com/pandeptwidyaop/grok/commit/9a2e1484c029dd63a48579267d399d23234e590f))
+
 ## [1.4.0-alpha.1](https://github.com/pandeptwidyaop/grok/compare/v1.3.0...v1.4.0-alpha.1) (2026-01-13)
 
 ### Features
