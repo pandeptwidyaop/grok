@@ -58,10 +58,42 @@ jobs:
         run: go test -v -race -short ./...
 
       - name: Build server
-        run: go build -o bin/grok-server ./cmd/grok-server
+        run: |
+          TAG_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+          if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            VERSION="${TAG_VERSION}-dirty"
+          else
+            VERSION="${TAG_VERSION}"
+          fi
+          GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            GIT_COMMIT="${GIT_COMMIT}-dirty"
+          fi
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          go build -ldflags="-s -w \
+            -X main.version=${VERSION} \
+            -X main.gitCommit=${GIT_COMMIT} \
+            -X main.buildTime=${BUILD_DATE}" \
+            -o bin/grok-server ./cmd/grok-server
 
       - name: Build client
-        run: go build -o bin/grok ./cmd/grok
+        run: |
+          TAG_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "dev")
+          if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            VERSION="${TAG_VERSION}-dirty"
+          else
+            VERSION="${TAG_VERSION}"
+          fi
+          GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            GIT_COMMIT="${GIT_COMMIT}-dirty"
+          fi
+          BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          go build -ldflags="-s -w \
+            -X main.version=${VERSION} \
+            -X main.gitCommit=${GIT_COMMIT} \
+            -X main.buildTime=${BUILD_DATE}" \
+            -o bin/grok ./cmd/grok
 
   lint:
     name: Lint
