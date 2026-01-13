@@ -8,42 +8,96 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/textproto"
 	"strings"
-	"sync"
 	"time"
 
 	tunnelv1 "github.com/pandeptwidyaop/grok/gen/proto/tunnel/v1"
+	"github.com/pandeptwidyaop/grok/internal/client/config"
 	"github.com/pandeptwidyaop/grok/pkg/logger"
+	"github.com/pandeptwidyaop/grok/pkg/pool"
 )
 
 // HTTPForwarder forwards HTTP requests to local service.
 type HTTPForwarder struct {
 	localAddr  string
 	httpClient *http.Client // No timeout to support large file downloads via chunked transfer
+	connPool   *pool.ConnectionPool
+	bufferPool *pool.AdaptiveBufferPool
 }
 
 // NewHTTPForwarder creates a new HTTP forwarder.
-func NewHTTPForwarder(localAddr string) *HTTPForwarder {
-	// Create custom transport with optimized settings
-	transport := &http.Transport{
-		MaxIdleConns:        100,              // Reuse connections
-		MaxIdleConnsPerHost: 10,               // Keep connections to local service alive
-		IdleConnTimeout:     90 * time.Second, // Keep idle connections longer
-		DisableCompression:  false,            // Allow compression if server supports it
-		WriteBufferSize:     32 * 1024,        // 32KB write buffer (default is 4KB)
-		ReadBufferSize:      32 * 1024,        // 32KB read buffer (default is 4KB)
+func NewHTTPForwarder(localAddr string, cfg config.PerformanceConfig) *HTTPForwarder {
+	// Create connection pool if enabled
+	var connPool *pool.ConnectionPool
+	var err error
+
+	if cfg.ConnectionPool.Enabled {
+		connPool, err = pool.NewConnectionPool(pool.Config{
+			MinSize:             cfg.ConnectionPool.MinSize,
+			MaxSize:             cfg.ConnectionPool.MaxSize,
+			IdleTimeout:         cfg.ConnectionPool.IdleTimeout,
+			HealthCheckInterval: cfg.ConnectionPool.HealthCheckInterval,
+			MaxWaitTime:         5 * time.Second,
+			Factory: func() (net.Conn, error) {
+				return net.DialTimeout("tcp", localAddr, 10*time.Second)
+			},
+		})
 	}
+
+	if err != nil {
+		logger.ErrorEvent().
+			Err(err).
+			Str("local_addr", localAddr).
+			Msg("Failed to create connection pool, falling back to default transport")
+		// Connect pool will be nil, fallback logic below handles it
+	}
+
+	// Create custom transport
+	transport := &http.Transport{
+		MaxIdleConns:        200,
+		MaxIdleConnsPerHost: 100,
+		MaxConnsPerHost:     200,
+		IdleConnTimeout:     90 * time.Second,
+		DisableCompression:  false,
+		WriteBufferSize:     32 * 1024,
+		ReadBufferSize:      32 * 1024,
+	}
+
+	// Use connection pool for dialing if available
+	if connPool != nil {
+		transport.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return connPool.Get(ctx)
+		}
+
+		logger.InfoEvent().
+			Str("local_addr", localAddr).
+			Int("pool_min", cfg.ConnectionPool.MinSize).
+			Int("pool_max", cfg.ConnectionPool.MaxSize).
+			Msg("HTTP forwarder initialized with connection pool")
+	} else {
+		logger.InfoEvent().
+			Str("local_addr", localAddr).
+			Msg("HTTP forwarder initialized with standard transport (no pool)")
+	}
+
+	// Create adaptive buffer pool if enabled
+	// Note: Currently AdaptiveBufferPool doesn't support configuration in constructor,
+	// but we could extend it. For now using defaults.
+	// If needed we can add config support to NewAdaptiveBufferPool later.
+	bufferPool := pool.NewAdaptiveBufferPool()
 
 	return &HTTPForwarder{
 		localAddr: localAddr,
 		httpClient: &http.Client{
-			Timeout:   0, // No timeout to support large file downloads via chunked transfer
+			Timeout:   0,
 			Transport: transport,
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				// Don't follow redirects
 				return http.ErrUseLastResponse
 			},
 		},
+		connPool:   connPool,
+		bufferPool: bufferPool,
 	}
 }
 
@@ -51,14 +105,6 @@ const (
 	// ChunkSize is the size of each chunk for streaming large responses (4MB).
 	ChunkSize = 4 * 1024 * 1024
 )
-
-// httpChunkedBufferPool pools 4MB buffers for chunked HTTP responses to reduce GC pressure.
-var httpChunkedBufferPool = sync.Pool{
-	New: func() interface{} {
-		buf := make([]byte, ChunkSize) // 4MB
-		return &buf
-	},
-}
 
 // Forward forwards a gRPC HTTP request to local service.
 // For small responses, returns complete response. For large responses, this is deprecated - use ForwardChunked.
@@ -207,19 +253,38 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 		}
 	}
 
+	// Stream response body
+	return f.streamChunkedResponse(httpResp, headers, sendChunk)
+}
+
+// streamChunkedResponse streams the response body in chunks.
+func (f *HTTPForwarder) streamChunkedResponse(httpResp *http.Response, headers map[string]*tunnelv1.HeaderValues, sendChunk func(*tunnelv1.HTTPResponse, bool) error) error {
 	logger.InfoEvent().
 		Int("status", httpResp.StatusCode).
+		Int64("content_length", httpResp.ContentLength).
 		Msg("Received response from local service, streaming in chunks")
 
-	// Get buffer from pool
-	bufPtr := httpChunkedBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
-	buffer := *bufPtr
-	defer httpChunkedBufferPool.Put(bufPtr)
+	// Get adaptive buffer based on Content-Length
+	// Validate Content-Length to prevent DoS attacks
+	const MaxBufferSize = 100 * 1024 * 1024 // 100MB limit
+	estimatedSize := int(httpResp.ContentLength)
+	if estimatedSize < 0 || estimatedSize > MaxBufferSize {
+		estimatedSize = 0 // Unknown or too large, use safe default (64KB medium buffer)
+		if httpResp.ContentLength > MaxBufferSize {
+			logger.WarnEvent().
+				Int64("content_length", httpResp.ContentLength).
+				Int("max_buffer_size", MaxBufferSize).
+				Msg("Content-Length exceeds max buffer size, using default buffer")
+		}
+	}
+
+	buffer := f.bufferPool.Get(estimatedSize)
+	defer buffer.Release()
 
 	totalBytes := 0
 
 	for {
-		n, err := httpResp.Body.Read(buffer)
+		n, err := httpResp.Body.Read(buffer.Bytes())
 		if n > 0 {
 			totalBytes += n
 
@@ -227,7 +292,7 @@ func (f *HTTPForwarder) ForwardChunked(ctx context.Context, req *tunnelv1.HTTPRe
 			chunk := &tunnelv1.HTTPResponse{
 				StatusCode: int32(httpResp.StatusCode), //nolint:gosec // Safe conversion
 				Headers:    headers,
-				Body:       append([]byte(nil), buffer[:n]...),
+				Body:       append([]byte(nil), buffer.Bytes()[:n]...),
 			}
 
 			// Check if this is the last chunk
@@ -331,52 +396,50 @@ func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnel
 
 	logger.DebugEvent().Msg("Sent WebSocket upgrade request to local service")
 
-	// Read upgrade response
-	reader := bufio.NewReader(conn)
+	// Read upgrade response with read deadline to prevent hanging
+	if err := conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to set read deadline: %w", err)
+	}
+
+	// Use textproto.Reader with controlled buffering
+	// 4KB is enough for headers, and bufferedConn will handle the rest
+	br := bufio.NewReaderSize(conn, 4096)
+	tp := textproto.NewReader(br)
 
 	// Read status line
-	statusLine, err := reader.ReadString('\n')
+	statusLine, err := tp.ReadLine()
 	if err != nil {
 		conn.Close()
 		return nil, nil, fmt.Errorf("failed to read status line: %w", err)
 	}
 
-	// Parse status code
+	// Parse status code (support HTTP/1.0 and HTTP/1.1)
+	var version string
 	var statusCode int
-	if _, err := fmt.Sscanf(statusLine, "HTTP/1.1 %d", &statusCode); err != nil {
+	if _, err := fmt.Sscanf(statusLine, "HTTP/%s %d", &version, &statusCode); err != nil {
 		conn.Close()
-		return nil, nil, fmt.Errorf("failed to parse status code: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse status line: %w", err)
 	}
 
 	// Read headers
-	// Pre-allocate with typical WebSocket upgrade header count (~8 headers)
-	headers := make(map[string]*tunnelv1.HeaderValues, 8)
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			conn.Close()
-			return nil, nil, fmt.Errorf("failed to read header: %w", err)
-		}
+	mimeHeader, err := tp.ReadMIMEHeader()
+	if err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to read headers: %w", err)
+	}
 
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			// End of headers
-			break
-		}
+	// Clear read deadline
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		conn.Close()
+		return nil, nil, fmt.Errorf("failed to clear read deadline: %w", err)
+	}
 
-		// Parse header
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 {
-			name := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-
-			if existing, ok := headers[name]; ok {
-				existing.Values = append(existing.Values, value)
-			} else {
-				headers[name] = &tunnelv1.HeaderValues{
-					Values: []string{value},
-				}
-			}
+	// Convert headers to protobuf format
+	headers := make(map[string]*tunnelv1.HeaderValues, len(mimeHeader))
+	for name, values := range mimeHeader {
+		headers[name] = &tunnelv1.HeaderValues{
+			Values: values,
 		}
 	}
 
@@ -386,11 +449,34 @@ func (f *HTTPForwarder) ForwardWebSocketUpgrade(ctx context.Context, req *tunnel
 
 	// Build gRPC response
 	response := &tunnelv1.HTTPResponse{
-		StatusCode: int32(statusCode), //nolint:gosec // Safe conversion: HTTP status codes are always 100-599
+		StatusCode: int32(statusCode), //nolint:gosec // Safe conversion
 		Headers:    headers,
-		Body:       nil, // No body for upgrade response
+		Body:       nil,
 	}
 
-	// Return response and connection for bidirectional streaming
-	return response, conn, nil
+	// CRITICAL FIX: Wrap connection to preserve buffered data
+	wrappedConn := &bufferedConn{
+		Conn:   conn,
+		reader: br,
+	}
+
+	return response, wrappedConn, nil
+}
+
+// bufferedConn wraps net.Conn to read from bufio.Reader first.
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (bc *bufferedConn) Read(b []byte) (int, error) {
+	return bc.reader.Read(b)
+}
+
+// Close gracefully shuts down the HTTP forwarder and its connection pool.
+func (f *HTTPForwarder) Close() error {
+	if f.connPool != nil {
+		return f.connPool.Close()
+	}
+	return nil
 }

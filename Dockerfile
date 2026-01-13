@@ -50,7 +50,10 @@ ARG GIT_COMMIT
 
 # Build the server binary (pure Go - no CGO required)
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X main.gitCommit=${GIT_COMMIT}" \
+    -ldflags="-s -w \
+        -X main.version=${VERSION} \
+        -X main.gitCommit=${GIT_COMMIT} \
+        -X main.buildTime=${BUILD_TIME}" \
     -o grok-server \
     ./cmd/grok-server
 

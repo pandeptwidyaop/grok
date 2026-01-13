@@ -39,19 +39,20 @@ func cryptoRandFloat64() float64 {
 
 // ClientConfig holds tunnel client configuration.
 type ClientConfig struct {
-	ServerAddr    string
-	TLS           bool
-	TLSCertFile   string
-	TLSInsecure   bool
-	TLSServerName string
-	AuthToken     string
-	LocalAddr     string
-	Subdomain     string
-	Protocol      string
-	SavedName     string // Saved tunnel name (optional, for persistent tunnels)
-	WebhookAppID  string // Webhook app ID (optional, for webhook tunnels)
-	ReconnectCfg  config.ReconnectConfig
-	DashboardCfg  dashboard.Config // Dashboard configuration
+	ServerAddr     string
+	TLS            bool
+	TLSCertFile    string
+	TLSInsecure    bool
+	TLSServerName  string
+	AuthToken      string
+	LocalAddr      string
+	Subdomain      string
+	Protocol       string
+	SavedName      string // Saved tunnel name (optional, for persistent tunnels)
+	WebhookAppID   string // Webhook app ID (optional, for webhook tunnels)
+	ReconnectCfg   config.ReconnectConfig
+	DashboardCfg   dashboard.Config         // Dashboard configuration
+	PerformanceCfg config.PerformanceConfig // Performance configuration
 }
 
 // Client represents a tunnel client.
@@ -80,7 +81,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 
 	switch cfg.Protocol {
 	case "http", "https":
-		httpForwarder = proxy.NewHTTPForwarder(cfg.LocalAddr)
+		httpForwarder = proxy.NewHTTPForwarder(cfg.LocalAddr, cfg.PerformanceCfg)
 	case "tcp":
 		tcpForwarder = proxy.NewTCPForwarder(cfg.LocalAddr)
 	}
@@ -205,9 +206,9 @@ func (c *Client) createGRPCDialOptions() ([]grpc.DialOption, error) {
 			PermitWithoutStream: true,
 		}),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(16<<20), // Reduced from 64MB to 16MB
-			grpc.MaxCallSendMsgSize(16<<20), // Reduced from 64MB to 16MB
-			grpc.UseCompressor("gzip"),      // ✅ Enable gzip compression
+			grpc.MaxCallRecvMsgSize(256<<20), // 256MB for large file support
+			grpc.MaxCallSendMsgSize(256<<20), // 256MB for large file support
+			grpc.UseCompressor("gzip"),       // ✅ Enable gzip compression
 		),
 	}
 
@@ -464,4 +465,40 @@ func (c *Client) GetPublicURL() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.publicURL
+}
+
+// Stop gracefully shuts down the client and cleans up resources.
+func (c *Client) Stop() error {
+	logger.InfoEvent().Msg("Stopping tunnel client...")
+
+	// Signal stop to all goroutines
+	close(c.stopCh)
+
+	// Close dashboard server
+	if c.dashboardServer != nil {
+		if err := c.dashboardServer.Close(); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to close dashboard server")
+		}
+	}
+
+	// Close forwarders (fixes resource leak)
+	if c.httpForwarder != nil {
+		if err := c.httpForwarder.Close(); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to close HTTP forwarder")
+		}
+	}
+
+	if c.tcpForwarder != nil {
+		c.tcpForwarder.Close()
+	}
+
+	// Close gRPC connection
+	if c.conn != nil {
+		if err := c.conn.Close(); err != nil {
+			logger.WarnEvent().Err(err).Msg("Failed to close gRPC connection")
+		}
+	}
+
+	logger.InfoEvent().Msg("Tunnel client stopped successfully")
+	return nil
 }

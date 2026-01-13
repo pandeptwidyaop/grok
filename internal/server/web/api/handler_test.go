@@ -798,7 +798,6 @@ func TestGetStats(t *testing.T) {
 
 			rec := httptest.NewRecorder()
 			handler.getStats(rec, req)
-
 			assert.Equal(t, tt.expectedStatus, rec.Code)
 
 			var stats map[string]interface{}
@@ -806,6 +805,12 @@ func TestGetStats(t *testing.T) {
 			require.NoError(t, err)
 			assert.Contains(t, stats, "total_tunnels")
 			assert.Contains(t, stats, "active_tunnels")
+
+			if tt.role == string(models.RoleSuperAdmin) {
+				assert.Contains(t, stats, "tcp_ports")
+			} else {
+				assert.NotContains(t, stats, "tcp_ports")
+			}
 		})
 	}
 }

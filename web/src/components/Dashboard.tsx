@@ -63,6 +63,16 @@ function Dashboard() {
     },
   ];
 
+  if (stats?.tcp_ports) {
+    statsCards.push({
+      title: 'TCP Ports',
+      value: `${stats.tcp_ports.allocated_ports} / ${stats.tcp_ports.total_ports}`,
+      subtitle: `${stats.tcp_ports.available_ports} available (${stats.tcp_ports.utilization.toFixed(1)}% used)`,
+      icon: Activity, // Reuse Activity icon or import a new one like Server/Network if available
+      color: '#f6ad55', // Different color (orange-ish) to distinguish
+    });
+  }
+
   return (
     <Box>
       <Box sx={{ mb: 4 }}>

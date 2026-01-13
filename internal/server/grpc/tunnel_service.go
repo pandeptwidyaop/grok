@@ -358,8 +358,8 @@ func (s *TunnelService) handleProxyResponse(currentTunnel *tunnel.Tunnel, respon
 		return
 	}
 
-	// Blocking send with timeout for backpressure
-	// This ensures chunks are never dropped and supports unlimited file sizes
+	// Blocking send with timeout (safe because handleProxyResponse runs in goroutine)
+	// This ensures chunks are NEVER dropped, supporting unlimited file sizes
 	sendCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -367,11 +367,10 @@ func (s *TunnelService) handleProxyResponse(currentTunnel *tunnel.Tunnel, respon
 	case respChan <- response:
 		// Response delivered successfully
 	case <-sendCtx.Done():
-		// Timeout sending chunk - consumer is too slow or stuck
+		// Timeout - HTTP proxy consumer stuck or too slow
 		logger.ErrorEvent().
 			Str("request_id", response.RequestId).
-			Int("chunk_size", len(response.GetHttp().GetBody())).
-			Msg("CRITICAL: Timeout sending response chunk - HTTP proxy consumer is too slow or stuck")
+			Msg("Timeout sending response - HTTP proxy consumer stuck")
 	}
 }
 
@@ -432,7 +431,9 @@ func (s *TunnelService) ProxyStream(stream tunnelv1.TunnelService_ProxyStreamSer
 				continue
 			}
 
-			s.handleProxyResponse(currentTunnel, payload.Response)
+			// Handle response asynchronously to avoid blocking ProxyStream receive loop
+			// This allows concurrent response processing while continuing to receive more responses
+			go s.handleProxyResponse(currentTunnel, payload.Response)
 
 		case *tunnelv1.ProxyMessage_Error:
 			logger.ErrorEvent().

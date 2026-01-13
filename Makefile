@@ -32,11 +32,41 @@ build-client-dashboard:
 
 build-server: proto
 	@echo "Building server..."
-	@go build -o bin/grok-server ./cmd/grok-server
+	@TAG_VERSION=$$(git describe --tags --abbrev=0 2>/dev/null || echo "dev"); \
+	if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then \
+		VERSION="$$TAG_VERSION-dirty"; \
+	else \
+		VERSION="$$TAG_VERSION"; \
+	fi; \
+	GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown"); \
+	if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then \
+		GIT_COMMIT="$$GIT_COMMIT-dirty"; \
+	fi; \
+	BUILD_DATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+	go build -ldflags="-s -w \
+		-X main.version=$$VERSION \
+		-X main.gitCommit=$$GIT_COMMIT \
+		-X main.buildTime=$$BUILD_DATE" \
+		-o bin/grok-server ./cmd/grok-server
 
 build-client: proto build-client-dashboard
 	@echo "Building client..."
-	@go build -o bin/grok ./cmd/grok
+	@TAG_VERSION=$$(git describe --tags --abbrev=0 2>/dev/null || echo "dev"); \
+	if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then \
+		VERSION="$$TAG_VERSION-dirty"; \
+	else \
+		VERSION="$$TAG_VERSION"; \
+	fi; \
+	GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown"); \
+	if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then \
+		GIT_COMMIT="$$GIT_COMMIT-dirty"; \
+	fi; \
+	BUILD_DATE=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+	go build -ldflags="-s -w \
+		-X main.version=$$VERSION \
+		-X main.gitCommit=$$GIT_COMMIT \
+		-X main.buildTime=$$BUILD_DATE" \
+		-o bin/grok ./cmd/grok
 
 build-all: build-dashboard build-client-dashboard build-server build-client
 	@echo "Build complete!"

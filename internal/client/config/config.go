@@ -4,17 +4,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
 // Config represents the client configuration.
 type Config struct {
-	Server    ServerConfig    `mapstructure:"server"`
-	Auth      AuthConfig      `mapstructure:"auth"`
-	Logging   LoggingConfig   `mapstructure:"logging"`
-	Reconnect ReconnectConfig `mapstructure:"reconnect"`
-	Dashboard DashboardConfig `mapstructure:"dashboard"`
+	Server      ServerConfig      `mapstructure:"server"`
+	Auth        AuthConfig        `mapstructure:"auth"`
+	Logging     LoggingConfig     `mapstructure:"logging"`
+	Reconnect   ReconnectConfig   `mapstructure:"reconnect"`
+	Dashboard   DashboardConfig   `mapstructure:"dashboard"`
+	Performance PerformanceConfig `mapstructure:"performance"`
 }
 
 // ServerConfig holds server connection settings.
@@ -52,6 +54,29 @@ type DashboardConfig struct {
 	Port        int   `mapstructure:"port"`          // Dashboard port (default: 4041)
 	MaxRequests int   `mapstructure:"max_requests"`  // Max requests to store (default: 1000)
 	MaxBodySize int64 `mapstructure:"max_body_size"` // Max body size to capture in bytes (default: 102400 = 100KB)
+}
+
+// PerformanceConfig holds performance optimization settings.
+type PerformanceConfig struct {
+	ConnectionPool ConnectionPoolConfig `mapstructure:"connection_pool"`
+	BufferPool     BufferPoolConfig     `mapstructure:"buffer_pool"`
+}
+
+// ConnectionPoolConfig holds connection pool settings.
+type ConnectionPoolConfig struct {
+	Enabled             bool          `mapstructure:"enabled"`
+	MinSize             int           `mapstructure:"min_size"`
+	MaxSize             int           `mapstructure:"max_size"`
+	IdleTimeout         time.Duration `mapstructure:"idle_timeout"`
+	HealthCheckInterval time.Duration `mapstructure:"health_check_interval"`
+}
+
+// BufferPoolConfig holds adaptive buffer pool settings.
+type BufferPoolConfig struct {
+	Enabled    bool `mapstructure:"enabled"`
+	SmallSize  int  `mapstructure:"small_size"`
+	MediumSize int  `mapstructure:"medium_size"`
+	LargeSize  int  `mapstructure:"large_size"`
 }
 
 // Load loads configuration from file.
@@ -123,6 +148,18 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("dashboard.port", 4041)
 	v.SetDefault("dashboard.max_requests", 1000)
 	v.SetDefault("dashboard.max_body_size", 102400) // 100KB
+
+	// Performance defaults
+	v.SetDefault("performance.connection_pool.enabled", true)
+	v.SetDefault("performance.connection_pool.min_size", 10)
+	v.SetDefault("performance.connection_pool.max_size", 100)
+	v.SetDefault("performance.connection_pool.idle_timeout", "90s")
+	v.SetDefault("performance.connection_pool.health_check_interval", "30s")
+
+	v.SetDefault("performance.buffer_pool.enabled", true)
+	v.SetDefault("performance.buffer_pool.small_size", 1024)    // 1KB
+	v.SetDefault("performance.buffer_pool.medium_size", 65536)  // 64KB
+	v.SetDefault("performance.buffer_pool.large_size", 4194304) // 4MB
 }
 
 // SaveToken saves auth token to config file.

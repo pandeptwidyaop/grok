@@ -192,16 +192,16 @@ jobs:
           if [ "${{ matrix.target }}" = "server" ]; then
             # Server build (pure Go - no CGO required)
             go build -ldflags="-s -w \
-              -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
-              -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$(git rev-parse --short HEAD) \
-              -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              -X main.version=${VERSION} \
+              -X main.gitCommit=$(git rev-parse --short HEAD) \
+              -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               -o dist/${{ matrix.output }} ./cmd/grok-server
           else
             # Client build (pure Go - no CGO required)
             go build -ldflags="-s -w \
-              -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
-              -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$(git rev-parse --short HEAD) \
-              -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              -X main.version=${VERSION} \
+              -X main.gitCommit=$(git rev-parse --short HEAD) \
+              -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
               -o dist/${{ matrix.output }} ./cmd/grok
           fi
 

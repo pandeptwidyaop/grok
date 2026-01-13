@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -104,8 +105,8 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Proxy regular HTTP request through tunnel (chunked streaming)
-	reqBytes, respBytes, statusCode, err := p.proxyRequestChunked(r, tun, w)
+	// Proxy regular HTTP request through tunnel (simple, full response)
+	resp, reqBytes, err := p.proxyRequest(r, tun)
 	if err != nil {
 		logger.ErrorEvent().
 			Err(err).
@@ -117,6 +118,10 @@ func (p *HTTPProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
 		return
 	}
+
+	// Write response
+	respBytes := p.writeResponse(w, resp)
+	statusCode := int(resp.StatusCode)
 
 	// Update tunnel statistics
 	tun.UpdateStats(reqBytes, respBytes)
@@ -168,71 +173,71 @@ func isWebSocketUpgrade(r *http.Request) bool {
 		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
 }
 
-// readAndValidateRequestBody reads and validates request body size.
-func (p *HTTPProxy) readAndValidateRequestBody(r *http.Request) ([]byte, error) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, MaxRequestBodySize+1))
-	if err != nil {
-		return nil, pkgerrors.Wrap(err, "failed to read request body")
-	}
-	defer r.Body.Close()
-
-	if int64(len(body)) > MaxRequestBodySize {
-		return nil, pkgerrors.NewAppError("REQUEST_TOO_LARGE", "request body exceeds maximum size of 10MB", nil)
-	}
-	return body, nil
-}
-
-// calculateRequestSize calculates total request size including headers.
-func (p *HTTPProxy) calculateRequestSize(r *http.Request, bodySize int) int64 {
-	size := int64(bodySize)
-	for key, values := range r.Header {
-		for _, val := range values {
-			size += int64(len(key) + len(val) + 4)
+// writeResponse writes complete HTTP response (headers + body) to ResponseWriter.
+// Returns total bytes written.
+func (p *HTTPProxy) writeResponse(w http.ResponseWriter, resp *tunnelv1.HTTPResponse) int64 {
+	// Calculate response size (headers + body)
+	responseBytes := int64(len(resp.Body))
+	for key, headerVals := range resp.Headers {
+		for _, val := range headerVals.Values {
+			responseBytes += int64(len(key) + len(val) + 4) // key: value\r\n
 		}
 	}
-	size += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20)
-	return size
-}
+	responseBytes += 20 // Status line overhead
 
-// convertHeadersToProto converts HTTP headers to protobuf format.
-func (p *HTTPProxy) convertHeadersToProto(headers http.Header) map[string]*tunnelv1.HeaderValues {
-	protoHeaders := make(map[string]*tunnelv1.HeaderValues, len(headers))
-	for key, values := range headers {
-		protoHeaders[key] = &tunnelv1.HeaderValues{Values: values}
-	}
-	return protoHeaders
-}
-
-// writeResponseHeaders writes HTTP response headers and status code.
-// Returns bytes written.
-func (p *HTTPProxy) writeResponseHeaders(w http.ResponseWriter, httpResp *tunnelv1.HTTPResponse) int64 {
-	bytesWritten := int64(0)
-
-	for key, headerVals := range httpResp.Headers {
+	// Write headers
+	for key, headerVals := range resp.Headers {
 		for _, val := range headerVals.Values {
 			w.Header().Add(key, val)
-			bytesWritten += int64(len(key) + len(val) + 4)
 		}
 	}
 
-	w.WriteHeader(int(httpResp.StatusCode))
-	bytesWritten += 20 // Status line overhead
+	// Write status code
+	w.WriteHeader(int(resp.StatusCode))
 
-	return bytesWritten
+	// Write body
+	if len(resp.Body) > 0 {
+		if _, err := io.Copy(w, bytes.NewReader(resp.Body)); err != nil {
+			logger.ErrorEvent().
+				Err(err).
+				Msg("Failed to write response body")
+		}
+	}
+
+	return responseBytes
 }
 
 // proxyRequestChunked proxies request and streams response chunks directly to client.
 // Returns: (requestBytes, responseBytes, statusCode, error).
-func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w http.ResponseWriter) (int64, int64, int, error) {
+// proxyRequest proxies a single HTTP request through the tunnel (simple, non-chunked).
+// Returns: (httpResponse, requestBytes, error).
+func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1.HTTPResponse, int64, error) {
+	// Generate request ID
 	requestID := utils.GenerateRequestID()
 
-	body, err := p.readAndValidateRequestBody(r)
+	// Read request body
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		return 0, 0, 0, err
+		return nil, 0, pkgerrors.Wrap(err, "failed to read request body")
 	}
+	defer r.Body.Close()
 
-	requestBytes := p.calculateRequestSize(r, len(body))
-	headers := p.convertHeadersToProto(r.Header)
+	// Calculate request size (headers + body)
+	requestBytes := int64(len(body))
+	for key, values := range r.Header {
+		for _, val := range values {
+			requestBytes += int64(len(key) + len(val) + 4) // key: value\r\n
+		}
+	}
+	requestBytes += int64(len(r.Method) + len(r.URL.Path) + len(r.URL.RawQuery) + 20) // Method, path, query, protocol
+
+	// Convert HTTP headers to proto format
+	headers := make(map[string]*tunnelv1.HeaderValues)
+	for key, values := range r.Header {
+		headers[key] = &tunnelv1.HeaderValues{
+			Values: values,
+		}
+	}
 
 	// Create proxy request
 	proxyReq := &tunnelv1.ProxyRequest{
@@ -250,9 +255,8 @@ func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w h
 		},
 	}
 
-	// Create response channel for receiving chunks
-	// Buffer size 50 for performance (blocking send with backpressure supports unlimited file size)
-	responseCh := make(chan *tunnelv1.ProxyResponse, 50)
+	// Create response channel
+	responseCh := make(chan *tunnelv1.ProxyResponse, 1)
 	tun.ResponseMap.Store(requestID, responseCh)
 	defer tun.ResponseMap.Delete(requestID)
 
@@ -264,73 +268,23 @@ func (p *HTTPProxy) proxyRequestChunked(r *http.Request, tun *tunnel.Tunnel, w h
 	}
 
 	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
-		return 0, 0, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
+		return nil, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
 	}
 
-	// Wait for response chunks and stream directly to client
-	// No timeout for chunked streaming to support large file downloads
-	ctx, cancel := context.WithCancel(context.Background())
+	// Wait for response with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultRequestTimeout)
 	defer cancel()
 
-	responseBytes := int64(0)
-	headersWritten := false
-	statusCode := 0
-
-	for {
-		select {
-		case proxyResp := <-responseCh:
-			if proxyResp == nil {
-				return requestBytes, responseBytes, statusCode, pkgerrors.NewAppError("INVALID_RESPONSE", "received nil response", nil)
-			}
-
-			httpResp := proxyResp.GetHttp()
-			if httpResp == nil {
-				return requestBytes, responseBytes, statusCode, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
-			}
-
-			// Write headers on first chunk
-			if !headersWritten {
-				statusCode = int(httpResp.StatusCode)
-				responseBytes += p.writeResponseHeaders(w, httpResp)
-				headersWritten = true
-			}
-
-			// Write chunk body
-			if len(httpResp.Body) > 0 {
-				n, err := w.Write(httpResp.Body)
-				if err != nil {
-					logger.ErrorEvent().
-						Err(err).
-						Str("request_id", requestID).
-						Msg("Failed to write response chunk to client")
-					return requestBytes, responseBytes, statusCode, pkgerrors.Wrap(err, "failed to write response chunk")
-				}
-				responseBytes += int64(n)
-
-				logger.DebugEvent().
-					Str("request_id", requestID).
-					Int("chunk_size", n).
-					Bool("end_of_stream", proxyResp.EndOfStream).
-					Msg("Wrote response chunk to client")
-			}
-
-			// Flush to ensure chunk is sent immediately
-			if flusher, ok := w.(http.Flusher); ok {
-				flusher.Flush()
-			}
-
-			// Check if this is the last chunk
-			if proxyResp.EndOfStream {
-				logger.DebugEvent().
-					Str("request_id", requestID).
-					Int64("total_bytes", responseBytes).
-					Msg("Completed streaming chunked response")
-				return requestBytes, responseBytes, statusCode, nil
-			}
-
-		case <-ctx.Done():
-			return requestBytes, responseBytes, statusCode, pkgerrors.ErrRequestTimeout
+	select {
+	case proxyResp := <-responseCh:
+		// Got response
+		if httpResp := proxyResp.GetHttp(); httpResp != nil {
+			return httpResp, requestBytes, nil
 		}
+		return nil, 0, pkgerrors.NewAppError("INVALID_RESPONSE", "invalid response type", nil)
+
+	case <-ctx.Done():
+		return nil, 0, pkgerrors.ErrRequestTimeout
 	}
 }
 
@@ -382,10 +336,11 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 
 	// Prepare request data
 	requestData := &RequestData{
-		Method:  r.Method,
-		Path:    userPath, // Use user-defined path, not the full path
-		Headers: r.Header,
-		Body:    body,
+		Method:      r.Method,
+		Path:        userPath, // Use user-defined path, not the full path
+		QueryString: r.URL.RawQuery,
+		Headers:     r.Header,
+		Body:        body,
 	}
 
 	// Broadcast to all enabled tunnels
@@ -565,18 +520,8 @@ func (p *HTTPProxy) cleanupOldRequestLogs(tunnelID uuid.UUID) {
 
 // handleWebSocketProxy handles WebSocket upgrade and bidirectional proxying.
 func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request, tun *tunnel.Tunnel) {
-	// Hijack the HTTP connection
-	hijacker, ok := w.(http.Hijacker)
-	if !ok {
-		logger.ErrorEvent().Msg("ResponseWriter does not support hijacking")
-		http.Error(w, "WebSocket not supported", http.StatusInternalServerError)
-		return
-	}
-
-	conn, bufrw, err := hijacker.Hijack()
+	conn, err := p.hijackWebSocketConnection(w)
 	if err != nil {
-		logger.ErrorEvent().Err(err).Msg("Failed to hijack connection")
-		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
 		return
 	}
 	defer conn.Close()
@@ -587,18 +532,65 @@ func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request,
 		Str("path", r.URL.Path).
 		Msg("WebSocket upgrade request received")
 
-	// Generate request ID for this WebSocket connection
 	requestID := utils.GenerateRequestID()
 
-	// Convert HTTP headers to proto format for upgrade request
-	headers := make(map[string]*tunnelv1.HeaderValues, len(r.Header))
-	for key, values := range r.Header {
-		headers[key] = &tunnelv1.HeaderValues{
-			Values: values,
-		}
+	responseCh, err := p.sendWebSocketUpgradeRequest(r, tun, requestID)
+	if err != nil {
+		return
+	}
+	defer tun.ResponseMap.Delete(requestID)
+
+	upgradeResp, err := p.waitForWebSocketUpgradeResponse(requestID, responseCh)
+	if err != nil {
+		return
 	}
 
-	// Send WebSocket upgrade request to client
+	if err := p.writeWebSocketUpgradeResponse(conn, upgradeResp); err != nil {
+		return
+	}
+
+	if upgradeResp.StatusCode != 101 {
+		logger.WarnEvent().
+			Int("status_code", int(upgradeResp.StatusCode)).
+			Str("request_id", requestID).
+			Msg("WebSocket upgrade failed")
+		return
+	}
+
+	logger.InfoEvent().
+		Str("request_id", requestID).
+		Str("tunnel_id", tun.ID.String()).
+		Msg("WebSocket upgraded successfully, starting bidirectional proxy")
+
+	p.proxyWebSocketData(conn, tun, requestID)
+}
+
+// hijackWebSocketConnection hijacks HTTP connection for WebSocket upgrade.
+func (p *HTTPProxy) hijackWebSocketConnection(w http.ResponseWriter) (net.Conn, error) {
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		logger.ErrorEvent().Msg("ResponseWriter does not support hijacking")
+		http.Error(w, "WebSocket not supported", http.StatusInternalServerError)
+		return nil, fmt.Errorf("hijacking not supported")
+	}
+
+	conn, _, err := hijacker.Hijack()
+	if err != nil {
+		logger.ErrorEvent().Err(err).Msg("Failed to hijack connection")
+		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+// sendWebSocketUpgradeRequest sends WebSocket upgrade request to tunnel client.
+func (p *HTTPProxy) sendWebSocketUpgradeRequest(r *http.Request, tun *tunnel.Tunnel, requestID string) (chan *tunnelv1.ProxyResponse, error) {
+	headers := make(map[string]*tunnelv1.HeaderValues, len(r.Header))
+	for key, values := range r.Header {
+		headers[key] = &tunnelv1.HeaderValues{Values: values}
+	}
+
 	upgradeReq := &tunnelv1.ProxyRequest{
 		RequestId: requestID,
 		TunnelId:  tun.ID.String(),
@@ -613,88 +605,70 @@ func (p *HTTPProxy) handleWebSocketProxy(w http.ResponseWriter, r *http.Request,
 		},
 	}
 
-	proxyMsg := &tunnelv1.ProxyMessage{
-		Message: &tunnelv1.ProxyMessage_Request{
-			Request: upgradeReq,
-		},
-	}
-
-	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
-		logger.ErrorEvent().
-			Err(err).
-			Str("request_id", requestID).
-			Msg("Failed to send WebSocket upgrade request to client")
-		return
-	}
-
-	// Wait for upgrade response from client (with shorter timeout)
 	responseCh := make(chan *tunnelv1.ProxyResponse, 1)
 	tun.ResponseMap.Store(requestID, responseCh)
-	defer tun.ResponseMap.Delete(requestID)
 
+	pendingReq := &tunnel.PendingRequest{
+		RequestID:  requestID,
+		Request:    upgradeReq,
+		ResponseCh: responseCh,
+		Timeout:    10 * time.Second,
+		CreatedAt:  time.Now(),
+	}
+
+	select {
+	case tun.RequestQueue <- pendingReq:
+		return responseCh, nil
+	case <-time.After(5 * time.Second):
+		logger.ErrorEvent().
+			Str("request_id", requestID).
+			Msg("Failed to queue WebSocket upgrade request - queue full")
+		return nil, fmt.Errorf("queue full")
+	}
+}
+
+// waitForWebSocketUpgradeResponse waits for upgrade response from tunnel client.
+func (p *HTTPProxy) waitForWebSocketUpgradeResponse(requestID string, responseCh chan *tunnelv1.ProxyResponse) (*tunnelv1.HTTPResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var upgradeResp *tunnelv1.HTTPResponse
 	select {
 	case proxyResp := <-responseCh:
 		if httpResp := proxyResp.GetHttp(); httpResp != nil {
-			upgradeResp = httpResp
-		} else {
-			logger.ErrorEvent().Str("request_id", requestID).Msg("Invalid upgrade response type")
-			return
+			return httpResp, nil
 		}
+		logger.ErrorEvent().Str("request_id", requestID).Msg("Invalid upgrade response type")
+		return nil, fmt.Errorf("invalid response type")
 	case <-ctx.Done():
 		logger.ErrorEvent().Str("request_id", requestID).Msg("WebSocket upgrade timeout")
-		return
+		return nil, fmt.Errorf("timeout")
 	}
+}
 
-	// Write upgrade response to client
-	if err := bufrw.Flush(); err != nil {
-		logger.ErrorEvent().Err(err).Msg("Failed to flush buffer")
-		return
-	}
-
-	// Write HTTP response line
+// writeWebSocketUpgradeResponse writes HTTP upgrade response to connection.
+func (p *HTTPProxy) writeWebSocketUpgradeResponse(conn net.Conn, upgradeResp *tunnelv1.HTTPResponse) error {
 	statusLine := fmt.Sprintf("HTTP/1.1 %d %s\r\n", upgradeResp.StatusCode, http.StatusText(int(upgradeResp.StatusCode)))
 	if _, err := conn.Write([]byte(statusLine)); err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to write status line")
-		return
+		return err
 	}
 
-	// Write headers
 	for key, headerVals := range upgradeResp.Headers {
 		for _, val := range headerVals.Values {
 			headerLine := fmt.Sprintf("%s: %s\r\n", key, val)
 			if _, err := conn.Write([]byte(headerLine)); err != nil {
 				logger.ErrorEvent().Err(err).Msg("Failed to write header")
-				return
+				return err
 			}
 		}
 	}
 
-	// End of headers
 	if _, err := conn.Write([]byte("\r\n")); err != nil {
 		logger.ErrorEvent().Err(err).Msg("Failed to write header end")
-		return
+		return err
 	}
 
-	// If upgrade failed (not 101 Switching Protocols), close connection
-	if upgradeResp.StatusCode != 101 {
-		logger.WarnEvent().
-			Int("status_code", int(upgradeResp.StatusCode)).
-			Str("request_id", requestID).
-			Msg("WebSocket upgrade failed")
-		return
-	}
-
-	logger.InfoEvent().
-		Str("request_id", requestID).
-		Str("tunnel_id", tun.ID.String()).
-		Msg("WebSocket upgraded successfully, starting bidirectional proxy")
-
-	// Start bidirectional WebSocket proxying
-	p.proxyWebSocketData(conn, tun, requestID)
+	return nil
 }
 
 // proxyWebSocketData handles bidirectional WebSocket data streaming.
@@ -748,7 +722,13 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 					},
 				}
 
-				if err := tun.Stream.SendMsg(proxyMsg); err != nil {
+				// Use StreamMu to prevent concurrent sends for WebSocket data
+				// Multiple WebSocket connections may try to send concurrently
+				tun.StreamMu.Lock()
+				err := tun.Stream.SendMsg(proxyMsg)
+				tun.StreamMu.Unlock()
+
+				if err != nil {
 					logger.ErrorEvent().Err(err).Msg("Failed to send WebSocket data to tunnel")
 					errCh <- err
 					return

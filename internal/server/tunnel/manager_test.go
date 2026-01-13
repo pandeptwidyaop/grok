@@ -230,3 +230,28 @@ func TestBuildTCPPublicURL(t *testing.T) {
 		})
 	}
 }
+
+func TestGetPortStats(t *testing.T) {
+	database := setupTestDB(t)
+	// Create manager with TCP port pool initialized (10000-20000)
+	manager := NewManager(database, "example.com", 10, true, 80, 443, 10000, 20000)
+
+	// Test initial stats
+	t.Run("Initialize stats", func(t *testing.T) {
+		stats := manager.GetPortStats()
+		assert.NotNil(t, stats)
+		assert.Equal(t, 10000, stats["start_port"])
+		assert.Equal(t, 20000, stats["end_port"])
+		assert.Equal(t, 10001, stats["total_ports"])
+		assert.Equal(t, 0, stats["allocated_ports"])
+		assert.Equal(t, 10001, stats["available_ports"])
+		assert.Equal(t, float64(0), stats["utilization"])
+	})
+
+	// Test stats with nil port pool
+	t.Run("Nil port pool", func(t *testing.T) {
+		// Create manager with invalid port range to force nil port pool
+		noTCPManager := NewManager(database, "example.com", 10, true, 80, 443, 0, 0)
+		assert.Nil(t, noTCPManager.GetPortStats())
+	})
+}

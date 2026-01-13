@@ -600,6 +600,15 @@ func (m *Manager) GetBaseDomain() string {
 	return m.baseDomain
 }
 
+// GetPortStats returns statistics about the TCP port pool.
+// Returns nil if TCP tunnels are not supported (port pool not initialized).
+func (m *Manager) GetPortStats() map[string]interface{} {
+	if m.portPool == nil {
+		return nil
+	}
+	return m.portPool.GetStats()
+}
+
 // isDuplicateError checks if the error is a duplicate key error.
 func isDuplicateError(err error) bool {
 	// PostgreSQL duplicate key error code: 23505

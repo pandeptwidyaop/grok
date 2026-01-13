@@ -54,3 +54,26 @@ reconnect:
   max_delay: 30         # seconds
   backoff_factor: 2     # multiplier
   max_attempts: 0       # 0 = infinite retries
+
+dashboard:
+  enabled: true
+  port: 4041
+  max_requests: 1000
+  max_body_size: 102400 # 100KB
+
+# Performance optimization settings
+performance:
+  # Connection pool configuration
+  connection_pool:
+    enabled: true           # Enable connection pooling (default: true)
+    min_size: 10            # Minimum pool size (default: 10)
+    max_size: 100           # Maximum pool size (default: 100)
+    idle_timeout: 90s       # Idle connection timeout (default: 90s)
+    health_check_interval: 30s  # Health check interval (default: 30s)
+  
+  # Buffer pool configuration
+  buffer_pool:
+    enabled: true           # Enable adaptive buffers (default: true)
+    small_size: 1024        # Small buffer size in bytes (default: 1KB)
+    medium_size: 65536      # Medium buffer size in bytes (default: 64KB)
+    large_size: 4194304     # Large buffer size in bytes (default: 4MB)

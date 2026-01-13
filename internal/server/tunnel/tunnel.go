@@ -40,7 +40,8 @@ type Tunnel struct {
 	BytesOut      int64
 	RequestsCount int64
 
-	mu sync.RWMutex
+	mu       sync.RWMutex // Protects tunnel state (status, activity, stats)
+	StreamMu sync.Mutex   // Protects gRPC stream Send operations (for WebSocket data streaming)
 }
 
 // PendingRequest represents a request waiting for response.
