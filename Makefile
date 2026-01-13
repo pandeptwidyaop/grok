@@ -46,7 +46,10 @@ build-server: proto
 	go build -ldflags="-s -w \
 		-X main.version=$$VERSION \
 		-X main.gitCommit=$$GIT_COMMIT \
-		-X main.buildTime=$$BUILD_DATE" \
+		-X main.buildTime=$$BUILD_DATE \
+		-X github.com/pandeptwidyaop/grok/internal/version.Version=$$VERSION \
+		-X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$$GIT_COMMIT \
+		-X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$$BUILD_DATE" \
 		-o bin/grok-server ./cmd/grok-server
 
 build-client: proto build-client-dashboard
@@ -65,7 +68,10 @@ build-client: proto build-client-dashboard
 	go build -ldflags="-s -w \
 		-X main.version=$$VERSION \
 		-X main.gitCommit=$$GIT_COMMIT \
-		-X main.buildTime=$$BUILD_DATE" \
+		-X main.buildTime=$$BUILD_DATE \
+		-X github.com/pandeptwidyaop/grok/internal/version.Version=$$VERSION \
+		-X github.com/pandeptwidyaop/grok/internal/version.GitCommit=$$GIT_COMMIT \
+		-X github.com/pandeptwidyaop/grok/internal/version.BuildDate=$$BUILD_DATE" \
 		-o bin/grok ./cmd/grok
 
 build-all: build-dashboard build-client-dashboard build-server build-client

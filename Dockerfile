@@ -53,7 +53,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w \
         -X main.version=${VERSION} \
         -X main.gitCommit=${GIT_COMMIT} \
-        -X main.buildTime=${BUILD_TIME}" \
+        -X main.buildTime=${BUILD_TIME} \
+        -X github.com/pandeptwidyaop/grok/internal/version.Version=${VERSION} \
+        -X github.com/pandeptwidyaop/grok/internal/version.GitCommit=${GIT_COMMIT} \
+        -X github.com/pandeptwidyaop/grok/internal/version.BuildDate=${BUILD_TIME}" \
     -o grok-server \
     ./cmd/grok-server
 
