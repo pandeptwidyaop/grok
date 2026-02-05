@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/pandeptwidyaop/grok/compare/v1.4.0...v1.4.1) (2026-02-05)
+
+### Bug Fixes
+
+* **build:** Set version in both main and internal/version packages ([aac6377](https://github.com/pandeptwidyaop/grok/commit/aac6377fc83d3eef28ba035d04c7d3443646b18b))
+* **proxy:** Add X-Forwarded-Host, X-Forwarded-Proto, and X-Forwarded-For headers ([89c5a2b](https://github.com/pandeptwidyaop/grok/commit/89c5a2bb916f9a660db0b94c34daa951b63cc28a))
+
 ## [1.4.0](https://github.com/pandeptwidyaop/grok/compare/v1.3.0...v1.4.0) (2026-01-13)
 
 ### Features
