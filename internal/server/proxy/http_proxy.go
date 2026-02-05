@@ -239,6 +239,37 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 		}
 	}
 
+	// Add X-Forwarded-* headers for proper proxy behavior
+	// X-Forwarded-For: Client IP address
+	clientIP := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(clientIP); err == nil {
+		clientIP = host
+	}
+	if existingFor, ok := headers["X-Forwarded-For"]; ok {
+		// Append to existing X-Forwarded-For
+		headers["X-Forwarded-For"] = &tunnelv1.HeaderValues{
+			Values: append(existingFor.Values, clientIP),
+		}
+	} else {
+		headers["X-Forwarded-For"] = &tunnelv1.HeaderValues{
+			Values: []string{clientIP},
+		}
+	}
+
+	// X-Forwarded-Host: Original Host header
+	headers["X-Forwarded-Host"] = &tunnelv1.HeaderValues{
+		Values: []string{r.Host},
+	}
+
+	// X-Forwarded-Proto: Original protocol (http or https)
+	proto := "http"
+	if r.TLS != nil {
+		proto = "https"
+	}
+	headers["X-Forwarded-Proto"] = &tunnelv1.HeaderValues{
+		Values: []string{proto},
+	}
+
 	// Create proxy request
 	proxyReq := &tunnelv1.ProxyRequest{
 		RequestId: requestID,
@@ -334,12 +365,40 @@ func (p *HTTPProxy) handleWebhookRequest(w http.ResponseWriter, r *http.Request,
 	}
 	defer r.Body.Close()
 
+	// Add X-Forwarded-* headers before preparing request data
+	// Clone headers to avoid modifying original request
+	headers := make(http.Header)
+	for k, v := range r.Header {
+		headers[k] = v
+	}
+
+	// X-Forwarded-For: Client IP address
+	clientIP := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(clientIP); err == nil {
+		clientIP = host
+	}
+	if existingFor := headers.Get("X-Forwarded-For"); existingFor != "" {
+		headers.Set("X-Forwarded-For", existingFor+", "+clientIP)
+	} else {
+		headers.Set("X-Forwarded-For", clientIP)
+	}
+
+	// X-Forwarded-Host: Original Host header
+	headers.Set("X-Forwarded-Host", r.Host)
+
+	// X-Forwarded-Proto: Original protocol (http or https)
+	proto := "http"
+	if r.TLS != nil {
+		proto = "https"
+	}
+	headers.Set("X-Forwarded-Proto", proto)
+
 	// Prepare request data
 	requestData := &RequestData{
 		Method:      r.Method,
 		Path:        userPath, // Use user-defined path, not the full path
 		QueryString: r.URL.RawQuery,
-		Headers:     r.Header,
+		Headers:     headers,
 		Body:        body,
 	}
 
