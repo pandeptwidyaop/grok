@@ -28,6 +28,12 @@
 * **proxy:** reduce cyclomatic complexity in WebSocket handler ([37cb230](https://github.com/pandeptwidyaop/grok/commit/37cb2308ed4dc7c0f355a587f84a71dc421c9a8f))
 * Rename connection pool metrics, add read lock to metrics snapshot, and extract HTTP response streaming. ([9a2e148](https://github.com/pandeptwidyaop/grok/commit/9a2e1484c029dd63a48579267d399d23234e590f))
 
+## [1.4.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.4.0-alpha.1...v1.4.0-alpha.2) (2026-01-13)
+
+### Bug Fixes
+
+* **build:** Set version in both main and internal/version packages ([aac6377](https://github.com/pandeptwidyaop/grok/commit/aac6377fc83d3eef28ba035d04c7d3443646b18b))
+
 ## [1.4.0-alpha.1](https://github.com/pandeptwidyaop/grok/compare/v1.3.0...v1.4.0-alpha.1) (2026-01-13)
 
 ### Features
