@@ -1,3 +1,9 @@
+## [1.4.0-alpha.3](https://github.com/pandeptwidyaop/grok/compare/v1.4.0-alpha.2...v1.4.0-alpha.3) (2026-02-05)
+
+### Bug Fixes
+
+* **proxy:** Add X-Forwarded-Host, X-Forwarded-Proto, and X-Forwarded-For headers ([89c5a2b](https://github.com/pandeptwidyaop/grok/commit/89c5a2bb916f9a660db0b94c34daa951b63cc28a))
+
 ## [1.4.0-alpha.2](https://github.com/pandeptwidyaop/grok/compare/v1.4.0-alpha.1...v1.4.0-alpha.2) (2026-01-13)
 
 ### Bug Fixes
