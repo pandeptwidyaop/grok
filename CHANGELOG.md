@@ -1,3 +1,9 @@
+## [1.4.2](https://github.com/pandeptwidyaop/grok/compare/v1.4.1...v1.4.2) (2026-05-18)
+
+### Bug Fixes
+
+* **proxy:** fix WebSocket proxy race condition, concurrent stream sends, and goroutine leaks ([92eb062](https://github.com/pandeptwidyaop/grok/commit/92eb062a8bf82af799b1ba1baae76ee7781ac614))
+
 ## [1.4.1](https://github.com/pandeptwidyaop/grok/compare/v1.4.0...v1.4.1) (2026-02-05)
 
 ### Bug Fixes
