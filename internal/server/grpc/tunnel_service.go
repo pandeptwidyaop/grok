@@ -511,14 +511,17 @@ func (s *TunnelService) processRequests(ctx context.Context, tun *tunnel.Tunnel)
 				return
 			}
 
-			// Send request to client via gRPC stream
+			// Send request to client via gRPC stream (mutex protects concurrent sends)
 			proxyMsg := &tunnelv1.ProxyMessage{
 				Message: &tunnelv1.ProxyMessage_Request{
 					Request: pendingReq.Request,
 				},
 			}
 
-			if err := tun.Stream.SendMsg(proxyMsg); err != nil {
+			tun.StreamMu.Lock()
+			err := tun.Stream.SendMsg(proxyMsg)
+			tun.StreamMu.Unlock()
+			if err != nil {
 				logger.ErrorEvent().
 					Err(err).
 					Str("request_id", pendingReq.RequestID).

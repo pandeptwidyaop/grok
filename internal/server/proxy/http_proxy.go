@@ -291,14 +291,17 @@ func (p *HTTPProxy) proxyRequest(r *http.Request, tun *tunnel.Tunnel) (*tunnelv1
 	tun.ResponseMap.Store(requestID, responseCh)
 	defer tun.ResponseMap.Delete(requestID)
 
-	// Send request to tunnel via gRPC stream
+	// Send request to tunnel via gRPC stream (mutex protects concurrent sends)
 	proxyMsg := &tunnelv1.ProxyMessage{
 		Message: &tunnelv1.ProxyMessage_Request{
 			Request: proxyReq,
 		},
 	}
 
-	if err := tun.Stream.SendMsg(proxyMsg); err != nil {
+	tun.StreamMu.Lock()
+	err = tun.Stream.SendMsg(proxyMsg)
+	tun.StreamMu.Unlock()
+	if err != nil {
 		return nil, 0, pkgerrors.Wrap(err, "failed to send request to tunnel")
 	}
 
@@ -732,15 +735,25 @@ func (p *HTTPProxy) writeWebSocketUpgradeResponse(conn net.Conn, upgradeResp *tu
 
 // proxyWebSocketData handles bidirectional WebSocket data streaming.
 func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, requestID string) {
+	// done channel signals both goroutines to stop when either direction closes
+	done := make(chan struct{})
+	var closeOnce sync.Once
+
+	// Create channel for WebSocket responses
+	wsCh := make(chan []byte, 100)
+	tun.ResponseMap.Store(requestID+":ws", wsCh)
+	defer func() {
+		tun.ResponseMap.Delete(requestID + ":ws")
+		close(wsCh)
+	}()
+
 	var wg sync.WaitGroup
 	wg.Add(2)
-
-	// Channel for errors
-	errCh := make(chan error, 2)
 
 	// Client -> Tunnel (read from HTTP connection, send to gRPC stream)
 	go func() {
 		defer wg.Done()
+		defer closeOnce.Do(func() { close(done) })
 
 		// Get buffer from pool
 		bufPtr := wsServerBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
@@ -754,13 +767,11 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 			if err != nil {
 				if err != io.EOF {
 					logger.DebugEvent().Err(err).Msg("Client connection read error")
-					errCh <- err
 				}
 				return
 			}
 
 			if n > 0 {
-				// Send data to tunnel via gRPC stream
 				// CRITICAL: Must copy buffer data before sending to avoid data corruption
 				// when buffer is reused in next Read() iteration
 				tcpData := &tunnelv1.TCPData{
@@ -781,15 +792,12 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 					},
 				}
 
-				// Use StreamMu to prevent concurrent sends for WebSocket data
-				// Multiple WebSocket connections may try to send concurrently
 				tun.StreamMu.Lock()
 				err := tun.Stream.SendMsg(proxyMsg)
 				tun.StreamMu.Unlock()
 
 				if err != nil {
 					logger.ErrorEvent().Err(err).Msg("Failed to send WebSocket data to tunnel")
-					errCh <- err
 					return
 				}
 
@@ -802,34 +810,44 @@ func (p *HTTPProxy) proxyWebSocketData(conn net.Conn, tun *tunnel.Tunnel, reques
 	// Tunnel -> Client (receive from gRPC stream, write to HTTP connection)
 	go func() {
 		defer wg.Done()
+		defer closeOnce.Do(func() { close(done) })
 
-		// Create channel for WebSocket responses
-		wsCh := make(chan []byte, 100)
-		tun.ResponseMap.Store(requestID+":ws", wsCh)
-		defer tun.ResponseMap.Delete(requestID + ":ws")
+		idleTimeout := 5 * time.Minute
+		timer := time.NewTimer(idleTimeout)
+		defer timer.Stop()
 
 		for {
 			select {
-			case data := <-wsCh:
+			case data, ok := <-wsCh:
+				if !ok {
+					return
+				}
 				if len(data) > 0 {
 					if _, err := conn.Write(data); err != nil {
 						logger.ErrorEvent().Err(err).Msg("Failed to write WebSocket data to client")
-						errCh <- err
 						return
 					}
 
 					// Update stats
 					tun.UpdateStats(0, int64(len(data)))
 				}
-			case <-time.After(5 * time.Minute):
-				// Timeout if no data for 5 minutes
+				// Reset idle timer on data received
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(idleTimeout)
+			case <-done:
+				return
+			case <-timer.C:
 				logger.InfoEvent().Str("request_id", requestID).Msg("WebSocket idle timeout")
 				return
 			}
 		}
 	}()
 
-	// Wait for either goroutine to finish
 	wg.Wait()
 
 	logger.InfoEvent().

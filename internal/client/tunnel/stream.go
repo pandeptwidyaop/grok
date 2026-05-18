@@ -264,8 +264,7 @@ func (c *Client) handleHTTPRequest(ctx context.Context, requestID string, httpRe
 		Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
 	}
 
-	// No mutex - concurrent sends handled by gRPC internal buffering
-	if sendErr := c.stream.Send(msg); sendErr != nil {
+	if sendErr := c.sendStream(msg); sendErr != nil {
 		logger.ErrorEvent().
 			Err(sendErr).
 			Str("request_id", requestID).
@@ -382,6 +381,8 @@ func (c *Client) handleTCPRequest(ctx context.Context, requestID string, tcpData
 			return fmt.Errorf("stream not available")
 		}
 
+		c.streamMu.Lock()
+		defer c.streamMu.Unlock()
 		return stream.Send(msg)
 	}
 
@@ -490,6 +491,14 @@ func (c *Client) handleControlMessage(ctrl *tunnelv1.ControlMessage) {
 	}
 }
 
+// sendStream sends a message on the gRPC stream with proper mutex protection.
+// gRPC streams are NOT safe for concurrent Send calls.
+func (c *Client) sendStream(msg *tunnelv1.ProxyMessage) error {
+	c.streamMu.Lock()
+	defer c.streamMu.Unlock()
+	return c.stream.Send(msg)
+}
+
 // sendError sends an error response to the server.
 func (c *Client) sendError(requestID string, code tunnelv1.ErrorCode, message string) {
 	errorMsg := &tunnelv1.ProxyError{
@@ -502,7 +511,7 @@ func (c *Client) sendError(requestID string, code tunnelv1.ErrorCode, message st
 		Message: &tunnelv1.ProxyMessage_Error{Error: errorMsg},
 	}
 
-	if err := c.stream.Send(msg); err != nil {
+	if err := c.sendStream(msg); err != nil {
 		logger.ErrorEvent().
 			Err(err).
 			Str("request_id", requestID).
@@ -606,6 +615,37 @@ func (c *Client) handleWebSocketUpgrade(ctx context.Context, requestID string, h
 		return
 	}
 
+	// If upgrade failed, send response and close connection
+	if httpResp.StatusCode != 101 {
+		proxyResp := &tunnelv1.ProxyResponse{
+			RequestId:   requestID,
+			TunnelId:    c.tunnelID,
+			Payload:     &tunnelv1.ProxyResponse_Http{Http: httpResp},
+			EndOfStream: true,
+		}
+		msg := &tunnelv1.ProxyMessage{
+			Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
+		}
+		c.sendStream(msg)
+		logger.WarnEvent().
+			Int32("status_code", httpResp.StatusCode).
+			Str("request_id", requestID).
+			Msg("WebSocket upgrade failed")
+		wsConn.Close()
+		return
+	}
+
+	// Register WebSocket channel BEFORE sending 101 response to server.
+	// This prevents a race condition where the server starts sending WebSocket
+	// data before the channel is registered, causing data to be misrouted as TCP.
+	wsChan := make(chan []byte, 1000)
+	c.mu.Lock()
+	if c.wsConnections == nil {
+		c.wsConnections = make(map[string]chan []byte)
+	}
+	c.wsConnections[requestID] = wsChan
+	c.mu.Unlock()
+
 	// Send upgrade response back to server
 	proxyResp := &tunnelv1.ProxyResponse{
 		RequestId:   requestID,
@@ -618,21 +658,16 @@ func (c *Client) handleWebSocketUpgrade(ctx context.Context, requestID string, h
 		Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
 	}
 
-	if err := c.stream.Send(msg); err != nil {
+	if err := c.sendStream(msg); err != nil {
 		logger.ErrorEvent().
 			Err(err).
 			Str("request_id", requestID).
 			Msg("Failed to send WebSocket upgrade response")
-		wsConn.Close()
-		return
-	}
-
-	// If upgrade failed, close connection
-	if httpResp.StatusCode != 101 {
-		logger.WarnEvent().
-			Int32("status_code", httpResp.StatusCode).
-			Str("request_id", requestID).
-			Msg("WebSocket upgrade failed")
+		// Cleanup registered channel
+		c.mu.Lock()
+		delete(c.wsConnections, requestID)
+		c.mu.Unlock()
+		close(wsChan)
 		wsConn.Close()
 		return
 	}
@@ -641,13 +676,27 @@ func (c *Client) handleWebSocketUpgrade(ctx context.Context, requestID string, h
 		Str("request_id", requestID).
 		Msg("WebSocket upgraded, starting bidirectional streaming")
 
-	// Start bidirectional streaming
-	c.streamWebSocketData(ctx, requestID, wsConn)
+	// Start bidirectional streaming (channel already registered)
+	c.streamWebSocketData(ctx, requestID, wsConn, wsChan)
 }
 
 // streamWebSocketData handles bidirectional WebSocket data streaming.
-func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsConn net.Conn) {
+// wsChan is pre-registered in wsConnections before the 101 response is sent to prevent race conditions.
+func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsConn net.Conn, wsChan chan []byte) {
 	defer wsConn.Close()
+
+	// done channel signals both goroutines to stop when either direction closes
+	done := make(chan struct{})
+	var closeOnce sync.Once
+
+	// Cleanup: unregister WebSocket channel when streaming ends
+	defer func() {
+		c.mu.Lock()
+		delete(c.wsConnections, requestID)
+		c.mu.Unlock()
+		// Drain and close channel to unblock any pending senders
+		close(wsChan)
+	}()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -655,6 +704,7 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 	// Local service -> Server (read from WebSocket connection, send to gRPC stream)
 	go func() {
 		defer wg.Done()
+		defer closeOnce.Do(func() { close(done) })
 
 		// Get buffer from pool
 		bufPtr := wsClientBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
@@ -673,7 +723,6 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 			}
 
 			if n > 0 {
-				// Send data to server via gRPC stream
 				// CRITICAL: Must copy buffer data before sending to avoid data corruption
 				// when buffer is reused in next Read() iteration
 				tcpData := &tunnelv1.TCPData{
@@ -693,10 +742,7 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 					Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
 				}
 
-				// No mutex - concurrent sends handled by gRPC internal buffering
-				err = c.stream.Send(msg)
-
-				if err != nil {
+				if err := c.sendStream(msg); err != nil {
 					logger.ErrorEvent().Err(err).Msg("Failed to send WebSocket data to server")
 					return
 				}
@@ -707,25 +753,11 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 	// Server -> Local service (receive from gRPC stream, write to WebSocket connection)
 	go func() {
 		defer wg.Done()
+		defer closeOnce.Do(func() { close(done) })
 
-		// Create a channel for receiving WebSocket data from the stream handler
-		// The stream receiver will put data here when it receives TCP data for this requestID
-		wsChan := make(chan []byte, 1000)
-
-		// Store channel in a map so receiveRequests can find it
-		c.mu.Lock()
-		if c.wsConnections == nil {
-			c.wsConnections = make(map[string]chan []byte)
-		}
-		c.wsConnections[requestID] = wsChan
-		c.mu.Unlock()
-
-		defer func() {
-			c.mu.Lock()
-			delete(c.wsConnections, requestID)
-			close(wsChan)
-			c.mu.Unlock()
-		}()
+		idleTimeout := 5 * time.Minute
+		timer := time.NewTimer(idleTimeout)
+		defer timer.Stop()
 
 		for {
 			select {
@@ -739,10 +771,19 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 						return
 					}
 				}
+				// Reset idle timer on data received
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				timer.Reset(idleTimeout)
+			case <-done:
+				return
 			case <-ctx.Done():
 				return
-			case <-time.After(5 * time.Minute):
-				// Idle timeout
+			case <-timer.C:
 				logger.InfoEvent().Str("request_id", requestID).Msg("WebSocket idle timeout")
 				return
 			}

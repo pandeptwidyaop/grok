@@ -69,6 +69,7 @@ type Client struct {
 	dashboardServer *dashboard.Server      // Dashboard HTTP server
 	eventCollector  *events.EventCollector // Event collector for dashboard
 	mu              sync.RWMutex
+	streamMu        sync.Mutex // Protects gRPC stream Send operations
 	connected       bool
 	stopCh          chan struct{}
 }
