@@ -1,3 +1,9 @@
+## [1.4.3](https://github.com/pandeptwidyaop/grok/compare/v1.4.2...v1.4.3) (2026-05-19)
+
+### Bug Fixes
+
+* **lint:** resolve errcheck, gocyclo, and gci lint errors ([ecb560a](https://github.com/pandeptwidyaop/grok/commit/ecb560a344e8b9cedf4a332318a15bd9726cbd36))
+
 ## [1.4.2](https://github.com/pandeptwidyaop/grok/compare/v1.4.1...v1.4.2) (2026-05-18)
 
 ### Bug Fixes
