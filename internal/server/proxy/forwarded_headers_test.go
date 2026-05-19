@@ -16,11 +16,11 @@ import (
 // TestXForwardedHeadersLogic tests the logic for adding X-Forwarded headers.
 func TestXForwardedHeadersLogic(t *testing.T) {
 	tests := []struct {
-		name             string
-		setupRequest     func() *http.Request
-		expectedHost     string
-		expectedProto    string
-		expectedForCount int
+		name                string
+		setupRequest        func() *http.Request
+		expectedHost        string
+		expectedProto       string
+		expectedForCount    int
 		expectedForContains []string
 	}{
 		{
@@ -31,9 +31,9 @@ func TestXForwardedHeadersLogic(t *testing.T) {
 				req.Host = "test.grok.example.com"
 				return req
 			},
-			expectedHost:  "test.grok.example.com",
-			expectedProto: "http",
-			expectedForCount: 1,
+			expectedHost:        "test.grok.example.com",
+			expectedProto:       "http",
+			expectedForCount:    1,
 			expectedForContains: []string{"192.168.1.100"},
 		},
 		{
@@ -45,9 +45,9 @@ func TestXForwardedHeadersLogic(t *testing.T) {
 				req.TLS = &tls.ConnectionState{} // Simulate HTTPS
 				return req
 			},
-			expectedHost:  "test.grok.example.com",
-			expectedProto: "https",
-			expectedForCount: 1,
+			expectedHost:        "test.grok.example.com",
+			expectedProto:       "https",
+			expectedForCount:    1,
 			expectedForContains: []string{"10.0.0.50"},
 		},
 		{
@@ -59,9 +59,9 @@ func TestXForwardedHeadersLogic(t *testing.T) {
 				req.Header.Set("X-Forwarded-For", "203.0.113.1")
 				return req
 			},
-			expectedHost:  "test.grok.example.com",
-			expectedProto: "http",
-			expectedForCount: 2,
+			expectedHost:        "test.grok.example.com",
+			expectedProto:       "http",
+			expectedForCount:    2,
 			expectedForContains: []string{"203.0.113.1", "192.168.1.200"},
 		},
 		{
@@ -72,9 +72,9 @@ func TestXForwardedHeadersLogic(t *testing.T) {
 				req.Host = "test.grok.example.com"
 				return req
 			},
-			expectedHost:  "test.grok.example.com",
-			expectedProto: "http",
-			expectedForCount: 1,
+			expectedHost:        "test.grok.example.com",
+			expectedProto:       "http",
+			expectedForCount:    1,
 			expectedForContains: []string{"2001:db8::1"},
 		},
 	}

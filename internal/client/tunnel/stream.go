@@ -626,7 +626,9 @@ func (c *Client) handleWebSocketUpgrade(ctx context.Context, requestID string, h
 		msg := &tunnelv1.ProxyMessage{
 			Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
 		}
-		c.sendStream(msg)
+		if err := c.sendStream(msg); err != nil {
+			logger.ErrorEvent().Err(err).Str("request_id", requestID).Msg("Failed to send WebSocket upgrade failure response")
+		}
 		logger.WarnEvent().
 			Int32("status_code", httpResp.StatusCode).
 			Str("request_id", requestID).
@@ -701,93 +703,16 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Local service -> Server (read from WebSocket connection, send to gRPC stream)
 	go func() {
 		defer wg.Done()
 		defer closeOnce.Do(func() { close(done) })
-
-		// Get buffer from pool
-		bufPtr := wsClientBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
-		buffer := *bufPtr
-		defer wsClientBufferPool.Put(bufPtr)
-
-		sequence := int64(0)
-
-		for {
-			n, err := wsConn.Read(buffer)
-			if err != nil {
-				if err != io.EOF {
-					logger.DebugEvent().Err(err).Msg("WebSocket connection read error")
-				}
-				return
-			}
-
-			if n > 0 {
-				// CRITICAL: Must copy buffer data before sending to avoid data corruption
-				// when buffer is reused in next Read() iteration
-				tcpData := &tunnelv1.TCPData{
-					Data:     append([]byte(nil), buffer[:n]...),
-					Sequence: sequence,
-				}
-				sequence++
-
-				proxyResp := &tunnelv1.ProxyResponse{
-					RequestId:   requestID,
-					TunnelId:    c.tunnelID,
-					Payload:     &tunnelv1.ProxyResponse_Tcp{Tcp: tcpData},
-					EndOfStream: false,
-				}
-
-				msg := &tunnelv1.ProxyMessage{
-					Message: &tunnelv1.ProxyMessage_Response{Response: proxyResp},
-				}
-
-				if err := c.sendStream(msg); err != nil {
-					logger.ErrorEvent().Err(err).Msg("Failed to send WebSocket data to server")
-					return
-				}
-			}
-		}
+		c.wsReadLocalAndSend(requestID, wsConn)
 	}()
 
-	// Server -> Local service (receive from gRPC stream, write to WebSocket connection)
 	go func() {
 		defer wg.Done()
 		defer closeOnce.Do(func() { close(done) })
-
-		idleTimeout := 5 * time.Minute
-		timer := time.NewTimer(idleTimeout)
-		defer timer.Stop()
-
-		for {
-			select {
-			case data, ok := <-wsChan:
-				if !ok {
-					return
-				}
-				if len(data) > 0 {
-					if _, err := wsConn.Write(data); err != nil {
-						logger.ErrorEvent().Err(err).Msg("Failed to write data to WebSocket")
-						return
-					}
-				}
-				// Reset idle timer on data received
-				if !timer.Stop() {
-					select {
-					case <-timer.C:
-					default:
-					}
-				}
-				timer.Reset(idleTimeout)
-			case <-done:
-				return
-			case <-ctx.Done():
-				return
-			case <-timer.C:
-				logger.InfoEvent().Str("request_id", requestID).Msg("WebSocket idle timeout")
-				return
-			}
-		}
+		c.wsReceiveAndWriteLocal(ctx, requestID, wsConn, wsChan, done)
 	}()
 
 	wg.Wait()
@@ -795,4 +720,81 @@ func (c *Client) streamWebSocketData(ctx context.Context, requestID string, wsCo
 	logger.InfoEvent().
 		Str("request_id", requestID).
 		Msg("WebSocket connection closed")
+}
+
+// wsReadLocalAndSend reads from local WebSocket connection and sends data to server via gRPC.
+func (c *Client) wsReadLocalAndSend(requestID string, wsConn net.Conn) {
+	bufPtr := wsClientBufferPool.Get().(*[]byte) //nolint:errcheck // sync.Pool.Get() doesn't return error
+	buffer := *bufPtr
+	defer wsClientBufferPool.Put(bufPtr)
+
+	sequence := int64(0)
+
+	for {
+		n, err := wsConn.Read(buffer)
+		if err != nil {
+			if err != io.EOF {
+				logger.DebugEvent().Err(err).Msg("WebSocket connection read error")
+			}
+			return
+		}
+
+		if n > 0 {
+			// CRITICAL: Must copy buffer data before sending to avoid data corruption
+			// when buffer is reused in next Read() iteration
+			msg := &tunnelv1.ProxyMessage{
+				Message: &tunnelv1.ProxyMessage_Response{
+					Response: &tunnelv1.ProxyResponse{
+						RequestId:   requestID,
+						TunnelId:    c.tunnelID,
+						Payload:     &tunnelv1.ProxyResponse_Tcp{Tcp: &tunnelv1.TCPData{Data: append([]byte(nil), buffer[:n]...), Sequence: sequence}},
+						EndOfStream: false,
+					},
+				},
+			}
+			sequence++
+
+			if err := c.sendStream(msg); err != nil {
+				logger.ErrorEvent().Err(err).Msg("Failed to send WebSocket data to server")
+				return
+			}
+		}
+	}
+}
+
+// wsReceiveAndWriteLocal receives data from server via channel and writes to local WebSocket connection.
+func (c *Client) wsReceiveAndWriteLocal(ctx context.Context, requestID string, wsConn net.Conn, wsChan chan []byte, done chan struct{}) {
+	idleTimeout := 5 * time.Minute
+	timer := time.NewTimer(idleTimeout)
+	defer timer.Stop()
+
+	for {
+		select {
+		case data, ok := <-wsChan:
+			if !ok {
+				return
+			}
+			if len(data) > 0 {
+				if _, err := wsConn.Write(data); err != nil {
+					logger.ErrorEvent().Err(err).Msg("Failed to write data to WebSocket")
+					return
+				}
+			}
+			// Reset idle timer on data received
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer.Reset(idleTimeout)
+		case <-done:
+			return
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			logger.InfoEvent().Str("request_id", requestID).Msg("WebSocket idle timeout")
+			return
+		}
+	}
 }
